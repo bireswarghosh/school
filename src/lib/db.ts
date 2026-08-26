@@ -9,9 +9,11 @@ types.setTypeParser(114, JSON.parse)
 types.setTypeParser(3802, JSON.parse)
 
 export const pool = new Pool({
-  connectionString: "postgresql://postgres:123@localhost/appstrice_school",
+  connectionString:
+    process.env.DATABASE_URL || "postgresql://postgres:123@localhost/appstrice_school",
   max: 20,
   idleTimeoutMillis: 30000,
+  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : undefined,
 })
 
 // ----------------------------------------------------------------
