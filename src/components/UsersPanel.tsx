@@ -1,0 +1,290 @@
+"use client"
+
+import { useState } from "react"
+import { Plus, Pencil, Trash2, X, Save, Check, Filter } from "lucide-react"
+import { useApi } from "@/lib/use-api"
+
+type User = {
+  id: number
+  username: string
+  name: string
+  email: string
+  phone: string
+  role: string
+  status: boolean
+  lastLogin: string
+}
+
+const roleOptions = ["Admin", "Teacher", "Accountant", "Librarian", "Receptionist"]
+
+export default function UsersPanel() {
+  const { data: users, add, update, remove, loading } = useApi<User>("/api/system-setting/user")
+  const [filterRole, setFilterRole] = useState("All")
+  const [showModal, setShowModal] = useState(false)
+  const [editing, setEditing] = useState<User | null>(null)
+  const [deleteId, setDeleteId] = useState<number | null>(null)
+  const [showDelete, setShowDelete] = useState(false)
+  const [form, setForm] = useState({ username: "", password: "", confirmPassword: "", name: "", email: "", phone: "", role: "Teacher", status: true })
+  const [success, setSuccess] = useState("")
+
+  const showSuccess = (msg: string) => {
+    setSuccess(msg)
+    setTimeout(() => setSuccess(""), 3000)
+  }
+
+  const filteredUsers = filterRole === "All" ? users : users.filter((u) => u.role === filterRole)
+
+  const handleAdd = async () => {
+    if (!form.username.trim() || !form.name.trim() || !form.email.trim()) return
+    if (form.password && form.password !== form.confirmPassword) { showSuccess("Passwords do not match!"); return }
+    await add({ username: form.username.trim(), name: form.name.trim(), email: form.email.trim(), phone: form.phone.trim(), role: form.role, status: form.status, lastLogin: "Never" })
+    setShowModal(false)
+    setForm({ username: "", password: "", confirmPassword: "", name: "", email: "", phone: "", role: "Teacher", status: true })
+    showSuccess("User added successfully!")
+  }
+
+  const handleEditOpen = (u: User) => {
+    setEditing(u)
+    setForm({ username: u.username, password: "", confirmPassword: "", name: u.name, email: u.email, phone: u.phone, role: u.role, status: u.status })
+    setShowModal(true)
+  }
+
+  const handleEditSave = async () => {
+    if (!editing || !form.username.trim() || !form.name.trim() || !form.email.trim()) return
+    if (form.password && form.password !== form.confirmPassword) { showSuccess("Passwords do not match!"); return }
+    await update(editing.id, { username: form.username.trim(), name: form.name.trim(), email: form.email.trim(), phone: form.phone.trim(), role: form.role, status: form.status })
+    setShowModal(false)
+    setEditing(null)
+    showSuccess("User updated successfully!")
+  }
+
+  const handleDeleteOpen = (id: number) => {
+    setDeleteId(id)
+    setShowDelete(true)
+  }
+
+  const confirmDelete = async () => {
+    if (deleteId === null) return
+    await remove(deleteId)
+    setShowDelete(false)
+    setDeleteId(null)
+    showSuccess("User deleted successfully!")
+  }
+
+  const getUser = (id: number) => users.find((u) => u.id === id)
+
+  const clearForm = () => {
+    setForm({ username: "", password: "", confirmPassword: "", name: "", email: "", phone: "", role: "Teacher", status: true })
+    setEditing(null)
+  }
+
+  return (
+    <>
+      {success && (
+        <div className="fixed top-4 right-4 z-[100] bg-green-600 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 text-sm">
+          <Check className="h-4 w-4" />
+          {success}
+        </div>
+      )}
+
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Filter className="h-4 w-4 text-gray-400" />
+          <select
+            value={filterRole}
+            onChange={(e) => setFilterRole(e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
+          >
+            <option value="All">All Roles</option>
+            {roleOptions.map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </div>
+        <button
+          onClick={() => { clearForm(); setShowModal(true) }}
+          className="rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 flex items-center gap-2"
+        >
+          <Plus className="h-4 w-4" /> Add User
+        </button>
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-200 bg-gray-50">
+                {["#", "Username", "Name", "Email", "Role", "Status", "Last Login", "Action"].map((h) => (
+                  <th key={h} className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {loading && filteredUsers.length === 0 ? (
+                <tr><td colSpan={8} className="text-center py-8 text-gray-400">Loading...</td></tr>
+              ) : filteredUsers.length === 0 ? (
+                <tr><td colSpan={8} className="text-center py-8 text-gray-400">No users found</td></tr>
+              ) : (
+                filteredUsers.map((u, idx) => (
+                  <tr key={u.id} className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/50"}`}>
+                    <td className="px-4 py-3 text-gray-600">{idx + 1}</td>
+                    <td className="px-4 py-3 font-medium text-gray-800">{u.username}</td>
+                    <td className="px-4 py-3 text-gray-800">{u.name}</td>
+                    <td className="px-4 py-3 text-gray-600">{u.email}</td>
+                    <td className="px-4 py-3">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                        {u.role}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${u.status ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                        {u.status ? "Active" : "Inactive"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">{u.lastLogin}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => handleEditOpen(u)} className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Edit">
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button onClick={() => handleDeleteOpen(u.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="px-4 py-3 border-t border-gray-200 text-sm text-gray-500">
+          Showing {filteredUsers.length} of {users.length} records
+        </div>
+      </div>
+
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-semibold text-gray-800">{editing ? "Edit User" : "Add User"}</h3>
+              <button onClick={() => { setShowModal(false); clearForm() }} className="text-gray-400 hover:text-gray-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                <input
+                  type="text"
+                  value={form.username}
+                  onChange={(e) => setForm({ ...form, username: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Password {editing && "(leave blank to keep current)"}</label>
+                <input
+                  type="password"
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
+                <input
+                  type="password"
+                  value={form.confirmPassword}
+                  onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                <input
+                  type="text"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                <input
+                  type="text"
+                  value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                <select
+                  value={form.role}
+                  onChange={(e) => setForm({ ...form, role: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
+                >
+                  {roleOptions.map((r) => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.status}
+                  onChange={(e) => setForm({ ...form, status: e.target.checked })}
+                  className="rounded border-gray-300 text-[var(--primary)] focus:ring-[var(--primary)]"
+                />
+                <span className="text-sm text-gray-700">Active</span>
+              </label>
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <button onClick={() => { setShowModal(false); clearForm() }}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-1.5">
+                <X className="h-4 w-4" /> Cancel
+              </button>
+              <button onClick={editing ? handleEditSave : handleAdd}
+                className="rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 flex items-center gap-1.5">
+                <Save className="h-4 w-4" /> Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-semibold text-gray-800">Confirm Delete</h3>
+              <button onClick={() => { setShowDelete(false); setDeleteId(null) }} className="text-gray-400 hover:text-gray-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-600">
+              Are you sure you want to delete this user?
+              {deleteId && <strong className="block mt-1 text-gray-800">{getUser(deleteId)?.name}</strong>}
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <button onClick={() => { setShowDelete(false); setDeleteId(null) }}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-1.5">
+                <X className="h-4 w-4" /> Cancel
+              </button>
+              <button onClick={confirmDelete}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 flex items-center gap-1.5">
+                <Trash2 className="h-4 w-4" /> Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}

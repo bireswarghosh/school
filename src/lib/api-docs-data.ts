@@ -1,0 +1,1498 @@
+// Shared REST API documentation data.
+// Consumed by /admin/multi-branch/rest-api (school edition) and /saas/rest-api (super admin edition).
+
+export type ParamDoc = {
+  name: string
+  required?: boolean
+  example?: string
+  desc?: string
+}
+
+export type EndpointDoc = {
+  method: "GET" | "POST" | "PUT" | "DELETE"
+  path: string // relative to /api
+  summary: string
+  desc?: string
+  roles?: string[] // roles allowed by requireRole()
+  params?: ParamDoc[]
+  body?: unknown // sample JSON request body
+  response?: unknown // sample JSON response
+}
+
+export type LoginSample = {
+  role: string
+  email: string
+  password: string
+  schoolCode?: string | null
+  redirect: string
+  note?: string
+}
+
+export type RoleSection = {
+  id: string
+  label: string
+  tagline: string
+  login: LoginSample
+  endpoints: EndpointDoc[]
+}
+
+// ----------------------------------------------------------------
+// Auth — how every role logs in
+// ----------------------------------------------------------------
+
+export const authType = {
+  kind: "Cookie Session (httpOnly)",
+  cookieName: "smart_school_session",
+  details: [
+    "Authentication uses an HMAC-SHA256 signed, httpOnly session cookie. There are no API keys or Bearer tokens.",
+    "Call POST /api/auth/login once. The server verifies the scrypt password hash and responds with Set-Cookie: smart_school_session=<token> (valid 7 days).",
+    "Every subsequent request automatically sends the cookie. A Next.js middleware (proxy) verifies it and injects x-user-id, x-school-id and x-role headers into the API route.",
+    "All data queries are auto-scoped to your school via x-school-id, so one shared database safely serves many schools (multi-tenant).",
+    "In Postman just run the Login request first — the cookie is saved into the collection's cookie jar and every other request in the same collection is authenticated.",
+  ],
+}
+
+export const authEndpoints: EndpointDoc[] = [
+  {
+    method: "POST",
+    path: "auth/login",
+    summary: "Log in as any role and receive the session cookie",
+    desc: "Email + password are always required. schoolCode is required for every school-level role (admin, teacher, staff, student, parent) and must be omitted for super admins.",
+    body: {
+      email: "admin@smart-school.in",
+      password: "Admin@123",
+      schoolCode: "DEFAULT",
+    },
+    response: {
+      user: {
+        id: 2,
+        name: "Admin - Smart School",
+        email: "admin@smart-school.in",
+        role: "admin",
+        permissions: [],
+        schoolId: 1,
+      },
+      school: {
+        id: 1,
+        code: "DEFAULT",
+        name: "Smart School Demo",
+        status: "Active",
+      },
+      redirect: "/admin",
+    },
+  },
+  {
+    method: "GET",
+    path: "auth/me",
+    summary: "Get the currently logged-in user, role and school",
+    response: {
+      authenticated: true,
+      user: {
+        id: 2,
+        name: "Admin - Smart School",
+        email: "admin@smart-school.in",
+        role: "admin",
+        permissions: [],
+        schoolId: 1,
+      },
+      school: { id: 1, code: "DEFAULT", name: "Smart School Demo" },
+    },
+  },
+  {
+    method: "POST",
+    path: "auth/logout",
+    summary: "Clear the session cookie (log out)",
+    body: {},
+    response: { success: true },
+  },
+  {
+    method: "POST",
+    path: "auth/register",
+    summary: "Public self-registration of a new school + its admin",
+    desc: "Creates a new school row plus its first admin user (default password Admin@123). No authentication required.",
+    body: {
+      name: "Sunrise Public School",
+      email: "principal@sunrise-school.in",
+      mobile: "9876543210",
+      address: "MG Road, Pune",
+      tagline: "Learn Grow Shine",
+      adminName: "Mrs. Kavita Rao",
+    },
+    response: {
+      success: true,
+      school: { id: 12, code: "SUNRISEPUBLIC", name: "Sunrise Public School" },
+      adminEmail: "principal@sunrise-school.in",
+      defaultPassword: "Admin@123",
+      redirect: "/admin",
+    },
+  },
+]
+
+export const loginSamples: LoginSample[] = [
+  {
+    role: "School Admin",
+    email: "admin@smart-school.in",
+    password: "Admin@123",
+    schoolCode: "DEFAULT",
+    redirect: "/admin",
+    note: "Full school administration panel access.",
+  },
+  {
+    role: "Teacher",
+    email: "teacher@yourschool.com",
+    password: "<set-by-admin>",
+    schoolCode: "DEFAULT",
+    redirect: "/portal",
+    note: "Teacher/staff accounts are created by the school admin under System Setting → Users.",
+  },
+  {
+    role: "Student",
+    email: "student@yourschool.com",
+    password: "<set-by-admin>",
+    schoolCode: "DEFAULT",
+    redirect: "/portal",
+    note: "The students.user_id column must link the login to the student record.",
+  },
+  {
+    role: "Parent",
+    email: "parent@yourschool.com",
+    password: "<set-by-admin>",
+    schoolCode: "DEFAULT",
+    redirect: "/portal",
+    note: "Parent logins see only children linked through student_guardians.parent_user_id.",
+  },
+]
+
+// ----------------------------------------------------------------
+// Common portal endpoints (any authenticated role)
+// ----------------------------------------------------------------
+
+const commonPortalEndpoints: EndpointDoc[] = [
+  {
+    method: "GET",
+    path: "my",
+    summary: "Discovery — list every endpoint available to the logged-in role",
+    roles: ["student", "parent", "teacher", "staff", "admin"],
+    response: {
+      authenticated: true,
+      userId: 7,
+      schoolId: 1,
+      role: "student",
+      links: [
+        "/api/my/dashboard",
+        "/api/my/student/profile",
+        "/api/my/student/details",
+      ],
+    },
+  },
+  {
+    method: "GET",
+    path: "my/dashboard",
+    summary: "Role-aware dashboard counters",
+    roles: ["student", "parent", "teacher", "staff", "admin"],
+    response: {
+      role: "student",
+      name: "Aarav Sharma",
+      className: "Class 10",
+      summary: { homework: 12, attendanceToday: 1, results: 8 },
+    },
+  },
+  {
+    method: "GET",
+    path: "my/profile",
+    summary: "Logged-in account + linked student/staff/kids record",
+    roles: ["*"],
+    response: {
+      user: { id: 7, name: "Aarav Sharma", email: "student@yourschool.com", role: "student" },
+      schoolId: 1,
+      linked: { role: "student", studentId: 15 },
+    },
+  },
+  {
+    method: "GET",
+    path: "my/student/notices",
+    summary: "Published notices",
+    roles: ["student", "parent", "teacher", "staff", "admin"],
+    response: {
+      notices: [
+        {
+          id: 3,
+          title: "Annual Day Rehearsal",
+          noticeDate: "2026-08-20",
+          publishDate: "2026-08-19",
+          message: "Rehearsal starts at 2 PM in the main hall.",
+        },
+      ],
+    },
+  },
+]
+
+// ----------------------------------------------------------------
+// STUDENT portal APIs
+// ----------------------------------------------------------------
+
+export const studentSection: RoleSection = {
+  id: "student",
+  label: "Student",
+  tagline: "Self-service endpoints consumed by a student's own login (/portal).",
+  login: loginSamples.find((l) => l.role === "Student")!,
+  endpoints: [
+    ...commonPortalEndpoints,
+    {
+      method: "GET",
+      path: "my/student",
+      summary: "My profile summary",
+      roles: ["student"],
+      response: {
+        id: 15,
+        admissionNo: "ADM2026-042",
+        rollNo: "12",
+        name: "Aarav Sharma",
+        firstName: "Aarav",
+        middleName: null,
+        lastName: "Sharma",
+        className: "Class 10",
+        sectionName: "A",
+        classId: 5,
+        sectionId: 2,
+        gender: "Male",
+        dob: "2011-06-14",
+        category: "General",
+        bloodGroup: "O+",
+        house: "Blue",
+        email: "aarav@yourschool.com",
+        mobile: "9876500011",
+        admissionDate: "2024-04-01",
+        status: "Active",
+      },
+    },
+    {
+      method: "GET",
+      path: "my/student/details",
+      summary: "Full 360° record — profile, parents, fees, exams, attendance",
+      roles: ["student"],
+      response: {
+        id: 15,
+        student: {
+          admissionNo: "ADM2026-042",
+          rollNo: "12",
+          name: "Aarav Sharma",
+          gender: "Male",
+          dob: "2011-06-14",
+          bloodGroup: "O+",
+          mobile: "9876500011",
+          category: "General",
+          religion: "Hindu",
+          house: "Blue",
+          admissionDate: "2024-04-01",
+          rte: false,
+          status: "Active",
+          studentPhoto: "/uploads/student/15.jpg",
+        },
+        academic: { classId: 5, sectionId: 2, className: "Class 10", sectionName: "A", session: "2025-26" },
+        parent: {
+          fatherName: "Rakesh Sharma",
+          fatherPhone: "9876500022",
+          motherName: "Sunita Sharma",
+          guardianIs: "father",
+          guardianPhone: "9876500022",
+        },
+        bank: { bankAccountNo: "50110023456", bankName: "HDFC", ifscCode: "HDFC0001234" },
+        guardians: [{ name: "Rakesh Sharma", email: "rakesh@yourschool.com", role: "parent", parentType: "Father" }],
+        attendance: { total: 148, summary: { Present: 140, Absent: 6, Late: 2 } },
+        fees: {
+          totalDue: 4500,
+          dues: [
+            { masterId: 8, feesType: "Tuition Fee", feesGroup: "Class Fee", amount: 12000, dueDate: "2026-04-10" },
+            { masterId: 9, feesType: "Exam Fee", feesGroup: "Class Fee", amount: 1500, dueDate: "2026-08-30" },
+          ],
+        },
+        exams: {
+          total: 8,
+          results: [
+            { examId: 4, examName: "Half Yearly", subject: "Mathematics", theoryMarks: 78, practicalMarks: 18, absent: false },
+          ],
+        },
+        homeworkCount: 12,
+      },
+    },
+    {
+      method: "GET",
+      path: "my/student/homework",
+      summary: "Homework for my class/section",
+      roles: ["student"],
+      response: {
+        studentId: 15,
+        homework: [
+          {
+            id: 21,
+            classId: 5,
+            sectionId: 2,
+            subjectId: 3,
+            subject: "Mathematics",
+            className: "Class 10",
+            sectionName: "A",
+            homeworkDate: "2026-08-18",
+            submissionDate: "2026-08-22",
+            description: "Solve exercise 7.2, problems 1-10",
+            document: null,
+            createdAt: "2026-08-18T05:30:00.000Z",
+          },
+        ],
+      },
+    },
+    {
+      method: "GET",
+      path: "my/student/timetable",
+      summary: "My weekly timetable",
+      roles: ["student"],
+      response: {
+        studentId: 15,
+        timetable: [
+          {
+            id: 101,
+            subject: "Mathematics",
+            day: "Monday",
+            period: 1,
+            startTime: "08:00",
+            endTime: "08:45",
+            teacher: "Mrs. Anjali Deshmukh",
+          },
+        ],
+      },
+    },
+    {
+      method: "GET",
+      path: "my/student/exams",
+      summary: "My exam results (published marks)",
+      roles: ["student"],
+      params: [],
+      response: {
+        studentId: 15,
+        results: [
+          {
+            id: 402,
+            examId: 4,
+            examName: "Half Yearly",
+            published: true,
+            subjectId: 3,
+            subject: "Mathematics",
+            theoryMarks: 78,
+            practicalMarks: 18,
+            absent: false,
+            notes: null,
+          },
+        ],
+      },
+    },
+    {
+      method: "GET",
+      path: "my/student/attendance",
+      summary: "My monthly attendance with per-day records",
+      roles: ["student"],
+      params: [{ name: "month", required: false, example: "2026-08", desc: "YYYY-MM; defaults to current month" }],
+      response: {
+        studentId: 15,
+        month: "2026-08",
+        summary: { Present: 14, Absent: 1 },
+        records: [
+          {
+            id: 900,
+            date: "2026-08-20",
+            inTime: "07:55",
+            outTime: "14:10",
+            attendanceType: "Present",
+            recordedAt: "2026-08-20T03:00:00.000Z",
+          },
+        ],
+      },
+    },
+    {
+      method: "GET",
+      path: "my/student/fees",
+      summary: "My fee dues vs payments",
+      roles: ["student"],
+      response: {
+        studentId: 15,
+        summary: { totalDue: 4500, totalPaid: 9000, pendingCount: 2 },
+        dues: [
+          {
+            masterId: 8,
+            feesType: "Tuition Fee",
+            feesGroup: "Class Fee",
+            amount: 12000,
+            paidAmount: 9000,
+            balance: 3000,
+            dueDate: "2026-04-10",
+            paidOn: "2026-04-08",
+          },
+        ],
+        payments: [
+          {
+            id: 55,
+            feesTypeId: 2,
+            amount: 9000,
+            discountAmount: 0,
+            fineAmount: 0,
+            paidAmount: 9000,
+            paymentMode: "Online",
+            paymentDate: "2026-04-08",
+            status: "Success",
+            createdAt: "2026-04-08T06:12:00.000Z",
+          },
+        ],
+      },
+    },
+    {
+      method: "GET",
+      path: "my/student/library",
+      summary: "My issued library books",
+      roles: ["student"],
+      response: {
+        studentId: 15,
+        summary: { total: 3, currentlyIssued: 1 },
+        books: [
+          {
+            id: 41,
+            book: "Concepts of Physics",
+            bookNumber: "BK-101",
+            author: "HC Verma",
+            memberId: "15",
+            issueDate: "2026-08-05",
+            returnDate: null,
+            status: "Issued",
+          },
+        ],
+      },
+    },
+    {
+      method: "GET",
+      path: "my/exams",
+      summary: "All exams with publish flags (exam list for results screens)",
+      roles: ["student", "parent", "teacher", "staff", "admin"],
+      response: {
+        exams: [
+          { id: 4, name: "Half Yearly", session: "2025-26", group: "Secondary", publishExam: true, publishResult: true },
+        ],
+      },
+    },
+    {
+      method: "POST",
+      path: "my/leave",
+      summary: "Apply for leave (student applies for self)",
+      roles: ["student", "parent", "teacher", "staff"],
+      desc: "Parents must pass studentId to apply on behalf of a child; students and staff apply for themselves.",
+      body: {
+        leaveTypeId: 1,
+        fromDate: "2026-09-01",
+        toDate: "2026-09-02",
+        reason: "Fever and cold",
+      },
+      response: {
+        success: true,
+        leave: { id: 9, fromDate: "2026-09-01", toDate: "2026-09-02", days: 2, status: "Pending", appliedOn: "2026-08-22" },
+      },
+    },
+    {
+      method: "GET",
+      path: "my/leave",
+      summary: "My applied leaves with status",
+      roles: ["student", "parent", "teacher", "staff", "admin"],
+      response: {
+        leaves: [
+          { id: 9, userId: 7, name: "Aarav Sharma", role: "student", leaveType: "Sick Leave", fromDate: "2026-09-01", toDate: "2026-09-02", days: 2, reason: "Fever and cold", status: "Pending", appliedAt: "2026-08-22T06:00:00.000Z" },
+        ],
+      },
+    },
+  ],
+}
+
+// ----------------------------------------------------------------
+// PARENT portal APIs
+// ----------------------------------------------------------------
+
+export const parentSection: RoleSection = {
+  id: "parent",
+  label: "Parent",
+  tagline: "Every endpoint is scoped to children linked to the parent login.",
+  login: loginSamples.find((l) => l.role === "Parent")!,
+  endpoints: [
+    ...commonPortalEndpoints,
+    {
+      method: "GET",
+      path: "my/parent/kids",
+      summary: "List my children",
+      roles: ["parent"],
+      response: {
+        kids: [
+          {
+            id: 15,
+            admissionNo: "ADM2026-042",
+            rollNo: "12",
+            name: "Aarav Sharma",
+            class: "Class 10",
+            section: "A",
+            gender: "Male",
+            dob: "2011-06-14",
+            status: "Active",
+          },
+        ],
+      },
+    },
+    {
+      method: "GET",
+      path: "my/parent/kids/attendance",
+      summary: "Monthly attendance of one child",
+      roles: ["parent"],
+      params: [
+        { name: "studentId", required: true, example: "15", desc: "Kid id from /my/parent/kids" },
+        { name: "month", required: false, example: "2026-08", desc: "YYYY-MM; defaults to current month" },
+      ],
+      response: {
+        studentId: 15,
+        student: { id: 15, name: "Aarav Sharma", class: "Class 10", section: "A" },
+        month: "2026-08",
+        records: [
+          { id: 900, date: "2026-08-20", inTime: "07:55", outTime: "14:10", attendanceType: "Present", recordedAt: "2026-08-20T03:00:00.000Z" },
+        ],
+      },
+    },
+    {
+      method: "GET",
+      path: "my/parent/kids/fees",
+      summary: "Fee dues + payment history of one child",
+      roles: ["parent"],
+      params: [{ name: "studentId", required: true, example: "15" }],
+      response: {
+        studentId: 15,
+        summary: { totalDue: 4500, totalPaid: 9000, pendingCount: 2 },
+        masters: [{ id: 8, feesType: "Tuition Fee", feesGroupId: 1, amount: 12000, dueDate: "2026-04-10", status: "Active" }],
+        payments: [{ id: 55, feesTypeId: 2, paidAmount: 9000, paymentMode: "Online", paymentDate: "2026-04-08", status: "Success" }],
+      },
+    },
+    {
+      method: "POST",
+      path: "my/parent/kids/fees/pay",
+      summary: "Pay a fee for one of my children online",
+      roles: ["parent"],
+      body: {
+        studentId: 15,
+        feesTypeId: 3,
+        amount: 5000,
+        paymentMode: "Online",
+      },
+      response: {
+        success: true,
+        payment: {
+          id: 56,
+          student_id: 15,
+          fees_type_id: 3,
+          amount: 5000,
+          paid_amount: 5000,
+          payment_mode: "Online",
+          payment_date: "2026-08-22",
+          status: "Success",
+        },
+      },
+    },
+    {
+      method: "GET",
+      path: "my/parent/kids/homework",
+      summary: "Homework of one child",
+      roles: ["parent"],
+      params: [{ name: "studentId", required: true, example: "15" }],
+      response: {
+        studentId: 15,
+        homework: [
+          { id: 21, subjectId: 3, subject: "Mathematics", homeworkDate: "2026-08-18", submissionDate: "2026-08-22", description: "Exercise 7.2", document: null, createdAt: "2026-08-18T05:30:00.000Z" },
+        ],
+      },
+    },
+    {
+      method: "GET",
+      path: "my/parent/kids/details",
+      summary: "Full profile of one child — personal, academic, parents, bank, attendance",
+      roles: ["parent"],
+      params: [{ name: "studentId", required: true, example: "15" }],
+      response: {
+        id: 15,
+        student: { admissionNo: "ADM2026-042", rollNo: "12", name: "Aarav Sharma", gender: "Male", dob: "2011-06-14", bloodGroup: "O+", mobile: "9876500011", category: "General", house: "Blue", admissionDate: "2024-04-01", rte: false, status: "Active", studentPhoto: "/uploads/student/15.jpg" },
+        academic: { classId: 5, sectionId: 2, className: "Class 10", sectionName: "A", session: "2025-26" },
+        parent: { fatherName: "Rakesh Sharma", fatherPhone: "9876500022", motherName: "Sunita Sharma", guardianIs: "father" },
+        attendance: { total: 148, summary: { Present: 140, Absent: 6, Late: 2 } },
+      },
+    },
+    {
+      method: "GET",
+      path: "my/parent/kids/timetable",
+      summary: "Weekly timetable of one child",
+      roles: ["parent"],
+      params: [{ name: "studentId", required: true, example: "15" }],
+      response: {
+        studentId: 15,
+        timetable: [
+          { id: 101, subject: "Mathematics", day: "Monday", period: 1, startTime: "08:00", endTime: "08:45", teacher: "Mrs. Anjali Deshmukh" },
+        ],
+      },
+    },
+    {
+      method: "GET",
+      path: "my/parent/kids/library",
+      summary: "Library books issued to one child",
+      roles: ["parent"],
+      params: [{ name: "studentId", required: true, example: "15" }],
+      response: {
+        studentId: 15,
+        summary: { total: 2, currentlyIssued: 1 },
+        books: [
+          { id: 41, book: "Concepts of Physics", bookNumber: "BK-101", author: "HC Verma", issueDate: "2026-08-05", returnDate: null, status: "Issued" },
+        ],
+      },
+    },
+    {
+      method: "GET",
+      path: "my/parent/kids/exams",
+      summary: "Exam results of one child",
+      roles: ["parent"],
+      params: [{ name: "studentId", required: true, example: "15" }],
+      response: {
+        studentId: 15,
+        student: { id: 15, name: "Aarav Sharma", class: "Class 10", section: "A" },
+        results: [
+          { id: 402, examId: 4, examName: "Half Yearly", published: true, subjectId: 3, subject: "Mathematics", theoryMarks: 78, practicalMarks: 18, absent: false, notes: null },
+        ],
+      },
+    },
+    {
+      method: "GET",
+      path: "my/exams",
+      summary: "All exams with publish flags",
+      roles: ["student", "parent", "teacher", "staff", "admin"],
+      response: {
+        exams: [
+          { id: 4, name: "Half Yearly", session: "2025-26", group: "Secondary", publishExam: true, publishResult: true },
+        ],
+      },
+    },
+    {
+      method: "POST",
+      path: "my/leave",
+      summary: "Apply leave on behalf of a child (pass studentId)",
+      roles: ["parent"],
+      body: {
+        studentId: 15,
+        leaveTypeId: 1,
+        fromDate: "2026-09-01",
+        toDate: "2026-09-02",
+        reason: "Family function out of town",
+      },
+      response: {
+        success: true,
+        leave: { id: 10, fromDate: "2026-09-01", toDate: "2026-09-02", days: 2, status: "Pending" },
+      },
+    },
+    {
+      method: "GET",
+      path: "my/leave",
+      summary: "Leaves I applied (mine + my children)",
+      roles: ["parent"],
+      response: {
+        leaves: [
+          { id: 10, userId: 7, name: "Aarav Sharma", role: "student", leaveType: "Casual Leave", fromDate: "2026-09-01", toDate: "2026-09-02", days: 2, reason: "Family function", status: "Pending", appliedAt: "2026-08-22T06:30:00.000Z" },
+        ],
+      },
+    },
+  ],
+}
+
+// ----------------------------------------------------------------
+// TEACHER / STAFF portal APIs
+// ----------------------------------------------------------------
+
+export const teacherSection: RoleSection = {
+  id: "teacher",
+  label: "Teacher / Staff",
+  tagline: "Class-management endpoints for teacher & staff logins (admins may call them too).",
+  login: loginSamples.find((l) => l.role === "Teacher")!,
+  endpoints: [
+    ...commonPortalEndpoints,
+    {
+      method: "GET",
+      path: "my/teacher",
+      summary: "My staff profile",
+      roles: ["teacher", "staff", "admin"],
+      response: {
+        id: 4,
+        staffId: "EMP-004",
+        name: "Mrs. Anjali Deshmukh",
+        email: "anjali@yourschool.com",
+        phone: "9876555544",
+        department: "Science",
+        designation: "Senior Teacher",
+        status: "Active",
+      },
+    },
+    {
+      method: "GET",
+      path: "my/teacher/classes",
+      summary: "Classes/sections assigned to me + subjects I teach",
+      roles: ["teacher", "staff", "admin"],
+      response: {
+        teacherId: 4,
+        name: "Mrs. Anjali Deshmukh",
+        classes: [
+          { id: 1, classId: 5, className: "Class 10", sectionId: 2, sectionName: "A", teacher: "Mrs. Anjali Deshmukh" },
+        ],
+        subjects: ["Physics", "Chemistry"],
+      },
+    },
+    {
+      method: "GET",
+      path: "my/teacher/students",
+      summary: "Students of an assigned class/section",
+      roles: ["teacher", "staff", "admin"],
+      params: [
+        { name: "classId", required: true, example: "5" },
+        { name: "sectionId", required: true, example: "2" },
+      ],
+      response: {
+        students: [
+          { id: 15, admissionNo: "ADM2026-042", rollNo: "12", name: "Aarav Sharma", gender: "Male", dob: "2011-06-14", status: "Active" },
+        ],
+      },
+    },
+    {
+      method: "GET",
+      path: "my/teacher/attendance",
+      summary: "Load attendance sheet for a class on a date",
+      roles: ["teacher", "staff", "admin"],
+      params: [
+        { name: "classId", required: true, example: "5" },
+        { name: "sectionId", required: true, example: "2" },
+        { name: "date", required: false, example: "2026-08-22", desc: "Defaults to today" },
+      ],
+      response: {
+        classId: 5,
+        sectionId: 2,
+        date: "2026-08-22",
+        records: [
+          { id: 15, rollNo: "12", name: "Aarav Sharma", attendanceId: null, attendanceTypeId: null, inTime: null, outTime: null, attendanceType: null },
+        ],
+      },
+    },
+    {
+      method: "POST",
+      path: "my/teacher/attendance",
+      summary: "Save attendance for multiple students at once",
+      roles: ["teacher", "staff", "admin"],
+      body: {
+        classId: 5,
+        sectionId: 2,
+        date: "2026-08-22",
+        records: [
+          { studentId: 15, attendanceTypeId: 1, inTime: "07:55", outTime: "14:10" },
+          { studentId: 16, attendanceTypeId: 2 },
+        ],
+      },
+      response: { success: true, date: "2026-08-22", saved: 2 },
+    },
+    {
+      method: "GET",
+      path: "my/teacher/homework",
+      summary: "Homework of an assigned class/section",
+      roles: ["teacher", "staff", "admin"],
+      params: [
+        { name: "classId", required: true, example: "5" },
+        { name: "sectionId", required: true, example: "2" },
+      ],
+      response: {
+        homework: [
+          { id: 21, subjectId: 3, subject: "Physics", homeworkDate: "2026-08-18", submissionDate: "2026-08-22", description: "Chapter 4 numericals", document: null, createdAt: "2026-08-18T05:30:00.000Z" },
+        ],
+      },
+    },
+    {
+      method: "GET",
+      path: "my/exams",
+      summary: "All exams with publish flags (for marks-entry screens)",
+      roles: ["student", "parent", "teacher", "staff", "admin"],
+      response: {
+        exams: [
+          { id: 4, name: "Half Yearly", session: "2025-26", group: "Secondary", publishExam: true, publishResult: true },
+        ],
+      },
+    },
+    {
+      method: "POST",
+      path: "my/leave",
+      summary: "Apply for leave (staff applies for self)",
+      roles: ["student", "parent", "teacher", "staff"],
+      body: {
+        leaveTypeId: 2,
+        fromDate: "2026-09-10",
+        toDate: "2026-09-12",
+        reason: "Personal work",
+      },
+      response: {
+        success: true,
+        leave: { id: 11, fromDate: "2026-09-10", toDate: "2026-09-12", days: 3, status: "Pending" },
+      },
+    },
+    {
+      method: "GET",
+      path: "my/leave",
+      summary: "My applied leaves with status",
+      roles: ["student", "parent", "teacher", "staff", "admin"],
+      response: {
+        leaves: [
+          { id: 11, userId: 9, name: "Mrs. Anjali Deshmukh", role: "teacher", leaveType: "Casual Leave", fromDate: "2026-09-10", toDate: "2026-09-12", days: 3, reason: "Personal work", status: "Pending", appliedAt: "2026-08-22T06:45:00.000Z" },
+        ],
+      },
+    },
+    {
+      method: "GET",
+      path: "my/teacher/timetable",
+      summary: "My weekly teaching timetable",
+      roles: ["teacher", "staff", "admin"],
+      response: {
+        teacherId: 4,
+        timetable: [
+          { id: 101, classId: 5, className: "Class 10", sectionId: 2, sectionName: "A", subject: "Physics", day: "Monday", period: 2, startTime: "08:45", endTime: "09:30" },
+        ],
+      },
+    },
+    {
+      method: "POST",
+      path: "my/teacher/homework/create",
+      summary: "Create homework for an assigned class/section",
+      roles: ["teacher", "staff", "admin"],
+      desc: "Teachers can only create homework for classes assigned via class_teachers (admins bypass the check).",
+      body: {
+        classId: 5,
+        sectionId: 2,
+        subjectId: 3,
+        homeworkDate: "2026-08-22",
+        submissionDate: "2026-08-26",
+        description: "Chapter 5 exercise 5.3, Q1-Q8",
+        document: null,
+      },
+      response: {
+        success: true,
+        homework: { id: 34, classId: 5, sectionId: 2, subjectId: 3, homeworkDate: "2026-08-22", submissionDate: "2026-08-26", description: "Chapter 5 exercise 5.3, Q1-Q8" },
+      },
+    },
+    {
+      method: "GET",
+      path: "my/teacher/marks",
+      summary: "Load marks sheet for an exam subject of an assigned class",
+      roles: ["teacher", "staff", "admin"],
+      desc: "subjectId is the exam_subjects.id (from the school admin Examinations → Exam Subjects API). Returns every student with any saved marks.",
+      params: [
+        { name: "examId", required: true, example: "4" },
+        { name: "subjectId", required: true, example: "12" },
+        { name: "classId", required: true, example: "5" },
+        { name: "sectionId", required: true, example: "2" },
+      ],
+      response: {
+        examId: 4,
+        subjectId: 12,
+        classId: 5,
+        sectionId: 2,
+        records: [
+          { studentId: 15, rollNo: "12", name: "Aarav Sharma", markId: 402, theoryMarks: 78, practicalMarks: 18, absent: false, notes: null },
+          { studentId: 16, rollNo: "13", name: "Isha Verma", markId: null, theoryMarks: null, practicalMarks: null, absent: false, notes: null },
+        ],
+      },
+    },
+    {
+      method: "POST",
+      path: "my/teacher/marks",
+      summary: "Save/update exam marks for multiple students at once",
+      roles: ["teacher", "staff", "admin"],
+      desc: "Upserts per (exam, exam-subject, student). Requires class assignment.",
+      body: {
+        examId: 4,
+        subjectId: 12,
+        classId: 5,
+        sectionId: 2,
+        records: [
+          { studentId: 15, theoryMarks: 78, practicalMarks: 18, absent: false },
+          { studentId: 16, theoryMarks: 65, practicalMarks: 20, absent: false, notes: "Improved" },
+          { studentId: 17, absent: true },
+        ],
+      },
+      response: { success: true, saved: 3 },
+    },
+  ],
+}
+
+// ----------------------------------------------------------------
+// SCHOOL ADMIN — full CRUD over every module (generic handler)
+// ----------------------------------------------------------------
+
+export type CrudModule = {
+  label: string
+  endpoints: { path: string; table: string; desc: string; params?: string[] }[]
+}
+
+export const crudDesc: Record<string, string> = {
+  GET: "List all (or get one with ?id=N; ?search= keyword search)",
+  POST: "Create new record",
+  PUT: "Update existing record (id required in JSON body)",
+  DELETE: "Delete by ?id=N query param",
+}
+
+export const schoolAdminModules: CrudModule[] = [
+  {
+    label: "Academics",
+    endpoints: [
+      { path: "academics/class", table: "classes", desc: "Manage classes (CRUD)" },
+      { path: "academics/class-teacher", table: "class_teachers", desc: "Assign class teachers" },
+      { path: "academics/promote-student", table: "students", desc: "Promote students to next class", params: ["from_class_id", "from_section_id", "session_id"] },
+      { path: "academics/section", table: "sections", desc: "Manage sections" },
+      { path: "academics/subject", table: "subjects", desc: "Manage subjects" },
+      { path: "academics/subject-group", table: "subject_groups", desc: "Manage subject groups" },
+      { path: "academics/timetable", table: "timetables", desc: "Manage timetables" },
+    ],
+  },
+  {
+    label: "Alumni",
+    endpoints: [
+      { path: "alumni", table: "alumni", desc: "Manage alumni records" },
+      { path: "alumni/attendance", table: "alumni_attendance", desc: "Alumni attendance" },
+      { path: "alumni/event", table: "alumni_events", desc: "Alumni events" },
+      { path: "alumni/finance", table: "alumni_finance", desc: "Alumni finance/contributions" },
+    ],
+  },
+  {
+    label: "Annual Calendar",
+    endpoints: [
+      { path: "annual-calendar/event", table: "calendar_events", desc: "Calendar events" },
+      { path: "annual-calendar/holiday-type", table: "holiday_types", desc: "Holiday types" },
+    ],
+  },
+  {
+    label: "Attendance",
+    endpoints: [
+      { path: "attendance/leave", table: "leave_applications", desc: "Leave applications", params: ["from_date", "to_date", "status"] },
+      { path: "attendance/leave-type", table: "leave_types", desc: "Leave types" },
+      { path: "attendance/staff", table: "staff_attendance", desc: "Staff attendance", params: ["date", "staff_id"] },
+      { path: "attendance/student", table: "student_attendance", desc: "Student attendance", params: ["date", "class_id", "section_id"] },
+      { path: "attendance/type", table: "attendance_types", desc: "Attendance types" },
+    ],
+  },
+  {
+    label: "Behaviour",
+    endpoints: [
+      { path: "behaviour/assign", table: "behaviour_assignments", desc: "Behaviour assignments", params: ["student_id", "incident_id"] },
+      { path: "behaviour/incident", table: "behaviour_incidents", desc: "Behaviour incidents", params: ["student_id"] },
+    ],
+  },
+  {
+    label: "Branch",
+    endpoints: [{ path: "branch", table: "branches", desc: "Manage branches" }],
+  },
+  {
+    label: "CBSE",
+    endpoints: [
+      { path: "cbse/admit-card", table: "cbse_admit_cards", desc: "Admit cards", params: ["exam_id"] },
+      { path: "cbse/assessments", table: "cbse_assessments", desc: "Assessments", params: ["class_id", "section_id", "subject_id", "exam_id"] },
+      { path: "cbse/exam", table: "cbse_exams", desc: "CBSE exams", params: ["class_id", "section_id"] },
+      { path: "cbse/exam-attendance", table: "cbse_exam_attendance", desc: "Exam attendance", params: ["exam_id", "class_id", "section_id"] },
+      { path: "cbse/exam-grades", table: "cbse_exam_grades", desc: "Exam grades", params: ["exam_id", "class_id"] },
+      { path: "cbse/exam-marks", table: "cbse_exam_marks", desc: "Exam marks", params: ["exam_id", "class_id", "section_id", "subject_id"] },
+      { path: "cbse/exam-students", table: "cbse_exam_students", desc: "Exam students", params: ["exam_id", "class_id", "section_id"] },
+      { path: "cbse/exam-subjects", table: "cbse_exam_subjects", desc: "Exam subjects", params: ["exam_id", "class_id"] },
+      { path: "cbse/marksheet", table: "cbse_marksheets", desc: "Marksheets", params: ["exam_id", "class_id", "section_id", "student_id"] },
+      { path: "cbse/observation", table: "cbse_observations", desc: "Observations", params: ["class_id", "section_id", "subject_id"] },
+      { path: "cbse/obs-params", table: "cbse_observation_params", desc: "Observation params", params: ["observation_id"] },
+      { path: "cbse/reports", table: "cbse_reports", desc: "CBSE reports", params: ["exam_id", "class_id", "section_id"] },
+      { path: "cbse/schedule", table: "cbse_schedules", desc: "Exam schedules", params: ["exam_id", "class_id"] },
+      { path: "cbse/settings", table: "cbse_settings", desc: "CBSE settings", params: ["academic_year"] },
+      { path: "cbse/template", table: "cbse_templates", desc: "Templates", params: ["type"] },
+      { path: "cbse/terms", table: "cbse_terms", desc: "CBSE terms", params: ["academic_year"] },
+    ],
+  },
+  {
+    label: "Certificate",
+    endpoints: [
+      { path: "certificate/staff-id-card", table: "staff_id_cards", desc: "Staff ID cards" },
+      { path: "certificate/student", table: "student_certificates", desc: "Student certificates" },
+      { path: "certificate/student-id-card", table: "student_id_cards", desc: "Student ID cards" },
+      { path: "certificate/template", table: "certificate_templates", desc: "Certificate templates" },
+    ],
+  },
+  {
+    label: "Communicate",
+    endpoints: [
+      { path: "communicate/email", table: "email_messages", desc: "Email messages" },
+      { path: "communicate/email-template", table: "email_templates", desc: "Email templates" },
+      { path: "communicate/notice", table: "notices", desc: "Notices" },
+      { path: "communicate/scheduled", table: "scheduled_messages", desc: "Scheduled messages" },
+      { path: "communicate/sms", table: "sms_messages", desc: "SMS messages" },
+      { path: "communicate/sms-template", table: "sms_templates", desc: "SMS templates" },
+    ],
+  },
+  {
+    label: "Download Center",
+    endpoints: [
+      { path: "download-center/content", table: "download_center_contents", desc: "Download contents" },
+      { path: "download-center/content-type", table: "download_center_content_types", desc: "Content types" },
+      { path: "download-center/video", table: "download_center_videos", desc: "Videos" },
+    ],
+  },
+  {
+    label: "Examinations",
+    endpoints: [
+      { path: "examinations/exam", table: "exams", desc: "Exams", params: ["class_id", "section_id", "group_id"] },
+      { path: "examinations/group", table: "exam_groups", desc: "Exam groups" },
+      { path: "examinations/mark", table: "exam_marks", desc: "Exam marks", params: ["exam_id", "class_id", "section_id", "subject_id"] },
+      { path: "examinations/marks-division", table: "marks_divisions", desc: "Marks divisions" },
+      { path: "examinations/marks-grade", table: "marks_grades", desc: "Marks grades" },
+      { path: "examinations/subject", table: "exam_subjects", desc: "Exam subjects", params: ["exam_id", "class_id"] },
+    ],
+  },
+  {
+    label: "Expenses",
+    endpoints: [
+      { path: "expenses", table: "expenses", desc: "Expenses", params: ["head_id", "date_from", "date_to"] },
+      { path: "expenses/head", table: "expense_heads", desc: "Expense heads" },
+    ],
+  },
+  {
+    label: "Fees Collection",
+    endpoints: [
+      { path: "fees/fees-carry-forward", table: "fees_carry_forward", desc: "Carry forward fees", params: ["student_id", "academic_year"] },
+      { path: "fees/fees-discount", table: "fees_discounts", desc: "Fee discounts", params: ["student_id", "fees_type_id"] },
+      { path: "fees/fees-group", table: "fees_groups", desc: "Fee groups", params: ["class_id", "section_id"] },
+      { path: "fees/fees-master", table: "fees_master", desc: "Fee master", params: ["class_id", "section_id", "group_id"] },
+      { path: "fees/fees-payment", table: "fees_payments", desc: "Fee payments", params: ["student_id", "fees_type_id", "date_from", "date_to"] },
+      { path: "fees/fees-reminder", table: "fees_reminders", desc: "Fee reminders", params: ["student_id", "fees_type_id"] },
+      { path: "fees/fees-type", table: "fees_types", desc: "Fee types", params: ["group_id", "class_id"] },
+    ],
+  },
+  {
+    label: "Front CMS",
+    endpoints: [
+      { path: "front-cms/banner", table: "cms_banners", desc: "CMS banners" },
+      { path: "front-cms/event", table: "cms_events", desc: "CMS events" },
+      { path: "front-cms/gallery", table: "cms_galleries", desc: "CMS galleries" },
+      { path: "front-cms/media", table: "cms_media", desc: "CMS media" },
+      { path: "front-cms/menu", table: "cms_menus", desc: "CMS menus" },
+      { path: "front-cms/news", table: "cms_news", desc: "CMS news" },
+      { path: "front-cms/page", table: "cms_pages", desc: "CMS pages" },
+    ],
+  },
+  {
+    label: "Front Office",
+    endpoints: [
+      { path: "front-office/admission-enquiry", table: "admission_enquiries", desc: "Admission enquiries", params: ["class_id", "source_id", "date_from", "date_to", "status"] },
+      { path: "front-office/complain", table: "complaints", desc: "Complaints", params: ["complaint_type_id", "source_id", "date_from", "date_to", "status"] },
+      { path: "front-office/complaint-type", table: "complaint_types", desc: "Complaint types" },
+      { path: "front-office/enquiry-type", table: "enquiry_types", desc: "Enquiry types" },
+      { path: "front-office/phone-call-log", table: "phone_call_logs", desc: "Phone call logs", params: ["call_type", "date_from", "date_to"] },
+      { path: "front-office/postal-dispatch", table: "postal_dispatches", desc: "Postal dispatch", params: ["date_from", "date_to"] },
+      { path: "front-office/postal-receive", table: "postal_receives", desc: "Postal receive", params: ["date_from", "date_to"] },
+      { path: "front-office/purpose-type", table: "purpose_types", desc: "Purpose types" },
+      { path: "front-office/reference-type", table: "reference_types", desc: "Reference types" },
+      { path: "front-office/source-type", table: "source_types", desc: "Source types" },
+      { path: "front-office/visitor-book", table: "visitor_book", desc: "Visitor book", params: ["meeting_with", "date_from", "date_to"] },
+    ],
+  },
+  {
+    label: "Homework",
+    endpoints: [{ path: "homework", table: "homework", desc: "Homework", params: ["class_id", "section_id", "subject_id"] }],
+  },
+  {
+    label: "Hostel",
+    endpoints: [
+      { path: "hostel", table: "hostels", desc: "Hostels" },
+      { path: "hostel/room", table: "hostel_rooms", desc: "Hostel rooms" },
+      { path: "hostel/room-type", table: "hostel_room_types", desc: "Room types" },
+    ],
+  },
+  {
+    label: "Human Resource",
+    endpoints: [
+      { path: "human-resource/department", table: "departments", desc: "Departments" },
+      { path: "human-resource/designation", table: "designations", desc: "Designations" },
+      { path: "human-resource/disabled-staff", table: "disabled_staff", desc: "Disabled staff" },
+      { path: "human-resource/payroll", table: "payroll", desc: "Payroll", params: ["staff_id", "month", "year"] },
+      { path: "human-resource/staff", table: "staff", desc: "Staff management" },
+      { path: "human-resource/teachers-rating", table: "teachers_ratings", desc: "Teacher ratings" },
+    ],
+  },
+  {
+    label: "Income",
+    endpoints: [
+      { path: "income", table: "income", desc: "Income", params: ["head_id", "date_from", "date_to"] },
+      { path: "income/head", table: "income_heads", desc: "Income heads" },
+    ],
+  },
+  {
+    label: "Lesson Plan",
+    endpoints: [
+      { path: "lesson-plan/lesson", table: "lesson_plan_lessons", desc: "Lessons" },
+      { path: "lesson-plan/plan", table: "lesson_plans", desc: "Plans" },
+      { path: "lesson-plan/syllabus-status", table: "syllabus_statuses", desc: "Syllabus status" },
+      { path: "lesson-plan/topic", table: "lesson_plan_topics", desc: "Topics" },
+    ],
+  },
+  {
+    label: "Library",
+    endpoints: [
+      { path: "library/book", table: "library_books", desc: "Books", params: ["book_no", "isbn_no", "category_id"] },
+      { path: "library/issue", table: "library_issues", desc: "Book issues", params: ["member_id", "book_id", "issue_date_from", "issue_date_to", "status"] },
+      { path: "library/members", table: "library_members", desc: "Library members", params: ["member_type", "member_id"] },
+    ],
+  },
+  {
+    label: "Live Class",
+    endpoints: [{ path: "live-class", table: "live_classes", desc: "Live classes", params: ["class_id", "section_id", "subject_id", "date"] }],
+  },
+  {
+    label: "Live Meeting",
+    endpoints: [{ path: "live-meeting", table: "live_meetings", desc: "Live meetings", params: ["meeting_type", "date_from", "date_to"] }],
+  },
+  {
+    label: "Online Course",
+    endpoints: [
+      { path: "online-course", table: "online_courses", desc: "Online courses" },
+      { path: "online-course/category", table: "online_course_categories", desc: "Course categories" },
+      { path: "online-course/certificate-template", table: "online_course_certificate_templates", desc: "Certificate templates" },
+      { path: "online-course/course-category", table: "online_course_course_categories", desc: "Course-category mapping" },
+      { path: "online-course/enrollment", table: "online_course_enrollments", desc: "Enrollments" },
+      { path: "online-course/offline-payment", table: "online_course_offline_payments", desc: "Offline payments" },
+      { path: "online-course/payment", table: "online_course_payments", desc: "Payments" },
+      { path: "online-course/question", table: "online_course_questions", desc: "Questions" },
+      { path: "online-course/question-bank", table: "online_course_question_banks", desc: "Question banks" },
+      { path: "online-course/setting", table: "online_course_settings", desc: "Settings" },
+    ],
+  },
+  { label: "Online Exam", endpoints: [{ path: "online-exam", table: "online_exams", desc: "Online exams" }] },
+  { label: "QR Attendance", endpoints: [{ path: "qr-attendance", table: "qr_attendance", desc: "QR attendance" }] },
+  { label: "Question Bank", endpoints: [{ path: "question-bank", table: "question_bank", desc: "Question bank" }] },
+  { label: "Staff", endpoints: [{ path: "staff", table: "staff", desc: "Staff" }] },
+  {
+    label: "Student Information",
+    endpoints: [
+      { path: "student-information/bulk-delete", table: "students", desc: "Bulk delete students (POST only)" },
+      { path: "student-information/disable-reason", table: "disable_reasons", desc: "Disable reasons" },
+      { path: "student-information/online-admission", table: "online_admissions", desc: "Online admissions" },
+      { path: "student-information/student", table: "students", desc: "Students", params: ["class_id", "section_id", "house_id", "category_id", "status"] },
+      { path: "student-information/student-category", table: "student_categories", desc: "Student categories" },
+      { path: "student-information/student-house", table: "student_houses", desc: "Student houses" },
+    ],
+  },
+  { label: "Students", endpoints: [{ path: "students", table: "students", desc: "Students (simple)" }] },
+  {
+    label: "System Setting",
+    endpoints: [
+      { path: "system-setting", table: "system_settings", desc: "System settings" },
+      { path: "system-setting/addon", table: "addons", desc: "Addons" },
+      { path: "system-setting/backup", table: "backups", desc: "Backups" },
+      { path: "system-setting/currency", table: "currencies", desc: "Currencies" },
+      { path: "system-setting/custom-field", table: "custom_fields", desc: "Custom fields" },
+      { path: "system-setting/custom-field-value", table: "custom_field_values", desc: "Custom field values" },
+      { path: "system-setting/file-type", table: "file_types", desc: "File types" },
+      { path: "system-setting/language", table: "languages", desc: "Languages" },
+      { path: "system-setting/module", table: "modules", desc: "Modules" },
+      { path: "system-setting/payment-gateway", table: "payment_gateways", desc: "Payment gateways" },
+      { path: "system-setting/session", table: "sessions", desc: "Sessions" },
+      { path: "system-setting/sidebar-menu", table: "sidebar_menus", desc: "Sidebar menu visibility" },
+      { path: "system-setting/user", table: "users", desc: "Users (create staff/student/parent logins)" },
+    ],
+  },
+  {
+    label: "Transport",
+    endpoints: [
+      { path: "transport/assign-vehicle", table: "route_vehicles", desc: "Assign vehicles to routes" },
+      { path: "transport/pickup-point", table: "pickup_points", desc: "Pickup points" },
+      { path: "transport/route", table: "routes", desc: "Routes" },
+      { path: "transport/route-pickup-point", table: "route_pickup_points", desc: "Route-pickup point mapping" },
+      { path: "transport/student-fees", table: "student_transport_fees", desc: "Student transport fees" },
+      { path: "transport/vehicle", table: "vehicles", desc: "Vehicles" },
+    ],
+  },
+]
+
+export const schoolAdminCrudSamples: Record<string, { body?: unknown; response?: unknown }> = {
+  "student-information/student": {
+    body: {
+      admission_no: "ADM2026-101",
+      roll_no: "25",
+      first_name: "Priya",
+      last_name: "Patil",
+      gender: "Female",
+      dob: "2012-02-11",
+      category: "General",
+      religion: "Hindu",
+      caste: "Open",
+      mobile: "9812345678",
+      email: "priya.p@example.com",
+      class_id: 5,
+      section_id: 2,
+      admission_date: "2026-04-10",
+      father_name: "Vikas Patil",
+      father_phone: "9812345679",
+      mother_name: "Meera Patil",
+      guardian_is: "father",
+      address: "12 Shivaji Nagar, Pune",
+      blood_group: "B+",
+      house: "Green",
+      session: "2025-26",
+      status: "Active",
+    },
+    response: {
+      id: 61,
+      admission_no: "ADM2026-101",
+      roll_no: "25",
+      first_name: "Priya",
+      last_name: "Patil",
+      class_id: 5,
+      section_id: 2,
+      status: "Active",
+      created_at: "2026-08-22T07:15:00.000Z",
+    },
+  },
+  "system-setting/user": {
+    body: {
+      username: "anjali.deshmukh",
+      name: "Mrs. Anjali Deshmukh",
+      email: "anjali@yourschool.com",
+      password: "Teacher@123",
+      role: "teacher",
+      status: "Active",
+    },
+    response: {
+      id: 24,
+      username: "anjali.deshmukh",
+      name: "Mrs. Anjali Deshmukh",
+      email: "anjali@yourschool.com",
+      role: "teacher",
+      status: "Active",
+    },
+  },
+  "academics/class": {
+    body: { name: "Class 11", sections: "A,B,C" },
+    response: { id: 8, name: "Class 11" },
+  },
+  "homework": {
+    body: {
+      class_id: 5,
+      section_id: 2,
+      subject_id: 3,
+      homework_date: "2026-08-22",
+      submission_date: "2026-08-26",
+      description: "Chapter 5 exercise 5.3, Q1-Q8",
+      document: null,
+    },
+    response: { id: 33, class_id: 5, section_id: 2, subject_id: 3, description: "Chapter 5 exercise 5.3, Q1-Q8" },
+  },
+  "fees/fees-payment": {
+    body: {
+      student_id: 15,
+      fees_type_id: 3,
+      amount: 5000,
+      paid_amount: 5000,
+      discount_amount: 0,
+      fine_amount: 0,
+      payment_mode: "Cash",
+      payment_date: "2026-08-22",
+      note: "Term 2 fee",
+      status: "Success",
+    },
+    response: { id: 58, student_id: 15, fees_type_id: 3, amount: 5000, payment_mode: "Cash", status: "Success" },
+  },
+  "attendance/student": {
+    body: {
+      student_id: 15,
+      class_id: 5,
+      section_id: 2,
+      date: "2026-08-22",
+      attendance_type_id: 1,
+      in_time: "07:55",
+      out_time: "14:10",
+    },
+    response: { id: 901, student_id: 15, date: "2026-08-22", attendance_type_id: 1 },
+  },
+  "front-office/admission-enquiry": {
+    body: {
+      name: "Rohan Mehta",
+      phone: "9922334455",
+      email: "rohan.m@example.com",
+      class_id: 3,
+      source_id: 2,
+      reference_id: 1,
+      enquiry_type_id: 1,
+      follow_up_date: "2026-08-30",
+      assigned: "Mrs. Anjali",
+      note: "Interested in science stream",
+      status: "Pending",
+      date: "2026-08-22",
+    },
+    response: { id: 44, name: "Rohan Mehta", phone: "9922334455", class_id: 3, status: "Pending" },
+  },
+}
+
+// ----------------------------------------------------------------
+// SUPER ADMIN — SaaS console APIs (only rendered in /saas panel)
+// ----------------------------------------------------------------
+
+export const superAdminLogin: LoginSample = {
+  role: "Super Admin",
+  email: "superadmin@smart-school.in",
+  password: "Super@123",
+  schoolCode: null,
+  redirect: "/saas",
+  note: "Omit schoolCode entirely — super admins are platform operators, not tied to any school.",
+}
+
+export const superAdminEndpoints: EndpointDoc[] = [
+  {
+    method: "GET",
+    path: "saas/stats",
+    summary: "Platform-wide dashboard counters",
+    roles: ["super_admin"],
+    response: {
+      schools: 14,
+      users: 4821,
+      students: 38900,
+      staff: 2140,
+      activeSchools: 13,
+      recentSchools: [
+        { id: 14, name: "Sunrise Public School", code: "SUNRISEPUBLIC", plan: "Free", status: "Active", created_at: "2026-08-21T09:00:00.000Z" },
+      ],
+    },
+  },
+  {
+    method: "GET",
+    path: "saas/schools",
+    summary: "List all tenant schools (with plan details)",
+    roles: ["super_admin"],
+    params: [{ name: "id", required: false, example: "12", desc: "Get a single school" }],
+    response: [
+      {
+        id: 12,
+        code: "SUNRISEPUBLIC",
+        name: "Sunrise Public School",
+        email: "principal@sunrise-school.in",
+        phone: "9876543210",
+        plan: "Standard",
+        plan_id: 3,
+        max_students: 1000,
+        currency: "INR",
+        timezone: "Asia/Kolkata",
+        status: "Active",
+        planDetails: { id: 3, code: "STD", name: "Standard", price: 999, billing_period: "monthly", max_students: 1000, max_staff: 60 },
+        adminUser: { email: "principal@sunrise-school.in", password: "Admin@123" },
+      },
+    ],
+  },
+  {
+    method: "POST",
+    path: "saas/schools",
+    summary: "Onboard a new school (+ its admin login) — super admin only",
+    roles: ["super_admin"],
+    desc: "Auto-generates a unique school code when omitted and creates the first admin user for the school (default password Admin@123 when not provided).",
+    body: {
+      name: "Sunrise Public School",
+      email: "principal@sunrise-school.in",
+      phone: "9876543210",
+      address: "MG Road, Pune",
+      currency: "INR",
+      timezone: "Asia/Kolkata",
+      planId: 3,
+      maxStudents: 1000,
+      adminEmail: "principal@sunrise-school.in",
+      adminPassword: "StrongPass@1",
+    },
+    response: {
+      id: 15,
+      code: "SUNRISEPUB",
+      name: "Sunrise Public School",
+      plan: "Standard",
+      adminUser: { email: "principal@sunrise-school.in", password: "StrongPass@1", id: 310 },
+    },
+  },
+  {
+    method: "PUT",
+    path: "saas/schools",
+    summary: "Update a school (plan, limits, status…)",
+    roles: ["super_admin"],
+    body: { id: 12, plan_id: 4, max_students: 2500, status: "Active" },
+    response: { id: 12, plan: "Premium", plan_id: 4, max_students: 2500, status: "Active" },
+  },
+  {
+    method: "DELETE",
+    path: "saas/schools?id=12",
+    summary: "Delete a school (DEFAULT school is protected)",
+    roles: ["super_admin"],
+    response: { success: true },
+  },
+  {
+    method: "GET",
+    path: "saas/plans",
+    summary: "Subscription plans catalogue",
+    roles: ["super_admin"],
+    response: [
+      { id: 1, code: "FREE", name: "Free", price: 0, billing_period: "monthly", max_students: 200, max_staff: 15, status: "Active" },
+      { id: 3, code: "STD", name: "Standard", price: 999, billing_period: "monthly", max_students: 1000, max_staff: 60, status: "Active" },
+    ],
+  },
+  {
+    method: "POST",
+    path: "saas/plans",
+    summary: "Create a subscription plan",
+    roles: ["super_admin"],
+    body: { name: "Enterprise", code: "ENT", price: 4999, billing_period: "yearly", max_students: 10000, max_staff: 800 },
+    response: { id: 5, name: "Enterprise", price: 4999 },
+  },
+  {
+    method: "GET",
+    path: "saas/invoices",
+    summary: "Subscription invoices across schools",
+    roles: ["super_admin"],
+    response: [
+      { id: 88, school_id: 12, number: "INV-2026-0088", amount: 999, status: "paid", due_date: "2026-09-01" },
+    ],
+  },
+  {
+    method: "POST",
+    path: "saas/invoices/pay",
+    summary: "Record/mark a manual invoice payment",
+    roles: ["super_admin"],
+    body: { invoiceId: 88, mode: "UPI", reference: "UTR123456789" },
+    response: { success: true, invoice: { id: 88, status: "paid" } },
+  },
+  {
+    method: "GET",
+    path: "saas/users",
+    summary: "All platform users (optionally filter ?schoolId=N)",
+    roles: ["super_admin"],
+    params: [{ name: "schoolId", required: false, example: "12" }],
+    response: [
+      { id: 2, username: "admin", name: "Admin - Smart School", email: "admin@smart-school.in", role: "admin", status: "Active", school_name: "Smart School Demo", school_code: "DEFAULT" },
+    ],
+  },
+  {
+    method: "GET",
+    path: "saas/payment-settings",
+    summary: "Global payment gateway settings for checkout",
+    roles: ["super_admin"],
+    response: {
+      razorpayEnabled: true,
+      razorpayKeyId: "rzp_live_xxx",
+      upiEnabled: false,
+      currency: "INR",
+    },
+  },
+  {
+    method: "POST",
+    path: "saas/payment-settings",
+    summary: "Update global gateway settings",
+    roles: ["super_admin"],
+    body: { razorpayEnabled: true, razorpayKeyId: "rzp_live_new", razorpayKeySecret: "••••••" },
+    response: { success: true },
+  },
+]
