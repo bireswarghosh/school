@@ -30,6 +30,7 @@ export const TENANT_TABLES = new Set<string>([
   "si_categories", "si_brands", "si_units", "si_stores", "si_vendors", "si_products", "si_books",
   "si_variations", "si_purchases", "si_stock", "si_sales", "si_ledger", "si_coupons",
   "school_settings",
+  "uploaded_files",
 ])
 
 export function isTenantTable(table: string): boolean {

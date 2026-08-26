@@ -63,7 +63,9 @@ const CLAUSE_END = ["GROUP BY", "HAVING", "ORDER BY", "LIMIT", "OFFSET", "FETCH"
  * Returns [sql, params] with the school id appended to params, or null
  * when the statement is too complex / already scoped.
  */
-function scopeStatement(sql: string, params: (string | number | boolean | null)[], schoolId: number): [string, (string | number | boolean | null)[]] | null {
+export type DbParam = string | number | boolean | null | Uint8Array
+
+function scopeStatement(sql: string, params: DbParam[], schoolId: number): [string, DbParam[]] | null {
   if (/\bschool_id\b/i.test(sql)) return null
   if ((sql.match(/;/g) || []).length > 0) return null
   if (/\(SELECT\b|\(WITH\b/i.test(sql)) return null
@@ -120,10 +122,10 @@ function scopeStatement(sql: string, params: (string | number | boolean | null)[
   return [`${s} WHERE ${ref} = $${idx}`, [...params, schoolId]]
 }
 
-export async function query(text: string, params?: (string | number | boolean | null)[]) {
+export async function query(text: string, params?: DbParam[]) {
   const schoolId = await getRequestSchoolId()
   let finalSql = text
-  let finalParams: (string | number | boolean | null)[] | undefined = params
+  let finalParams: DbParam[] | undefined = params
   if (schoolId) {
     const scoped = scopeStatement(text, params || [], schoolId)
     if (scoped) {
@@ -140,10 +142,10 @@ export async function query(text: string, params?: (string | number | boolean | 
   }
 }
 
-export async function getAll<T = any>(table: string, orderBy = "id ASC", where?: string, whereParams?: (string | number | boolean | null)[], schoolId?: number | null): Promise<T[]> {
+export async function getAll<T = any>(table: string, orderBy = "id ASC", where?: string, whereParams?: DbParam[], schoolId?: number | null): Promise<T[]> {
   const tenant = isTenantTable(table)
   let sql: string
-  let params: (string | number | boolean | null)[] = []
+  let params: DbParam[] = []
   if (where) {
     sql = `SELECT * FROM ${table} WHERE ${where}`
     params = [...(whereParams || [])]
