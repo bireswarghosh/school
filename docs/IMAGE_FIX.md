@@ -58,4 +58,7 @@ of our stack, and needs no new service/token/dashboard clicks.
 - [x] `npx tsc --noEmit` → 0 errors
 - [x] `npm run build` → compiled successfully
 - [x] Migration applied on Neon (`uploaded_files` created)
-- [ ] Live upload+download round-trip on production (after deploy)
+- [x] Live production round-trip (deploy `1243687`): browser login → canvas PNG →
+  `POST /api/upload` → 200 `/api/files/1787748500636-wruikh.png` →
+  `GET` → 200, `image/png`, 1936 bytes (exact match), correct PNG magic bytes,
+  `Cache-Control: immutable`, decoded by `<img>` ✅ · DB row confirmed with `school_id=1`
