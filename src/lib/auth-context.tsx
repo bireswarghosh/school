@@ -19,6 +19,10 @@ export type School = {
   phone?: string
   status?: string
   plan?: string
+  tagline?: string
+  address?: string
+  currency?: string
+  logo?: string
 }
 
 type AuthContextValue = {

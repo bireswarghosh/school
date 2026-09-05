@@ -9,8 +9,9 @@ const PUBLIC_API_PREFIXES = [
   "/api/exam-public",
   "/api/exam-attempts",
   "/api/students/lookup",
-  "/api/online-exam/public",
+  "/api/online-exam/public-link",
   "/api/online-admission/public",
+  "/api/students-inventory/sale/invoice",
 ]
 
 const PUBLIC_PAGE_PREFIXES = [
@@ -37,7 +38,9 @@ function isPublicPage(path: string) {
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   const rawToken = request.cookies.get(SESSION_COOKIE)?.value
-  const token = rawToken ? decodeURIComponent(rawToken) : undefined
+  const authHeader = request.headers.get("authorization") || ""
+  const bearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : undefined
+  const token = (rawToken ? decodeURIComponent(rawToken) : undefined) || bearer
   const session = token ? await verifySession(token) : null
 
   // API routes: require session unless public

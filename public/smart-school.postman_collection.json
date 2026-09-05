@@ -37,7 +37,7 @@
                 "login"
               ]
             },
-            "description": "Login as School Admin. The response sets the httpOnly smart_school_session cookie which authenticates every other request. Redirects to /admin.",
+            "description": "Login as School Admin. The response sets the httpOnly smart_school_session cookie (web) and also returns the session as the `token` field in the JSON body — send `Authorization: Bearer <token>` from a mobile/Flutter app. Redirects to /admin.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"admin@smart-school.in\",\n  \"password\": \"Admin@123\",\n  \"schoolCode\": \"DEFAULT\"\n}",
@@ -70,7 +70,7 @@
                 "login"
               ]
             },
-            "description": "Login as Teacher. The response sets the httpOnly smart_school_session cookie which authenticates every other request. Redirects to /portal.",
+            "description": "Login as Teacher. The response sets the httpOnly smart_school_session cookie (web) and also returns the session as the `token` field in the JSON body — send `Authorization: Bearer <token>` from a mobile/Flutter app. Redirects to /portal.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"teacher@yourschool.com\",\n  \"password\": \"<set-by-admin>\",\n  \"schoolCode\": \"DEFAULT\"\n}",
@@ -103,7 +103,7 @@
                 "login"
               ]
             },
-            "description": "Login as Student. The response sets the httpOnly smart_school_session cookie which authenticates every other request. Requires students.user_id linked to the login.",
+            "description": "Login as Student. The response sets the httpOnly smart_school_session cookie (web) and also returns the session as the `token` field in the JSON body — send `Authorization: Bearer <token>` from a mobile/Flutter app. Requires students.user_id linked to the login.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"student@yourschool.com\",\n  \"password\": \"<set-by-admin>\",\n  \"schoolCode\": \"DEFAULT\"\n}",
@@ -136,7 +136,7 @@
                 "login"
               ]
             },
-            "description": "Login as Parent. The response sets the httpOnly smart_school_session cookie which authenticates every other request. Sees only kids linked via student_guardians.",
+            "description": "Login as Parent. The response sets the httpOnly smart_school_session cookie (web) and also returns the session as the `token` field in the JSON body — send `Authorization: Bearer <token>` from a mobile/Flutter app. Sees only kids linked via student_guardians.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"parent@yourschool.com\",\n  \"password\": \"<set-by-admin>\",\n  \"schoolCode\": \"DEFAULT\"\n}",
@@ -522,6 +522,76 @@
           }
         },
         {
+          "name": "POST /api/my/fees/pay/order (Razorpay order)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/my/fees/pay/order",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "my",
+                "fees",
+                "pay",
+                "order"
+              ]
+            },
+            "description": "Start online (Razorpay) fee payment — returns orderId/keyId for the checkout SDK.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": 15,\n  \"feesTypeId\": 3,\n  \"amount\": 3000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/my/fees/pay/verify (Razorpay verify)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/my/fees/pay/verify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "my",
+                "fees",
+                "pay",
+                "verify"
+              ]
+            },
+            "description": "Verify the Razorpay payment and mark the fee as paid (returns fresh ledger).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentId\": 61,\n  \"studentId\": 15,\n  \"razorpayPaymentId\": \"pay_LIc9k4SgwYg8mNx\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
           "name": "GET /api/my/student/library",
           "request": {
             "method": "GET",
@@ -826,7 +896,7 @@
           }
         },
         {
-          "name": "POST /api/my/parent/kids/fees/pay",
+          "name": "POST /api/my/fees/pay/order (Razorpay order)",
           "request": {
             "method": "POST",
             "header": [
@@ -836,23 +906,57 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/my/parent/kids/fees/pay",
+              "raw": "{{base_url}}/api/my/fees/pay/order",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
                 "my",
-                "parent",
-                "kids",
                 "fees",
-                "pay"
+                "pay",
+                "order"
               ]
             },
-            "description": "Pay a fee online for one of my children.",
+            "description": "Start online (Razorpay) fee payment for one kid — returns orderId/keyId for the checkout SDK.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"studentId\": 15,\n  \"feesTypeId\": 3,\n  \"amount\": 5000,\n  \"paymentMode\": \"Online\"\n}",
+              "raw": "{\n  \"studentId\": 15,\n  \"feesTypeId\": 3,\n  \"amount\": 3000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/my/fees/pay/verify (Razorpay verify)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/my/fees/pay/verify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "my",
+                "fees",
+                "pay",
+                "verify"
+              ]
+            },
+            "description": "Verify the Razorpay payment and mark the fee as paid (returns fresh ledger).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentId\": 61,\n  \"studentId\": 15,\n  \"razorpayPaymentId\": \"pay_LIc9k4SgwYg8mNx\"\n}",
               "options": {
                 "raw": {
                   "language": "json"

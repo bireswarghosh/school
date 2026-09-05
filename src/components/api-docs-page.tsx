@@ -208,7 +208,10 @@ function LoginGuide({ sample, baseUrl }: { sample: LoginSample; baseUrl: string 
       </div>
       <p className="text-xs text-[var(--subtitle-color)]">
         Send this request once. The response sets the <code className="font-mono text-[var(--primary)]">smart_school_session</code>{" "}
-        httpOnly cookie which authenticates every other call.
+        httpOnly cookie (web) and also returns the same session as the{" "}
+        <code className="font-mono text-[var(--primary)]">token</code> field in the JSON body — send that as{" "}
+        <code className="font-mono text-[var(--primary)]">Authorization: Bearer &lt;token&gt;</code> from a Flutter/React Native
+        app (no cookie jar required).
         {sample.note ? ` ${sample.note}` : ""}
       </p>
       <div className="grid md:grid-cols-3 gap-2 text-xs">
@@ -242,8 +245,13 @@ function LoginGuide({ sample, baseUrl }: { sample: LoginSample; baseUrl: string 
         title="cURL (save cookie, then call any API with it)"
         code={`curl -X POST "${baseUrl}/api/auth/login" -H "Content-Type: application/json" -d '${JSON.stringify(body)}' -c cookies.txt\ncurl "${baseUrl}/api/my/dashboard" -b cookies.txt`}
       />
+      <CodeBlock
+        title="Flutter / mobile (Bearer token from login JSON)"
+        code={`POST ${baseUrl}/api/auth/login\n  body: ${JSON.stringify(body)}\n  → store response.token securely\n\nthen on every request:\n  headers: { "Authorization": "Bearer \${token}" }`}
+      />
       <p className="text-xs text-[var(--subtitle-color)]">
         Step 2 — After login succeeds in Postman the cookie is stored automatically; simply run any endpoint below.
+        From a mobile app, attach the <code className="font-mono text-[var(--primary)]">token</code> from the login response as a Bearer header.
       </p>
     </div>
   )

@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
     const sectionName = searchParams.get("section")
     const classId = searchParams.get("class_id")
     const sectionId = searchParams.get("section_id")
+    const q = searchParams.get("q")
 
     let sql = `
       SELECT s.id, s.admission_no, s.name, c.name AS class, sec.name AS section,
@@ -41,7 +42,12 @@ export async function GET(req: NextRequest) {
       sql += ` AND sec.name = $${params.length + 1}`
       params.push(sectionName)
     }
-    sql += " ORDER BY s.name"
+    if (q) {
+      const idx = params.length + 1
+      sql += ` AND (s.name ILIKE $${idx} OR CAST(s.roll_no AS text) ILIKE $${idx} OR s.admission_no ILIKE $${idx} OR c.name ILIKE $${idx} OR sec.name ILIKE $${idx})`
+      params.push(`%${q}%`)
+    }
+    sql += " ORDER BY s.name LIMIT 25"
 
     const result = await query(sql, params)
     if (id) return NextResponse.json(mapResponse(result.rows[0]) || { error: "Not found" }, { status: result.rows[0] ? 200 : 404 })

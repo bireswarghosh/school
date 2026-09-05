@@ -1,9 +1,10 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { UserCheck, ShoppingCart, Plus, Minus, Trash2, Ticket, Save, Package, BookOpen, X } from "lucide-react"
+import { UserCheck, Search, ShoppingCart, Plus, Minus, Trash2, Ticket, Save, Package, BookOpen, X, Loader2, Printer, FileDown, MessageCircle, CheckCircle2, Pencil } from "lucide-react"
 import { useApi } from "@/lib/use-api"
 import { useCurrency } from "@/lib/currency-context"
+import { useAuth } from "@/lib/auth-context"
 import { toast as notify } from "@/lib/toast"
 
 type Product = { id?: number; name: string; sellingPrice?: number | string }
@@ -35,6 +36,27 @@ type CartItem = {
   quantity: number
   unitPrice: number
 }
+type StudentHit = {
+  id: number
+  name: string
+  admissionNo?: string
+  rollNo?: string
+  class?: string
+  section?: string
+  phone?: string
+  mobile?: string
+}
+type ReceiptItem = { name: string; type: "product" | "book"; quantity: number; unitPrice: number; subtotal: number; discount: number; total: number }
+type Receipt = {
+  saleNo: string
+  saleDate: string
+  items: ReceiptItem[]
+  subtotal: number
+  discount: number
+  total: number
+  paymentStatus: string
+  student: { id: number; name: string; className?: string; sectionName?: string; phone?: string } | null
+}
 
 const inputCls = "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
 
@@ -45,16 +67,22 @@ export default function StudentSalesPage() {
   const { data: books } = useApi<Book>("/api/students-inventory/book")
   const { data: classes } = useApi<Class>("/api/classes")
   const { data: coupons } = useApi<Coupon>("/api/students-inventory/coupon")
-  const { data: sales, refetch } = useApi<Sale>("/api/students-inventory/sale")
+  const { data: sales, update: updateSale, remove: removeSale, refetch } = useApi<Sale>("/api/students-inventory/sale")
   const { symbol } = useCurrency()
 
   const money = (v: number) => `${symbol}${v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
   const activeCoupons = useMemo(() => coupons.filter((c) => c.status === "Active"), [coupons])
 
-  const [admissionNo, setAdmissionNo] = useState("")
-  const [student, setStudent] = useState<{ id: number; name: string; className?: string; sectionName?: string } | null>(null)
+  const [student, setStudent] = useState<{ id: number; name: string; className?: string; sectionName?: string; phone?: string } | null>(null)
   const [findState, setFindState] = useState<"idle" | "loading" | "found" | "notfound">("idle")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [searchResults, setSearchResults] = useState<StudentHit[]>([])
+  const [searching, setSearching] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [receipt, setReceipt] = useState<Receipt | null>(null)
+  const [receiptOpen, setReceiptOpen] = useState(false)
+  const { school } = useAuth()
   const [catalogTab, setCatalogTab] = useState<"products" | "books">("products")
   const [search, setSearch] = useState("")
   const [cart, setCart] = useState<CartItem[]>([])
@@ -63,6 +91,12 @@ export default function StudentSalesPage() {
   const [saleDate, setSaleDate] = useState(new Date().toISOString().slice(0, 10))
   const [saving, setSaving] = useState(false)
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
+
+  const [editSale, setEditSale] = useState<Sale | null>(null)
+  const [saleForm, setSaleForm] = useState({ quantity: 1, unitPrice: 0, discountAmount: 0, saleDate: "", paymentStatus: "Paid" })
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [deleteSaleTarget, setDeleteSaleTarget] = useState<Sale | null>(null)
+  const [deletingSale, setDeletingSale] = useState(false)
 
   const [bookClass, setBookClass] = useState("")
   const [bookModalOpen, setBookModalOpen] = useState(false)
@@ -90,7 +124,7 @@ export default function StudentSalesPage() {
       if (data?.student?.id) {
         setStudent({ id: data.student.id, name: data.student.name, className: data.student.className, sectionName: data.student.sectionName })
         setFindState("found")
-        if (data.student.admissionNo) setAdmissionNo(data.student.admissionNo)
+        if (data.student.name) setSearchQuery(data.student.name)
       }
       if (Array.isArray(data?.items) && data.items.length) {
         const items: CartItem[] = data.items.map((it: any, i: number) => {
@@ -114,24 +148,60 @@ export default function StudentSalesPage() {
     }
   }, [])
 
-  const handleFindStudent = async () => {
-    if (!admissionNo.trim()) return
-    setFindState("loading")
-    setStudent(null)
+  const searchStudents = async (q?: string) => {
+    const query = (q ?? searchQuery).trim()
+    if (query.length < 2) {
+      setSearchResults([])
+      setSearchOpen(false)
+      return
+    }
+    setSearching(true)
+    setFindState("idle")
     try {
-      const res = await fetch(`/api/students/lookup?admission_no=${encodeURIComponent(admissionNo.trim())}`)
-      if (res.status === 404) {
-        setFindState("notfound")
-        return
-      }
-      if (!res.ok) throw new Error("Student not found")
+      const res = await fetch(`/api/students?q=${encodeURIComponent(query)}`)
       const data = await res.json()
-      setStudent({ id: data.id, name: data.name, className: data.className, sectionName: data.sectionName })
-      setFindState("found")
+      const list: StudentHit[] = Array.isArray(data) ? data : []
+      setSearchResults(list)
+      setSearchOpen(true)
     } catch {
-      setFindState("notfound")
+      setSearchResults([])
+      setSearchOpen(false)
+    } finally {
+      setSearching(false)
     }
   }
+
+  const handleSearchInput = (v: string) => {
+    setSearchQuery(v)
+    if (student && v.trim() !== student.name) {
+      setStudent(null)
+      setFindState("idle")
+      setSearchOpen(false)
+    }
+  }
+
+  const selectStudent = (r: StudentHit) => {
+    setStudent({ id: r.id, name: r.name, className: r.class, sectionName: r.section, phone: r.phone || r.mobile || undefined })
+    setFindState("found")
+    setSearchQuery(r.name)
+    setSearchResults([])
+    setSearchOpen(false)
+    setFormErrors((prev) => ({ ...prev, student: "" }))
+  }
+
+  useEffect(() => {
+    const q = searchQuery.trim()
+    const isSelected = !!student && q === student.name
+    const t = setTimeout(() => {
+      if (q.length < 2 || isSelected) {
+        setSearchOpen(false)
+        return
+      }
+      searchStudents(q)
+    }, 400)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, student])
 
   const addToCart = (type: "product" | "book", id: number | undefined, name: string, price: number | string | undefined) => {
     if (!id) return
@@ -267,12 +337,30 @@ export default function StudentSalesPage() {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.error || "Failed to record sale")
       }
-      notify.success(`Sale recorded — ${cart.length} item${cart.length === 1 ? "" : "s"}, total ${money(total)}`)
+      const created = await res.json()
+      const saleNo = Array.isArray(created) ? created[0]?.saleNo : created?.saleNo
+      const receiptItems: ReceiptItem[] = cart.map((it) => {
+        const sub = round2(it.quantity * it.unitPrice)
+        const d = itemDiscount(it)
+        return { name: it.name, type: it.type, quantity: it.quantity, unitPrice: it.unitPrice, subtotal: sub, discount: d, total: Math.max(0, round2(sub - d)) }
+      })
+      setReceipt({
+        saleNo: saleNo || `SL-${Date.now()}`,
+        saleDate: String(saleDate || new Date().toISOString().slice(0, 10)).slice(0, 10),
+        items: receiptItems,
+        subtotal: subtotalSum,
+        discount: couponDiscount,
+        total,
+        paymentStatus,
+        student: student ? { id: student.id, name: student.name, className: student.className, sectionName: student.sectionName, phone: student.phone } : null,
+      })
+      setReceiptOpen(true)
+      notify.success(`Order placed — ${cart.length} item${cart.length === 1 ? "" : "s"}, total ${money(total)}`)
       setCart([])
       setCouponId("")
       setPaymentStatus("Paid")
       setSaleDate(new Date().toISOString().slice(0, 10))
-      setAdmissionNo("")
+      setSearchQuery("")
       setStudent(null)
       setFindState("idle")
       await refetch()
@@ -283,12 +371,276 @@ export default function StudentSalesPage() {
     }
   }
 
+  const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+
+  const buildReceiptHtml = (r: Receipt): string => {
+    const fmt = (n: number) => `${symbol}${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    const sName = esc(school?.name || "Smart School")
+    const sTagline = school?.tagline ? esc(school.tagline) : ""
+    const sAddress = school?.address ? esc(school.address) : ""
+    const sPhone = school?.phone ? esc(school.phone) : ""
+    const sEmail = school?.email ? esc(school.email) : ""
+    const items = r.items
+      .map(
+        (it) =>
+          `<tr><td>${esc(it.name)}<span class="sub">${it.type === "book" ? "Book" : "Product"}${it.discount ? ` · Disc ${fmt(it.discount)}` : ""}</span></td><td class="c">${it.quantity}</td><td class="c">${fmt(it.unitPrice)}</td><td class="r">${fmt(it.total)}</td></tr>`
+      )
+      .join("")
+    const statusColor = r.paymentStatus === "Paid" ? "#059669" : "#dc2626"
+    return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Receipt ${esc(r.saleNo)}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #1f2937; font-size: 13px; }
+  .sheet { max-width: 420px; margin: 0 auto; padding: 30px 24px; }
+  .r-head { text-align: center; border-bottom: 2px dashed #d1d5db; padding-bottom: 14px; margin-bottom: 14px; }
+  .r-head h1 { font-size: 18px; color: #111827; }
+  .r-head .tag { color: #ff7732; font-size: 11px; margin-top: 2px; }
+  .r-head .meta { font-size: 12px; color: #4b5563; margin-top: 8px; line-height: 1.6; }
+  .r-head .meta .r-no { font-weight: 700; color: #111827; }
+  .status { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; color: ${statusColor}; border: 1px solid ${statusColor}; }
+  .cust { font-size: 12px; color: #374151; border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; line-height: 1.6; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+  th { background: #ff7732; color: #fff; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; padding: 6px 8px; }
+  td { padding: 6px 8px; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
+  td .sub { display: block; font-size: 10px; color: #6b7280; margin-top: 1px; }
+  .c { text-align: center; }
+  .r { text-align: right; }
+  .totals { border-top: 1px solid #9ca3af; padding-top: 8px; }
+  .totals .row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 13px; }
+  .totals .row.grand { font-weight: 700; font-size: 15px; color: #111827; border-top: 1px dashed #d1d5db; margin-top: 4px; padding-top: 6px; }
+  .foot { margin-top: 20px; text-align: center; color: #6b7280; font-size: 11px; border-top: 1px dashed #d1d5db; padding-top: 10px; line-height: 1.5; }
+</style>
+</head>
+<body>
+  <div class="sheet">
+    <div class="r-head">
+      <h1>${sName}</h1>
+      ${sTagline ? `<div class="tag">${sTagline}</div>` : ""}
+      ${sAddress ? `<div style="font-size:11px;color:#4b5563;margin-top:3px;">${sAddress}</div>` : ""}
+      ${sPhone || sEmail ? `<div style="font-size:11px;color:#4b5563;margin-top:2px;">${[sPhone, sEmail].filter(Boolean).join(" | ")}</div>` : ""}
+      <div class="meta">
+        <span class="r-no">${esc(r.saleNo)}</span> · Date: ${esc(r.saleDate)}<br />
+        <span class="status">${esc(r.paymentStatus)}</span>
+      </div>
+    </div>
+
+    <div class="cust">
+      Student: <b>${esc(r.student?.name || "-")}</b>${r.student?.className ? ` (${esc(r.student.className)}${r.student.sectionName ? ` - ${esc(r.student.sectionName)}` : ""})` : ""}
+    </div>
+
+    <table>
+      <thead><tr><th>Item</th><th class="c">Qty</th><th class="c">Rate</th><th class="r">Amount</th></tr></thead>
+      <tbody>${items}</tbody>
+    </table>
+
+    <div class="totals">
+      <div class="row"><span>Subtotal</span><span>${fmt(r.subtotal)}</span></div>
+      ${r.discount ? `<div class="row"><span>Discount</span><span>${fmt(r.discount)}</span></div>` : ""}
+      <div class="row grand"><span>Grand Total</span><span>${fmt(r.total)}</span></div>
+    </div>
+
+    <div class="foot">Thank you for your purchase!<br />This is a computer-generated receipt.</div>
+  </div>
+</body>
+</html>`
+  }
+
+  const printReceipt = () => {
+    if (!receipt) return
+    const frame = document.getElementById("receipt-frame") as HTMLIFrameElement | null
+    if (!frame) return
+    frame.onload = () => {
+      frame.contentWindow?.focus()
+      frame.contentWindow?.print()
+    }
+    frame.srcdoc = buildReceiptHtml(receipt)
+  }
+
+  const shareWhatsApp = () => {
+    if (!receipt) return
+    const sName = school?.name || "Smart School"
+    const itemsTxt = receipt.items
+      .map((it) => `• ${it.name} (${it.type === "book" ? "Book" : "Product"})\n   Qty ${it.quantity} x ${money(it.unitPrice)} = ${money(it.subtotal)}${it.discount ? ` (Disc ${money(it.discount)})` : ""}`)
+      .join("\n")
+    const invoiceLink = `${window.location.origin}/api/students-inventory/sale/invoice?no=${encodeURIComponent(receipt.saleNo)}`
+    const text =
+      `*${sName}*\nOrder Confirmed ✔\nInvoice: ${receipt.saleNo}\nDate: ${receipt.saleDate}\nStudent: ${receipt.student?.name || "-"}${receipt.student?.className ? ` (${receipt.student.className}${receipt.student.sectionName ? ` - ${receipt.student.sectionName}` : ""})` : ""}\n\n${itemsTxt}\n\nSubtotal: ${money(receipt.subtotal)}${receipt.discount ? `\nDiscount: ${money(receipt.discount)}` : ""}\n*Total: ${money(receipt.total)}*\nStatus: ${receipt.paymentStatus}\n\nView PDF receipt: ${invoiceLink}\n\nThank you for your purchase!`
+    const phone = receipt.student?.phone
+    const digits = phone ? String(phone).replace(/[^\d]/g, "") : ""
+    const url = digits.length >= 10 ? `https://wa.me/${digits}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`
+    window.open(url, "_blank")
+  }
+
   const productName = (sale: Sale) => {
     if (sale.bookId) return books.find((b) => b.id === sale.bookId)?.title ?? `Book #${sale.bookId}`
     return products.find((p) => p.id === sale.productId)?.name ?? `Product #${sale.productId}`
   }
 
   const recentSales = sales.slice(0, 15)
+
+  const buildSaleInvoiceHtml = (base: Sale, rows: Sale[]): string => {
+    const fmt = (n: number) => `${symbol}${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    const sName = esc(school?.name || "Smart School")
+    const sTagline = school?.tagline ? esc(school.tagline) : ""
+    const sAddress = school?.address ? esc(school.address) : ""
+    const sPhone = school?.phone ? esc(school.phone) : ""
+    const sEmail = school?.email ? esc(school.email) : ""
+    const sub = rows.reduce((s, r) => s + (Number(r.subtotal) || 0), 0)
+    const disc = rows.reduce((s, r) => s + (Number(r.discountAmount) || 0), 0)
+    const total = rows.reduce((s, r) => s + (Number(r.totalAmount) || 0), 0)
+    const status = base.paymentStatus || "Unpaid"
+    const statusColor = status === "Paid" ? "#059669" : "#dc2626"
+    const items = rows
+      .map(
+        (r, i) =>
+          `<tr><td class="c">${i + 1}</td><td>${esc(productName(r))}<span class="sub">${r.bookId ? "Book" : "Product"}</span></td><td class="c">${Number(r.quantity) || 0}</td><td class="r">${fmt(Number(r.unitPrice) || 0)}</td><td class="r">${Number(r.discountAmount) ? fmt(Number(r.discountAmount)) : "-"}</td><td class="r">${fmt(Number(r.totalAmount) || 0)}</td></tr>`
+      )
+      .join("")
+    return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Invoice ${esc(base.saleNo || "")}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #1f2937; font-size: 13px; }
+  .sheet { max-width: 820px; margin: 0 auto; padding: 30px 26px; }
+  .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #ff7732; padding-bottom: 16px; margin-bottom: 18px; }
+  .head h1 { font-size: 20px; color: #111827; }
+  .head .tag { color: #ff7732; font-size: 12px; margin-top: 2px; }
+  .head .meta { text-align: right; font-size: 12px; color: #4b5563; line-height: 1.6; }
+  .head .meta .inv-no { font-size: 14px; font-weight: 700; color: #111827; }
+  .status { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; color: ${statusColor}; border: 1px solid ${statusColor}; }
+  .info { display: flex; justify-content: space-between; margin-bottom: 16px; }
+  .info .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #6b7280; margin-bottom: 3px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+  th { background: #ff7732; color: #fff; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; padding: 6px 8px; }
+  td { padding: 6px 8px; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
+  td .sub { display: block; font-size: 10px; color: #6b7280; margin-top: 1px; }
+  .c { text-align: center; }
+  .r { text-align: right; }
+  .totals { width: 280px; margin-left: auto; }
+  .totals .row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 13px; }
+  .totals .row.grand { font-weight: 700; font-size: 15px; color: #111827; border-top: 1px solid #9ca3af; margin-top: 4px; padding-top: 6px; }
+  .foot { margin-top: 22px; text-align: center; color: #6b7280; font-size: 11px; border-top: 1px dashed #d1d5db; padding-top: 10px; }
+</style>
+</head>
+<body>
+  <div class="sheet">
+    <div class="head">
+      <div>
+        <h1>${sName}</h1>
+        ${sTagline ? `<div class="tag">${sTagline}</div>` : ""}
+        ${sAddress ? `<div style="font-size:12px;color:#4b5563;margin-top:4px;">${sAddress}</div>` : ""}
+        ${sPhone || sEmail ? `<div style="font-size:12px;color:#4b5563;margin-top:2px;">${[sPhone, sEmail].filter(Boolean).join(" | ")}</div>` : ""}
+      </div>
+      <div class="meta">
+        <div class="inv-no">Invoice ${esc(base.saleNo || "")}</div>
+        <div>Date: ${esc(String(base.saleDate || "").slice(0, 10))}</div>
+        <div><span class="status">${esc(status)}</span></div>
+      </div>
+    </div>
+
+    <div class="info">
+      <div>
+        <div class="lbl">Billed To</div>
+        <div style="font-weight:600;">${esc(base.studentName || "-")}</div>
+      </div>
+    </div>
+
+    <table>
+      <thead><tr><th class="c">#</th><th>Item</th><th class="c">Qty</th><th class="r">Unit Price</th><th class="r">Discount</th><th class="r">Amount</th></tr></thead>
+      <tbody>${items}</tbody>
+    </table>
+
+    <div class="totals">
+      <div class="row"><span>Subtotal</span><span>${fmt(sub)}</span></div>
+      ${disc ? `<div class="row"><span>Discount</span><span>${fmt(disc)}</span></div>` : ""}
+      <div class="row grand"><span>Grand Total</span><span>${fmt(total)}</span></div>
+    </div>
+
+    <div class="foot">Thank you for your purchase! This is a computer-generated invoice.</div>
+  </div>
+</body>
+</html>`
+  }
+
+  const printSaleReceipt = (sale: Sale) => {
+    if (!sale.saleNo) return
+    const rows = sales.filter((s) => s.saleNo === sale.saleNo)
+    const frame = document.getElementById("sale-invoice-frame") as HTMLIFrameElement | null
+    if (!frame) return
+    frame.onload = () => {
+      frame.contentWindow?.focus()
+      frame.contentWindow?.print()
+    }
+    frame.srcdoc = buildSaleInvoiceHtml(sale, rows)
+  }
+
+  const downloadSaleInvoice = (sale: Sale) => {
+    if (!sale.saleNo) {
+      printSaleReceipt(sale)
+      return
+    }
+    window.open(`${window.location.origin}/api/students-inventory/sale/invoice?no=${encodeURIComponent(sale.saleNo)}`, "_blank")
+  }
+
+  const openEditSale = (sale: Sale) => {
+    setEditSale(sale)
+    setSaleForm({
+      quantity: Number(sale.quantity) || 1,
+      unitPrice: Number(sale.unitPrice) || 0,
+      discountAmount: Number(sale.discountAmount) || 0,
+      saleDate: String(sale.saleDate || new Date().toISOString().slice(0, 10)).slice(0, 10),
+      paymentStatus: sale.paymentStatus === "Paid" ? "Paid" : "Unpaid",
+    })
+  }
+
+  const saveEditSale = async () => {
+    if (!editSale?.id) return
+    const qty = Math.max(1, Number(saleForm.quantity) || 1)
+    const unitPrice = Math.max(0, Number(saleForm.unitPrice) || 0)
+    const discountAmount = Math.max(0, Number(saleForm.discountAmount) || 0)
+    const subtotal = round2(qty * unitPrice)
+    const totalAmount = Math.max(0, round2(subtotal - discountAmount))
+    setSavingEdit(true)
+    try {
+      await updateSale(editSale.id, {
+        quantity: qty,
+        unitPrice,
+        subtotal,
+        discountAmount,
+        totalAmount,
+        saleDate: saleForm.saleDate,
+        paymentStatus: saleForm.paymentStatus,
+      })
+      await refetch()
+      notify.success("Sale updated")
+      setEditSale(null)
+    } catch (e: unknown) {
+      notify.error(e instanceof Error ? e.message : "Failed to update sale")
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  const confirmDeleteSale = async () => {
+    if (!deleteSaleTarget?.id) return
+    setDeletingSale(true)
+    try {
+      await removeSale(deleteSaleTarget.id)
+      setDeleteSaleTarget(null)
+      notify.success(`Sale ${deleteSaleTarget.saleNo || ""} deleted`)
+    } catch (e: unknown) {
+      notify.error(e instanceof Error ? e.message : "Failed to delete sale")
+    } finally {
+      setDeletingSale(false)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -309,29 +661,75 @@ export default function StudentSalesPage() {
               </h3>
             </div>
             <div className="p-5">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={admissionNo}
-                  onChange={(e) => { setAdmissionNo(e.target.value); setFindState("idle"); setStudent(null) }}
-                  className={inputCls}
-                  placeholder="Enter admission no"
-                />
-                <button
-                  onClick={handleFindStudent}
-                  disabled={findState === "loading"}
-                  className="px-4 py-2 bg-[var(--primary)] text-white text-sm font-medium rounded-lg hover:bg-[var(--secondary)] transition-colors flex items-center gap-2 whitespace-nowrap disabled:opacity-50"
-                >
-                  <UserCheck className="h-4 w-4" />
-                  {findState === "loading" ? "Finding..." : "Find"}
-                </button>
+              <div className="relative">
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => handleSearchInput(e.target.value)}
+                      onFocus={() => { if (searchResults.length > 0) setSearchOpen(true) }}
+                      className={inputCls + " pl-9 pr-9"}
+                      placeholder="Search by name, roll no, admission no or class"
+                    />
+                    {searching && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-[var(--primary)]" />}
+                  </div>
+                  <button
+                    onClick={() => searchStudents()}
+                    disabled={searching || searchQuery.trim().length < 2}
+                    className="px-4 py-2 bg-[var(--primary)] text-white text-sm font-medium rounded-lg hover:bg-[var(--secondary)] transition-colors flex items-center gap-2 whitespace-nowrap disabled:opacity-50"
+                  >
+                    <UserCheck className="h-4 w-4" />
+                    Search
+                  </button>
+                </div>
+
+                {searchOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setSearchOpen(false)} />
+                    <div className="absolute z-20 mt-1.5 w-full rounded-lg border border-gray-200 bg-white shadow-xl overflow-hidden">
+                      {searchResults.length === 0 ? (
+                        <div className="px-4 py-3 text-sm text-gray-400">No matching students</div>
+                      ) : (
+                        <div className="max-h-64 overflow-y-auto">
+                          {searchResults.map((r) => (
+                            <button
+                              key={r.id}
+                              onClick={() => selectStudent(r)}
+                              className="w-full text-left px-4 py-2.5 hover:bg-[var(--primary-light)]/40 border-b border-gray-50 last:border-0 transition-colors"
+                            >
+                              <div className="text-sm font-medium text-gray-800">{r.name}</div>
+                              <div className="text-xs text-gray-500">
+                                Class {r.class || "-"}{r.section ? ` - ${r.section}` : ""} · Roll {r.rollNo || "-"} · {r.admissionNo || ""}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <div className="px-4 py-2 bg-gray-50 border-t border-gray-100 text-[11px] text-gray-400">
+                        {searchResults.length} match{searchResults.length === 1 ? "" : "es"} · click a row to select
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
+
               {formErrors.student && <p className="text-red-500 text-xs mt-1">{formErrors.student}</p>}
               {findState === "found" && student && (
-                <div className="mt-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-sm text-emerald-700">
-                  <span className="font-medium">{student.name}</span>
-                  {student.className && <span> - {student.className}</span>}
-                  {student.sectionName && <span> / {student.sectionName}</span>}
+                <div className="mt-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2.5 text-sm text-emerald-700 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <span className="font-medium">{student.name}</span>
+                    {student.className && <span> - {student.className}</span>}
+                    {student.sectionName && <span> / {student.sectionName}</span>}
+                  </div>
+                  <button
+                    onClick={() => { setStudent(null); setFindState("idle"); setSearchQuery(""); setSearchResults([]); setSearchOpen(false) }}
+                    className="shrink-0 p-1 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-colors"
+                    title="Clear selection"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
                 </div>
               )}
               {findState === "notfound" && <p className="mt-2 text-red-600 text-sm">Student not found</p>}
@@ -556,12 +954,13 @@ export default function StudentSalesPage() {
                 <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Total</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Date</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Status</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Actions</th>
               </tr>
             </thead>
             <tbody>
               {recentSales.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-8 text-gray-400">No sales yet</td>
+                  <td colSpan={9} className="text-center py-8 text-gray-400">No sales yet</td>
                 </tr>
               ) : (
                 recentSales.map((s, idx) => (
@@ -581,6 +980,38 @@ export default function StudentSalesPage() {
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${s.paymentStatus === "Paid" ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
                         {s.paymentStatus || "Unpaid"}
                       </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => printSaleReceipt(s)}
+                          title="Print"
+                          className="p-1.5 rounded-lg text-gray-500 hover:text-[var(--primary)] hover:bg-[var(--primary)]/10 transition-colors"
+                        >
+                          <Printer className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => downloadSaleInvoice(s)}
+                          title="Download PDF"
+                          className="p-1.5 rounded-lg text-gray-500 hover:text-[var(--primary)] hover:bg-[var(--primary)]/10 transition-colors"
+                        >
+                          <FileDown className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => openEditSale(s)}
+                          title="Edit"
+                          className="p-1.5 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => setDeleteSaleTarget(s)}
+                          title="Delete"
+                          className="p-1.5 rounded-lg text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -695,6 +1126,262 @@ export default function StudentSalesPage() {
           </div>
         </div>
       )}
+
+      {receiptOpen && receipt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setReceiptOpen(false)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto z-10">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white rounded-t-xl">
+              <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                Order Placed
+              </h3>
+              <button onClick={() => setReceiptOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-6">
+              <div className="text-center border-b border-dashed border-gray-300 pb-4 mb-4">
+                <h4 className="text-base font-bold text-gray-900">{school?.name || "Smart School"}</h4>
+                {school?.tagline && <p className="text-[11px] text-[var(--primary)] mt-0.5">{school.tagline}</p>}
+                <p className="text-sm font-semibold text-gray-800 mt-2">{receipt.saleNo}</p>
+                <p className="text-xs text-gray-500">Date: {receipt.saleDate}</p>
+                <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${receipt.paymentStatus === "Paid" ? "text-emerald-700 border-emerald-600" : "text-red-600 border-red-600"}`}>
+                  {receipt.paymentStatus}
+                </span>
+              </div>
+
+              {receipt.student && (
+                <div className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 mb-4">
+                  <span className="text-xs text-gray-400">Student:</span> <b>{receipt.student.name}</b>
+                  {receipt.student.className && <span> — {receipt.student.className}</span>}
+                  {receipt.student.sectionName && <span> / {receipt.student.sectionName}</span>}
+                </div>
+              )}
+
+              <div className="rounded-lg border border-gray-200 overflow-hidden mb-4">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-[var(--primary)] text-white text-left text-xs uppercase">
+                      <th className="px-3 py-2 font-medium">Item</th>
+                      <th className="px-3 py-2 font-medium text-center w-16">Qty</th>
+                      <th className="px-3 py-2 font-medium text-right w-28">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {receipt.items.map((it, i) => (
+                      <tr key={i} className="border-b border-gray-100 last:border-0">
+                        <td className="px-3 py-2">
+                          <div className="text-gray-800 font-medium">{it.name}</div>
+                          <div className="text-[11px] text-gray-400 flex items-center gap-1">
+                            <span className={`inline-flex px-1 py-0.5 rounded text-[9px] font-medium ${it.type === "book" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}`}>
+                              {it.type === "book" ? "Book" : "Product"}
+                            </span>
+                            {it.discount > 0 && <span className="text-red-500">Disc {money(it.discount)}</span>}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-center text-gray-600">{it.quantity}</td>
+                        <td className="px-3 py-2 text-right font-semibold text-gray-800">{money(it.total)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="space-y-1 text-sm text-gray-600">
+                <div className="flex justify-between"><span>Subtotal</span><span>{money(receipt.subtotal)}</span></div>
+                {receipt.discount > 0 && (
+                  <div className="flex justify-between text-red-600"><span>Discount</span><span>- {money(receipt.discount)}</span></div>
+                )}
+                <div className="flex justify-between font-bold text-gray-900 text-base pt-1.5 border-t border-gray-200">
+                  <span>Grand Total</span><span>{money(receipt.total)}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-200 grid grid-cols-1 sm:grid-cols-2 gap-2 sticky bottom-0 bg-white rounded-b-xl">
+              <button
+                onClick={shareWhatsApp}
+                className="flex items-center justify-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-[#25D366] hover:bg-[#1eb958] rounded-lg transition-colors"
+              >
+                <MessageCircle className="h-4 w-4" /> WhatsApp
+              </button>
+              <button
+                onClick={printReceipt}
+                className="flex items-center justify-center gap-1.5 px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                <FileDown className="h-4 w-4" /> Download PDF
+              </button>
+              <button
+                onClick={printReceipt}
+                className="flex items-center justify-center gap-1.5 px-4 py-2 bg-[var(--primary)] text-white text-sm font-medium rounded-lg hover:bg-[var(--secondary)] transition-colors"
+              >
+                <Printer className="h-4 w-4" /> Print
+              </button>
+              <button
+                onClick={() => setReceiptOpen(false)}
+                className="flex items-center justify-center px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                New Sale
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editSale && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setEditSale(null)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md z-10">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 rounded-t-xl">
+              <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                <Pencil className="h-5 w-5 text-[var(--primary)]" />
+                Edit Sale
+              </h3>
+              <button onClick={() => setEditSale(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-sm">
+                <div className="text-gray-500 text-xs">Sale</div>
+                <div className="font-semibold text-gray-800">{editSale.saleNo || "-"}</div>
+                <div className="text-gray-500 text-xs mt-1">{editSale.studentName || "-"}</div>
+                <div className="text-gray-500 text-xs">{productName(editSale)}</div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Quantity</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={saleForm.quantity}
+                    onChange={(e) => setSaleForm((p) => ({ ...p, quantity: Number(e.target.value) }))}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Unit Price ({symbol})</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={saleForm.unitPrice}
+                    onChange={(e) => setSaleForm((p) => ({ ...p, unitPrice: Number(e.target.value) }))}
+                    className={inputCls}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Discount ({symbol})</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={saleForm.discountAmount}
+                    onChange={(e) => setSaleForm((p) => ({ ...p, discountAmount: Number(e.target.value) }))}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Payment Status</label>
+                  <select
+                    value={saleForm.paymentStatus}
+                    onChange={(e) => setSaleForm((p) => ({ ...p, paymentStatus: e.target.value }))}
+                    className={inputCls}
+                  >
+                    <option value="Paid">Paid</option>
+                    <option value="Unpaid">Unpaid</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Sale Date</label>
+                <input
+                  type="date"
+                  value={saleForm.saleDate}
+                  onChange={(e) => setSaleForm((p) => ({ ...p, saleDate: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+
+              <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-sm space-y-1">
+                <div className="flex justify-between text-gray-600">
+                  <span>Subtotal</span>
+                  <span>{money(round2((Math.max(1, Number(saleForm.quantity) || 1)) * (Math.max(0, Number(saleForm.unitPrice) || 0))))}</span>
+                </div>
+                <div className="flex justify-between text-gray-600">
+                  <span>Discount</span>
+                  <span>- {money(Math.min(Math.max(0, Number(saleForm.discountAmount) || 0), round2((Math.max(1, Number(saleForm.quantity) || 1)) * (Math.max(0, Number(saleForm.unitPrice) || 0)))))}</span>
+                </div>
+                <div className="flex justify-between font-bold text-gray-900">
+                  <span>Total</span>
+                  <span>
+                    {money(Math.max(0, round2((Math.max(1, Number(saleForm.quantity) || 1)) * (Math.max(0, Number(saleForm.unitPrice) || 0)) - (Math.max(0, Number(saleForm.discountAmount) || 0)))))}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-2 rounded-b-xl">
+              <button onClick={() => setEditSale(null)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+              <button
+                onClick={saveEditSale}
+                disabled={savingEdit}
+                className="px-5 py-2 bg-[var(--primary)] text-white text-sm font-medium rounded-lg hover:bg-[var(--secondary)] disabled:opacity-50 flex items-center gap-2"
+              >
+                {savingEdit ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteSaleTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setDeleteSaleTarget(null)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-sm z-10">
+            <div className="px-6 pt-6 pb-2 text-center">
+              <div className="mx-auto w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mb-3">
+                <Trash2 className="h-6 w-6 text-red-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-800">Delete Sale</h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Delete sale <b>{deleteSaleTarget.saleNo || "-"}</b> ({productName(deleteSaleTarget)})? This cannot be undone.
+              </p>
+            </div>
+            <div className="px-6 py-4 flex justify-center gap-2">
+              <button onClick={() => setDeleteSaleTarget(null)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+              <button
+                onClick={confirmDeleteSale}
+                disabled={deletingSale}
+                className="px-5 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                {deletingSale ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <iframe
+        id="receipt-frame"
+        title="Receipt print frame"
+        style={{ position: "fixed", left: -9999, top: 0, width: 820, height: 1100, border: 0 }}
+      />
+      <iframe
+        id="sale-invoice-frame"
+        title="Sale invoice print frame"
+        style={{ position: "fixed", left: -9999, top: 0, width: 900, height: 1200, border: 0 }}
+      />
     </div>
   )
 }

@@ -12,7 +12,7 @@ type Currency = {
 }
 
 const CurrencyContext = createContext<{ symbol: string; currency: Currency | null }>({
-  symbol: "$",
+  symbol: "₹",
   currency: null,
 })
 
@@ -32,7 +32,7 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
     })()
   }, [])
 
-  const symbol = currency?.symbol || "$"
+  const symbol = currency?.symbol || "₹"
 
   return (
     <CurrencyContext.Provider value={{ symbol, currency }}>

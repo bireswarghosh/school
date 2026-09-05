@@ -4,7 +4,8 @@ import { toast as notify } from "@/lib/toast"
 import { useState, useEffect, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useCurrency } from "@/lib/currency-context"
-import { ArrowLeft, Loader2, Key, Ban, X, Eye, Plus, Pencil, Trash2, Camera } from "lucide-react"
+import { useAuth } from "@/lib/auth-context"
+import { ArrowLeft, Loader2, Key, Ban, X, Eye, Plus, Pencil, Trash2, Camera, Printer, FileDown } from "lucide-react"
 
 type StudentRecord = {
   id: number
@@ -59,6 +60,8 @@ type StudentRecord = {
 const fullName = (first: string | undefined | null, middle: string | undefined | null, last: string | undefined | null) =>
   [first, middle, last].filter((n) => n && n.trim()).join(" ")
 
+const escapeHtml = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+
 const avatarColors = ["bg-blue-500", "bg-pink-500", "bg-green-500", "bg-purple-500", "bg-orange-500", "bg-teal-500", "bg-indigo-500", "bg-rose-500", "bg-cyan-500", "bg-amber-500"]
 
 function genderBadge(g: string) {
@@ -111,6 +114,7 @@ export default function StudentProfilePage() {
   const router = useRouter()
   const id = params?.id as string
   const { symbol } = useCurrency()
+  const { school } = useAuth()
 
   const [student, setStudent] = useState<StudentRecord | null>(null)
   const [loading, setLoading] = useState(true)
@@ -365,6 +369,158 @@ export default function StudentProfilePage() {
     setShowBehaviourModal(true)
   }
 
+  const buildProfileHtml = (): string => {
+    if (!student) return ""
+    const esc = (v: string | undefined | null) => escapeHtml(v?.trim() || "-")
+    const val = (v: string | undefined | null) => (v?.trim() ? escapeHtml(v.trim()) : "-")
+    const sName = esc(school?.name || "Smart School")
+    const sTagline = school?.tagline ? escapeHtml(school.tagline) : ""
+    const sAddress = school?.address ? escapeHtml(school.address) : ""
+    const sPhone = school?.phone ? escapeHtml(school.phone) : ""
+    const sEmail = school?.email ? escapeHtml(school.email) : ""
+    const name = fullName(student.firstName, student.middleName, student.lastName)
+    const init = initials(student.firstName, student.lastName)
+    const photo = student.studentPhoto
+      ? `<img src="${escapeHtml(student.studentPhoto)}" onerror="this.style.display='none'" style="width:90px;height:90px;border-radius:9999px;object-fit:cover;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.18);" />`
+      : `<div style="width:90px;height:90px;border-radius:9999px;background:#ff7732;color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;">${escapeHtml(init)}</div>`
+    const row = (label: string, value: string) =>
+      value === "-" || value === "<span>-</span>"
+        ? ""
+        : `<tr><td class="lbl">${label}</td><td class="v">${value}</td></tr>`
+    const section = (title: string, rows: string) => (rows ? `<h3>${title}</h3><table class="kv">${rows}</table>` : "")
+    const genDate = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })
+    const status = student.status || "Active"
+    const statusColor = status === "Active" ? "#059669" : status === "Disabled" ? "#dc2626" : "#6b7280"
+
+    return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Student Profile - ${escapeHtml(name)}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #1f2937; font-size: 12px; padding: 32px; }
+  .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #ff7732; padding-bottom: 14px; margin-bottom: 18px; }
+  .head h1 { font-size: 21px; color: #111827; }
+  .head .tag { color: #ff7732; font-size: 12px; margin-top: 2px; }
+  .head .meta { text-align: right; font-size: 12px; color: #4b5563; line-height: 1.6; }
+  .head .meta .doc-title { font-size: 14px; font-weight: 700; color: #111827; }
+  .identity { display: flex; align-items: center; gap: 14px; padding: 14px; border: 1px solid #e5e7eb; border-left: 4px solid #ff7732; border-radius: 8px; margin-bottom: 18px; }
+  .identity h2 { font-size: 18px; color: #111827; }
+  .identity .sub { color: #4b5563; font-size: 12px; margin-top: 3px; }
+  .identity .badges { margin-top: 6px; font-size: 11px; color: #4b5563; }
+  .identity .status { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; color: ${statusColor}; border: 1px solid ${statusColor}; }
+  h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #ff7732; margin: 16px 0 8px; border-bottom: 1px solid #f3f4f6; padding-bottom: 4px; }
+  table.kv { width: 100%; border-collapse: collapse; }
+  table.kv td { padding: 5px 8px; border-bottom: 1px solid #f3f4f6; }
+  table.kv tr:last-child td { border-bottom: 0; }
+  table.kv td.lbl { width: 42%; color: #6b7280; font-size: 11px; }
+  table.kv td.v { color: #111827; font-weight: 500; }
+  .note { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 10px 12px; margin-top: 8px; line-height: 1.6; }
+  .foot { margin-top: 26px; text-align: center; color: #6b7280; font-size: 11px; border-top: 1px solid #e5e7eb; padding-top: 12px; }
+</style>
+</head>
+<body>
+  <div class="head">
+    <div>
+      <h1>${sName}</h1>
+      ${sTagline ? `<div class="tag">${sTagline}</div>` : ""}
+      ${sAddress ? `<div style="font-size:11px;color:#4b5563;margin-top:3px;">${sAddress}</div>` : ""}
+      ${sPhone || sEmail ? `<div style="font-size:11px;color:#4b5563;margin-top:2px;">${[sPhone, sEmail].filter(Boolean).join(" | ")}</div>` : ""}
+    </div>
+    <div class="meta">
+      <div class="doc-title">Student Profile</div>
+      <div>Admission No: ${esc(student.admissionNo)}</div>
+      <div>Generated: ${genDate}</div>
+    </div>
+  </div>
+
+  <div class="identity">
+    ${photo}
+    <div>
+      <h2>${escapeHtml(name)}</h2>
+      <div class="sub">Class ${escapeHtml(student.class || "-")}${student.section ? ` - ${escapeHtml(student.section)}` : ""} · Roll No: ${esc(student.rollNo)}</div>
+      <div class="badges"><span class="status">${status}</span>${student.gender ? ` &nbsp;·&nbsp; ${escapeHtml(student.gender)}` : ""}${student.category ? ` &nbsp;·&nbsp; ${escapeHtml(student.category)}` : ""}${student.bloodGroup ? ` &nbsp;·&nbsp; Blood Group ${escapeHtml(student.bloodGroup)}` : ""}</div>
+    </div>
+  </div>
+
+  ${section("Personal Details", [
+    ["Admission No", esc(student.admissionNo)],
+    ["Roll No", esc(student.rollNo)],
+    ["First Name", val(student.firstName)],
+    ["Middle Name", val(student.middleName)],
+    ["Last Name", val(student.lastName)],
+    ["Class", esc(student.class)],
+    ["Section", val(student.section)],
+["Date of Birth", fmtDate(student.dob)],
+    ["Blood Group", val(student.bloodGroup)],
+    ["Height", val(student.height)],
+    ["Weight", val(student.weight)],
+    ["Measurement Date", fmtDate(student.measurementDate)],
+  ].map(([l, v]) => row(l, v)).join(""))}
+
+  ${section("Contact & Other Details", [
+    ["Mobile", val(student.mobile)],
+    ["Email", val(student.email)],
+    ["Address", val(student.address)],
+    ["Religion", val(student.religion)],
+    ["Caste", val(student.caste)],
+    ["Category", val(student.category)],
+    ["House", val(student.house)],
+    ["Admission Date", fmtDate(student.admissionDate)],
+    ["Previous School", val(student.previousSchool)],
+  ].map(([l, v]) => row(l, v)).join(""))}
+
+  ${section("Parent Details", [
+    ["Father Name", val(student.fatherName)],
+    ["Father Phone", val(student.fatherPhone)],
+    ["Father Occupation", val(student.fatherOccupation)],
+    ["Mother Name", val(student.motherName)],
+    ["Mother Phone", val(student.motherPhone)],
+    ["Mother Occupation", val(student.motherOccupation)],
+  ].map(([l, v]) => row(l, v)).join(""))}
+
+  ${section("Guardian Details", [
+    ["Guardian Is", val(student.guardianIs)],
+    ["Guardian Name", val(student.guardianName)],
+    ["Guardian Relation", val(student.guardianRelation)],
+    ["Guardian Email", val(student.guardianEmail)],
+    ["Guardian Phone", val(student.guardianPhone)],
+    ["Guardian Occupation", val(student.guardianOccupation)],
+    ["Guardian Address", val(student.guardianAddress)],
+  ].map(([l, v]) => row(l, v)).join(""))}
+
+  ${section("Addresses", [
+    ["Current Address", val(student.currentAddress)],
+    ["Permanent Address", val(student.permanentAddress)],
+  ].map(([l, v]) => row(l, v)).join(""))}
+
+  ${section("Bank & Identification", [
+    ["Bank Account No", val(student.bankAccount)],
+    ["Bank Name", val(student.bankName)],
+    ["IFSC Code", val(student.ifscCode)],
+    ["National Identification No", val(student.nationalId)],
+    ["Local Identification No", val(student.localId)],
+    ["RTE", val(student.rte)],
+  ].map(([l, v]) => row(l, v)).join(""))}
+
+  ${student.note ? `<h3>Note</h3><div class="note">${escapeHtml(student.note)}</div>` : ""}
+
+  <div class="foot">This is a computer-generated student profile report. Generated on ${genDate}.</div>
+</body>
+</html>`
+  }
+
+  const printProfile = () => {
+    const frame = document.getElementById("student-report-frame") as HTMLIFrameElement | null
+    if (!frame) return
+    frame.onload = () => {
+      frame.contentWindow?.focus()
+      frame.contentWindow?.print()
+    }
+    frame.srcdoc = buildProfileHtml()
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -424,13 +580,29 @@ export default function StudentProfilePage() {
   return (
     <div className="space-y-5">
       <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-[var(--primary)] to-[var(--primary)]/80 px-6 py-4 shadow-sm">
-        <div className="relative z-10 flex items-center gap-3">
-          <button onClick={() => router.back()} className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors">
-            <ArrowLeft className="h-4 w-4" />
-          </button>
-          <div>
-            <h2 className="text-lg font-bold text-white">Student Profile</h2>
-            <p className="text-xs text-white/80 mt-0.5">Student Information / Student Details / Profile</p>
+        <div className="relative z-10 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3">
+            <button onClick={() => router.back()} className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors">
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+            <div>
+              <h2 className="text-lg font-bold text-white">Student Profile</h2>
+              <p className="text-xs text-white/80 mt-0.5">Student Information / Student Details / Profile</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={printProfile}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white/20 hover:bg-white/30 border border-white/40 text-white text-xs font-medium transition-colors"
+            >
+              <FileDown className="h-4 w-4" /> Download PDF
+            </button>
+            <button
+              onClick={printProfile}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white text-[var(--primary)] text-xs font-semibold shadow-sm hover:bg-white/90 transition-colors"
+            >
+              <Printer className="h-4 w-4" /> Print
+            </button>
           </div>
         </div>
       </div>
@@ -1255,6 +1427,12 @@ export default function StudentProfilePage() {
           <button onClick={handleDeleteBehaviour} className="px-5 py-2 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 shadow-sm">Delete</button>
         </div>
       </Modal>
+
+      <iframe
+        id="student-report-frame"
+        title="Student profile print frame"
+        style={{ position: "fixed", left: -9999, top: 0, width: 820, height: 1100, border: 0 }}
+      />
     </div>
   )
 }

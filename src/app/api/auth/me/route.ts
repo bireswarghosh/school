@@ -1,12 +1,15 @@
-import { NextResponse } from "next/server"
+import { NextResponse, type NextRequest } from "next/server"
 import { cookies } from "next/headers"
 import { query } from "@/lib/db"
 import { verifySession, SESSION_COOKIE } from "@/lib/auth"
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const store = await cookies()
-  const token = store.get(SESSION_COOKIE)?.value
-  const session = token ? await verifySession(decodeURIComponent(token)) : null
+  const rawToken = store.get(SESSION_COOKIE)?.value
+  const authHeader = req.headers.get("authorization") || ""
+  const bearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : undefined
+  const token = (rawToken ? decodeURIComponent(rawToken) : undefined) || bearer || undefined
+  const session = token ? await verifySession(token) : null
   if (!session) {
     return NextResponse.json({ authenticated: false }, { status: 401 })
   }

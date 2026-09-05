@@ -3,6 +3,43 @@
 import { useState, useEffect, useCallback } from "react"
 import { Wallet, Loader2, CheckCircle2 } from "lucide-react"
 
+function loadScript(src: string): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) return resolve(true)
+    const s = document.createElement("script")
+    s.src = src
+    s.onload = () => resolve(true)
+    s.onerror = () => reject(new Error("Failed to load payment SDK"))
+    document.head.appendChild(s)
+  })
+}
+
+// Opens the Razorpay checkout sheet. Resolves with the Razorpay payment id on
+// success, or null when the user cancels / the payment fails.
+async function openRazorpayCheckout(order: any): Promise<{ razorpayPaymentId: string } | null> {
+  await loadScript("https://checkout.razorpay.com/v1/checkout.js")
+  return new Promise((resolve) => {
+    const RazorpayCtor = (window as any).Razorpay
+    if (!RazorpayCtor) {
+      resolve(null)
+      return
+    }
+    const rzp = new RazorpayCtor({
+      key: order.keyId,
+      order_id: order.orderId,
+      amount: order.amountPaise,
+      currency: order.currency,
+      name: order.name || "School",
+      description: order.description || "Fee payment",
+      prefill: { email: order.prefillEmail },
+      handler: (resp: any) => resolve({ razorpayPaymentId: resp.razorpay_payment_id }),
+      modal: { ondismiss: () => resolve(null) },
+    })
+    rzp.on("payment.failed", () => resolve(null))
+    rzp.open()
+  })
+}
+
 export default function PortalFees() {
   const [kids, setKids] = useState<any[]>([])
   const [studentId, setStudentId] = useState("")
@@ -52,23 +89,52 @@ export default function PortalFees() {
     const due = data?.dues?.find((d: any) => d.masterId === masterId)
     if (!due) return
     try {
-      const res = await fetch("/api/my/parent/kids/fees/pay", {
+      // Step 1 — create the Razorpay order (or record instantly when no gateway configured)
+      const orderRes = await fetch("/api/my/fees/pay/order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           studentId: Number(studentId),
           feesTypeId: due.feesTypeId,
           amount: due.balance,
-          paymentMode: "Online",
         }),
       })
-      const d = await res.json()
-      if (!res.ok) {
-        setError(d.error || "Payment failed")
-      } else {
+      const order = await orderRes.json()
+      if (!orderRes.ok) {
+        setError(order.error || "Failed to start payment")
+        return
+      }
+
+      if (order.mode === "offline") {
         setPaidMsg(`Payment of ₹${due.balance.toLocaleString("en-IN")} recorded successfully`)
         load()
+        return
       }
+
+      // Step 2 — gateway mode: open the Razorpay checkout sheet
+      const result = await openRazorpayCheckout(order)
+      if (!result) {
+        setError("Payment was not completed (cancelled or failed)")
+        return
+      }
+
+      // Step 3 — verify on the server and record the payment
+      const verifyRes = await fetch("/api/my/fees/pay/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          studentId: Number(studentId),
+          paymentId: order.paymentId,
+          razorpayPaymentId: result.razorpayPaymentId,
+        }),
+      })
+      const verified = await verifyRes.json()
+      if (!verifyRes.ok) {
+        setError(verified.error || "Verification failed")
+        return
+      }
+      setPaidMsg(`Payment of ₹${due.balance.toLocaleString("en-IN")} completed successfully`)
+      load()
     } catch {
       setError("Network error")
     } finally {

@@ -87,6 +87,7 @@ export async function POST(req: NextRequest) {
       },
       school,
       redirect,
+      token,
     })
 
     response.cookies.set(SESSION_COOKIE, token, {

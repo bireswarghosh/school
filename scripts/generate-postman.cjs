@@ -48,7 +48,7 @@ const folder = (name, description, items) => ({ name, description, item: items }
 // Auth folder
 // ----------------------------------------------------------------
 const loginReq = (role, body, note) =>
-  req("POST", "auth/login", `Login as ${role}. The response sets the httpOnly smart_school_session cookie which authenticates every other request.${note ? " " + note : ""}`, {
+  req("POST", "auth/login", `Login as ${role}. The response sets the httpOnly smart_school_session cookie (web) and also returns the session as the \`token\` field in the JSON body — send \`Authorization: Bearer <token>\` from a mobile/Flutter app.${note ? " " + note : ""}`, {
     name: role,
     body,
   })
@@ -107,6 +107,14 @@ const studentFolder = folder(
       queryParams: [{ key: "month", value: "2026-08", desc: "YYYY-MM, defaults to current month" }],
     }),
     req("GET", "my/student/fees", "My fee dues vs payments."),
+    req("POST", "my/fees/pay/order", "Start online (Razorpay) fee payment — returns orderId/keyId for the checkout SDK.", {
+      body: { studentId: 15, feesTypeId: 3, amount: 3000 },
+      name: "Razorpay order",
+    }),
+    req("POST", "my/fees/pay/verify", "Verify the Razorpay payment and mark the fee as paid (returns fresh ledger).", {
+      body: { paymentId: 61, studentId: 15, razorpayPaymentId: "pay_LIc9k4SgwYg8mNx" },
+      name: "Razorpay verify",
+    }),
     req("GET", "my/student/library", "My issued library books."),
     req("GET", "my/exams", "All exams with publish flags."),
     req("GET", "my/leave", "My applied leaves with status."),
@@ -131,8 +139,13 @@ const parentFolder = folder(
     req("GET", "my/parent/kids/fees", "Fee dues + payment history of one child.", {
       queryParams: [{ key: "studentId", value: "15", desc: "Required - kid id" }],
     }),
-    req("POST", "my/parent/kids/fees/pay", "Pay a fee online for one of my children.", {
-      body: { studentId: 15, feesTypeId: 3, amount: 5000, paymentMode: "Online" },
+    req("POST", "my/fees/pay/order", "Start online (Razorpay) fee payment for one kid — returns orderId/keyId for the checkout SDK.", {
+      body: { studentId: 15, feesTypeId: 3, amount: 3000 },
+      name: "Razorpay order",
+    }),
+    req("POST", "my/fees/pay/verify", "Verify the Razorpay payment and mark the fee as paid (returns fresh ledger).", {
+      body: { paymentId: 61, studentId: 15, razorpayPaymentId: "pay_LIc9k4SgwYg8mNx" },
+      name: "Razorpay verify",
     }),
     req("GET", "my/parent/kids/homework", "Homework of one child.", {
       queryParams: [{ key: "studentId", value: "15", desc: "Required - kid id" }],
