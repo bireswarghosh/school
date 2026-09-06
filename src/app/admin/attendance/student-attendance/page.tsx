@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Search, Save, Check, ArrowUpDown } from "lucide-react"
 
-type AttendanceStatus = "present" | "late" | "absent" | "holiday"
+type AttendanceStatus = string
 
 type Student = {
   id: number
@@ -28,17 +28,12 @@ type AttendanceRecord = {
   outTime: string
 }
 
+type AttendanceType = { id: number; type: string }
+
 const classes = Array.from({ length: 12 }, (_, i) => ({ id: i + 1, name: `Class ${i + 1}` }))
 const sectionNames = ["A", "B", "C"]
 
-const statusList: { key: AttendanceStatus; label: string }[] = [
-  { key: "present", label: "Present" },
-  { key: "late", label: "Late" },
-  { key: "absent", label: "Absent" },
-  { key: "holiday", label: "Holiday" },
-]
-
-const statusBadge: Record<AttendanceStatus, string> = {
+const statusBadge: Record<string, string> = {
   present: "bg-green-100 text-green-700",
   late: "bg-yellow-100 text-yellow-700",
   absent: "bg-red-100 text-red-700",
@@ -77,8 +72,21 @@ export default function StudentAttendancePage() {
   const [dateList, setDateList] = useState<string[]>([])
   const [sortField, setSortField] = useState<SortField>("date")
   const [sortDir, setSortDir] = useState<SortDir>("asc")
+  const [types, setTypes] = useState<AttendanceType[]>([])
+
+  useEffect(() => {
+    fetch("/api/attendance/type")
+      .then((r) => r.json())
+      .then((d) => setTypes(Array.isArray(d) ? d : []))
+      .catch(() => {})
+  }, [])
 
   const availableSections = selectedClass ? sectionNames : []
+
+  const defaultStatus = () => {
+    const present = types.find((t) => t.type.toLowerCase() === "present")
+    return present?.type || types[0]?.type || "present"
+  }
 
   const generateDateRange = (from: string, to: string): string[] => {
     const dates: string[] = []
@@ -113,8 +121,10 @@ export default function StudentAttendancePage() {
       }
 
       const getStatusKey = (typeId: number): AttendanceStatus => {
-        const map: Record<number, AttendanceStatus> = { 1: "present", 2: "late", 3: "absent", 4: "holiday" }
-        return map[typeId] || "present"
+        const found = types.find((t) => t.id === typeId)
+        if (found) return found.type
+        const fallback: Record<number, AttendanceStatus> = { 1: "present", 2: "late", 3: "absent", 4: "holiday" }
+        return fallback[typeId] || "present"
       }
 
       const map: Record<string, DateRangeRecord> = {}
@@ -128,11 +138,12 @@ export default function StudentAttendancePage() {
         }
       }
 
+      const dflt = defaultStatus()
       for (const s of studentsData) {
         for (const d of dates) {
           const key = makeKey(s.id, d)
           if (!map[key]) {
-            map[key] = { date: d, status: "present", inTime: "09:00", outTime: "14:30" }
+            map[key] = { date: d, status: dflt, inTime: "09:00", outTime: "14:30" }
           }
         }
       }
@@ -160,12 +171,14 @@ export default function StudentAttendancePage() {
     try {
       const records = Object.entries(attendanceMap).map(([key, rec]) => {
         const studentId = parseInt(key.split("_")[0])
+        const matched = types.find((t) => t.type.toLowerCase() === rec.status.toLowerCase())
         return {
           studentId,
           classId: students.find((s) => s.id === studentId)?.classId || 0,
           sectionId: students.find((s) => s.id === studentId)?.sectionId || 0,
           date: rec.date,
           status: rec.status,
+          attendanceTypeId: matched?.id,
           inTime: rec.inTime || null,
           outTime: rec.outTime || null,
         }
@@ -212,10 +225,10 @@ export default function StudentAttendancePage() {
     const records = Object.values(attendanceMap)
     return {
       total: records.length,
-      present: records.filter((r) => r.status === "present").length,
-      late: records.filter((r) => r.status === "late").length,
-      absent: records.filter((r) => r.status === "absent").length,
-      holiday: records.filter((r) => r.status === "holiday").length,
+      present: records.filter((r) => r.status.toLowerCase() === "present").length,
+      late: records.filter((r) => r.status.toLowerCase() === "late").length,
+      absent: records.filter((r) => r.status.toLowerCase() === "absent").length,
+      holiday: records.filter((r) => r.status.toLowerCase() === "holiday").length,
     }
   }
 
@@ -351,21 +364,21 @@ export default function StudentAttendancePage() {
                           <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{record.date}</td>
                           <td className="px-4 py-3">
                             <select value={record.status} onChange={(e) => updateRecord(student.id, record.date, "status", e.target.value)}
-                              className={`px-2.5 py-1 text-xs font-medium rounded-full border-0 ${statusBadge[record.status]}`}>
-                              {statusList.map(({ key, label }) => (
-                                <option key={key} value={key}>{label}</option>
+                              className={`px-2.5 py-1 text-xs font-medium rounded-full border-0 ${statusBadge[record.status.toLowerCase()] || "bg-gray-100 text-gray-600"}`}>
+                              {types.map((t) => (
+                                <option key={t.id} value={t.type}>{t.type}</option>
                               ))}
                             </select>
                           </td>
                           <td className="px-4 py-3">
                             <input type="text" value={record.inTime} onChange={(e) => updateRecord(student.id, record.date, "inTime", e.target.value)}
-                              disabled={record.status === "absent" || record.status === "holiday"}
+                              disabled={["absent", "holiday"].includes(record.status.toLowerCase())}
                               className="w-20 px-2 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent disabled:opacity-50"
                               placeholder="09:00" />
                           </td>
                           <td className="px-4 py-3">
                             <input type="text" value={record.outTime} onChange={(e) => updateRecord(student.id, record.date, "outTime", e.target.value)}
-                              disabled={record.status === "absent" || record.status === "holiday"}
+                              disabled={["absent", "holiday"].includes(record.status.toLowerCase())}
                               className="w-20 px-2 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent disabled:opacity-50"
                               placeholder="14:30" />
                           </td>

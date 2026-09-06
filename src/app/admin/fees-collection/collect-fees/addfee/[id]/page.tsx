@@ -1,11 +1,12 @@
 "use client"
 import { toast as notify } from "@/lib/toast"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useApi } from "@/lib/use-api"
 import { useCurrency } from "@/lib/currency-context"
-import { ArrowLeft, Loader2, Printer, CreditCard, Banknote, Building2, X, Check, Trash2 } from "lucide-react"
+import { useSchoolInfo, type SchoolInfo } from "@/lib/use-school-info"
+import { ArrowLeft, Loader2, Printer, CreditCard, Banknote, Building2, X, Check, Trash2, FileText } from "lucide-react"
 
 type StudentRecord = {
   id: number
@@ -75,6 +76,154 @@ const fmtDate = (d: string | undefined | null) => {
   return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : d
 }
 
+type ReceiptLine = {
+  sno: number
+  group: string
+  feeType: string
+  amount: number
+  discount: number
+  fine: number
+  paid: number
+}
+
+type ReceiptData = {
+  receiptNo: string
+  date: string
+  method: string
+  methodDetail: string
+  note: string
+  student: StudentRecord | null
+  lines: ReceiptLine[]
+  total: number
+  school: SchoolInfo
+}
+
+const esc = (v: unknown) =>
+  String(v ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+
+const buildReceiptHtml = (r: ReceiptData): string => {
+  const money = (v: number) => `₹${v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  const rows = r.lines
+    .map(
+      (l) => `<tr>
+        <td class="c">${l.sno}</td>
+        <td>${esc(l.feeType)}<span class="sub">${esc(l.group)}</span></td>
+        <td class="r">${money(l.amount)}</td>
+        <td class="r">${l.discount > 0 ? money(l.discount) : "-"}</td>
+        <td class="r">${l.fine > 0 ? money(l.fine) : "-"}</td>
+        <td class="r strong">${money(l.paid)}</td>
+      </tr>`
+    )
+    .join("")
+  const st = r.student
+  const contact = [r.school.address, [r.school.phone, r.school.email].filter(Boolean).join(" | ")]
+    .filter((x) => x.trim())
+    .join("<br />")
+
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Payment Receipt ${esc(r.receiptNo)}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: Arial, Helvetica, "Segoe UI", sans-serif; color: #1f2937; font-size: 13px; line-height: 1.5; background: #fff; padding: 20px; }
+  .sheet { max-width: 720px; margin: 0 auto; }
+  .head { display: flex; justify-content: space-between; align-items: center; gap: 20px; border-bottom: 3px solid #ff7732; padding-bottom: 16px; margin-bottom: 20px; }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .brand img { width: 64px; height: 64px; object-fit: contain; }
+  .brand h1 { font-size: 22px; color: #111827; line-height: 1.2; }
+  .brand .tag { color: #ff7732; font-size: 12px; margin-top: 2px; }
+  .brand .contact { font-size: 11px; color: #4b5563; margin-top: 4px; }
+  .meta { text-align: right; font-size: 12px; color: #4b5563; line-height: 1.9; white-space: nowrap; }
+  .meta .doc { font-size: 17px; font-weight: 700; color: #ff7732; letter-spacing: 0.5px; }
+  .meta .no { font-weight: 700; color: #111827; }
+  .info { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 16px; margin-bottom: 18px; font-size: 12px; }
+  .info .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #6b7280; margin-bottom: 3px; }
+  .info .name { font-weight: 600; font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
+  th { background: #ff7732; color: #fff; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; padding: 9px 12px; }
+  td { padding: 9px 12px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+  td .sub { display: block; font-size: 10px; color: #6b7280; margin-top: 1px; }
+  .c { text-align: center; }
+  .r { text-align: right; }
+  .strong { font-weight: 700; }
+  .totals { width: 320px; margin-left: auto; }
+  .totals .row { display: flex; justify-content: space-between; padding: 6px 0; }
+  .totals .row.grand { border-top: 2px solid #ff7732; font-weight: 700; font-size: 15px; padding-top: 10px; color: #111827; }
+  .foot { margin-top: 26px; text-align: center; color: #6b7280; font-size: 11px; border-top: 1px solid #e5e7eb; padding-top: 12px; }
+  @page { size: A4; margin: 14mm; }
+  @media print { body { padding: 0; } }
+</style>
+</head>
+<body>
+  <div class="sheet">
+    <div class="head">
+      <div class="brand">
+        ${r.school.logoSrc ? `<img src="${esc(r.school.logoSrc)}" alt="logo" />` : ""}
+        <div>
+          <h1>${esc(r.school.name)}</h1>
+          ${r.school.session ? `<div class="tag">Session: ${esc(r.school.session)}</div>` : ""}
+          ${contact ? `<div class="contact">${contact}</div>` : ""}
+        </div>
+      </div>
+      <div class="meta">
+        <div class="doc">PAYMENT RECEIPT</div>
+        <div>Receipt No: <span class="no">${esc(r.receiptNo)}</span></div>
+        <div>Date: ${esc(r.date)}</div>
+        <div>Method: ${esc(r.method)}${r.methodDetail ? ` (${esc(r.methodDetail)})` : ""}</div>
+      </div>
+    </div>
+
+    <div class="info">
+      <div>
+        <div class="lbl">Received From</div>
+        <div class="name">${esc(st ? [st.firstName, st.middleName, st.lastName].filter(Boolean).join(" ") : "-")}</div>
+        <div class="lbl" style="margin-top:6px">Class</div>
+        <div>${st ? esc(`${st.class || ""}${st.section ? " - " + st.section : ""}`) : "-"}</div>
+      </div>
+      <div>
+        <div class="lbl">Admission No</div>
+        <div class="name">${esc(st?.admissionNo || "-")}</div>
+        <div class="lbl" style="margin-top:6px">Roll No</div>
+        <div>${esc(st?.rollNo || "-")}</div>
+      </div>
+      <div>
+        <div class="lbl">Payment Details</div>
+        <div>${esc(r.method)}</div>
+        ${r.note ? `<div style="margin-top:3px;color:#4b5563">Note: ${esc(r.note)}</div>` : ""}
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th class="c">#</th>
+          <th>Fee Type</th>
+          <th class="r">Amount</th>
+          <th class="r">Discount</th>
+          <th class="r">Fine</th>
+          <th class="r">Paid</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+
+    <div class="totals">
+      <div class="row grand"><span>Total Collected</span><span>${money(r.total)}</span></div>
+    </div>
+
+    <div class="foot">Thank you — This is a computer-generated receipt and does not require a signature.</div>
+  </div>
+</body>
+</html>`
+}
+
 export default function AddFeePage() {
   const params = useParams()
   const router = useRouter()
@@ -99,6 +248,62 @@ export default function AddFeePage() {
   })
   const [paying, setPaying] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<FeeRecord | null>(null)
+  const { info: schoolInfo } = useSchoolInfo()
+  const [receipt, setReceipt] = useState<ReceiptData | null>(null)
+  const [receiptOpen, setReceiptOpen] = useState(false)
+  const docFrameRef = useRef<HTMLIFrameElement>(null)
+
+  const buildReceipt = (countAs: ResolvedFee[]): ReceiptData | null => {
+    if (countAs.length === 0) return null
+    const lines: ReceiptLine[] = countAs.map((f, i) => {
+      const entered = partialAmounts[f.id]
+      const paid = entered !== undefined && entered > 0 ? Math.min(entered, f.balance) : f.balance
+      return { sno: i + 1, group: f.groupName, feeType: f.feeTypeName, amount: f.amount, discount: f.discount, fine: f.fine, paid }
+    })
+    const methodDetail =
+      payment.method === "Cheque"
+        ? [payment.chequeNo ? `Cheque ${payment.chequeNo}` : "", payment.bank || ""].filter(Boolean).join(", ")
+        : payment.method === "Card" || payment.method === "Online Transfer"
+          ? payment.transactionId || ""
+          : ""
+    return {
+      receiptNo: `RC-${Date.now().toString().slice(-8)}`,
+      date: new Date().toISOString().split("T")[0],
+      method: payment.method,
+      methodDetail,
+      note: payment.note,
+      student,
+      lines,
+      total: lines.reduce((s, l) => s + l.paid, 0),
+      school: schoolInfo,
+    }
+  }
+
+  const printReceipt = () => {
+    if (!receipt) return
+    const frame = docFrameRef.current
+    if (!frame) return
+    frame.srcdoc = buildReceiptHtml(receipt)
+    frame.onload = () => {
+      frame.contentWindow?.focus()
+      frame.contentWindow?.print()
+    }
+  }
+
+  const handlePrintReceipt = () => {
+    if (selectedFeeIds.length > 0) {
+      const r = buildReceipt(selectedFees)
+      if (r) setReceipt(r)
+      else {
+        notify.error("Select at least one fee to generate the receipt")
+        return
+      }
+    } else if (!receipt) {
+      notify.error("Collect a payment first to generate a receipt")
+      return
+    }
+    setReceiptOpen(true)
+  }
 
   useEffect(() => {
     if (!id) return
@@ -170,6 +375,7 @@ export default function AddFeePage() {
     if (selectedFeeIds.length === 0) return
     setPaying(true)
     const today = new Date().toISOString().split("T")[0]
+    const paidFees = resolved.filter((f) => selectedFeeIds.includes(f.id))
     try {
       for (const f of resolved) {
         if (!selectedFeeIds.includes(f.id)) continue
@@ -190,6 +396,11 @@ export default function AddFeePage() {
         })
       }
       setToast(`Payment of ${money(symbol, totalAmount)} collected successfully!`)
+      const r = buildReceipt(paidFees)
+      if (r) {
+        setReceipt(r)
+        setReceiptOpen(true)
+      }
       setSelectedFeeIds([])
       setPartialAmounts({})
     } catch (e: any) {
@@ -506,7 +717,7 @@ export default function AddFeePage() {
         <span className="text-sm text-gray-500">{selectedFees.length} fee(s) selected</span>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => notify.success("Receipt printed successfully!")}
+            onClick={handlePrintReceipt}
             className="px-4 py-2 text-sm font-medium text-[var(--primary)] border border-indigo-300 rounded-lg hover:bg-[var(--primary-light)] transition-colors flex items-center gap-2"
           >
             <Printer className="h-4 w-4" />
@@ -562,6 +773,50 @@ export default function AddFeePage() {
                 className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700"
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Receipt Modal */}
+      {receiptOpen && receipt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setReceiptOpen(false)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-3xl z-10 flex flex-col max-h-[92vh]">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-[var(--primary)]" />
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800">Payment Receipt</h3>
+                  <p className="text-xs text-gray-500">{receipt.school.name} · {receipt.receiptNo}</p>
+                </div>
+              </div>
+              <button onClick={() => setReceiptOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto bg-gray-100">
+              <iframe
+                ref={docFrameRef}
+                title="Receipt preview"
+                className="w-full h-full min-h-[560px] bg-white"
+                srcDoc={buildReceiptHtml(receipt)}
+              />
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-2">
+              <button
+                onClick={() => setReceiptOpen(false)}
+                className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Close
+              </button>
+              <button
+                onClick={printReceipt}
+                className="px-4 py-2 bg-[var(--primary)] text-white text-sm font-medium rounded-lg hover:opacity-90 flex items-center gap-2"
+              >
+                <Printer className="h-4 w-4" />
+                Print / Save PDF
               </button>
             </div>
           </div>

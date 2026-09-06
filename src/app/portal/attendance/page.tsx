@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { CalendarDays, Loader2, Save } from "lucide-react"
+import { CalendarDays, Loader2, Save, AlertTriangle, CheckCircle2 } from "lucide-react"
 
 const TYPES = ["Present", "Absent", "Late", "Half Day"]
 
@@ -20,6 +20,17 @@ export default function PortalAttendance() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
   const [saved, setSaved] = useState("")
+  const [lowLimit, setLowLimit] = useState<number | null>(null)
+
+  useEffect(() => {
+    fetch("/api/school-settings")
+      .then((r) => r.json())
+      .then((d) => {
+        const v = d["attendance.lowAttendanceLimit"]
+        if (v != null && v !== "" && !Number.isNaN(Number(v))) setLowLimit(Number(v))
+      })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -127,6 +138,28 @@ export default function PortalAttendance() {
     }
   }
 
+  const attendancePct = (() => {
+    const isOnTime = (t?: string) => {
+      const n = (t || "").toLowerCase()
+      return n === "present" || n === "late"
+    }
+    let present = 0
+    let total = 0
+    if (role === "student" && summary) {
+      for (const [k, v] of Object.entries(summary as Record<string, number>)) {
+        total += Number(v) || 0
+        if (isOnTime(k)) present += Number(v) || 0
+      }
+    } else if (role === "parent") {
+      for (const r of records) {
+        total += 1
+        if (isOnTime(r.attendanceType)) present += 1
+      }
+    }
+    if (!total) return null
+    return Math.round((present / total) * 100)
+  })()
+
   return (
     <div className="space-y-6">
       <div>
@@ -215,6 +248,19 @@ export default function PortalAttendance() {
       )}
 
       {error && <div className="rounded-xl bg-red-50 dark:bg-red-950/40 px-4 py-3 text-sm text-red-600">{error}</div>}
+
+      {lowLimit != null && attendancePct != null && (role === "student" || role === "parent") &&
+        (attendancePct >= lowLimit ? (
+          <div className="flex items-center gap-2 rounded-xl bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-800 px-4 py-3 text-sm text-green-700 dark:text-green-300">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            Attendance at par — {attendancePct}% (required minimum {lowLimit}%).
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            Low attendance — your attendance is {attendancePct}%, below the school&apos;s required minimum of {lowLimit}%.
+          </div>
+        ))}
 
       <div className="glass-panel rounded-xl overflow-hidden">
         {loading ? (

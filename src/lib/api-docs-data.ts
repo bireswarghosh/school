@@ -128,6 +128,27 @@ export const authEndpoints: EndpointDoc[] = [
       redirect: "/admin",
     },
   },
+  {
+    method: "POST",
+    path: "auth/impersonate",
+    summary: "Admin/super-admin temporarily signs in as another user",
+    desc: "Verifies the acting user (admin or super_admin), then re-signs the session cookie in the target user's name while preserving the original actor in origUid. Only users with status='Active' can be impersonated. Use auth/impersonate/back to restore the original session.",
+    body: { userId: 7 },
+    response: {
+      success: true,
+      user: { id: 7, name: "Aarav Sharma", email: "student@yourschool.com", role: "student", schoolId: 1 },
+      actingAs: { id: 7, role: "student" },
+      redirect: "/portal",
+    },
+  },
+  {
+    method: "POST",
+    path: "auth/impersonate/back",
+    summary: "Restore the original admin session after impersonation",
+    desc: "Only valid when the current session was created by impersonation (origUid present). Returns to the original actor's session.",
+    body: {},
+    response: { success: true, user: { id: 2, name: "Admin - Smart School", email: "admin@smart-school.in", role: "admin" } },
+  },
 ]
 
 export const loginSamples: LoginSample[] = [
@@ -265,6 +286,28 @@ export const studentSection: RoleSection = {
         email: "aarav@yourschool.com",
         mobile: "9876500011",
         admissionDate: "2024-04-01",
+        status: "Active",
+      },
+    },
+    {
+      method: "GET",
+      path: "my/student/profile",
+      summary: "My profile enriched with class & section names",
+      roles: ["student"],
+      response: {
+        id: 15,
+        admissionNo: "ADM2026-042",
+        rollNo: "12",
+        name: "Aarav Sharma",
+        class: "Class 10",
+        section: "A",
+        gender: "Male",
+        dob: "2011-06-14",
+        category: "General",
+        bloodGroup: "O+",
+        house: "Blue",
+        email: "aarav@yourschool.com",
+        mobile: "9876500011",
         status: "Active",
       },
     },
@@ -442,6 +485,17 @@ export const studentSection: RoleSection = {
             status: "Success",
             createdAt: "2026-04-08T06:12:00.000Z",
           },
+        ],
+      },
+    },
+    {
+      method: "GET",
+      path: "my/fees/gateways",
+      summary: "Online payment gateways the school has enabled",
+      roles: ["student", "parent"],
+      response: {
+        gateways: [
+          { code: "razorpay", name: "Razorpay", mode: "card", testMode: false },
         ],
       },
     },
@@ -629,6 +683,34 @@ export const parentSection: RoleSection = {
         summary: { totalDue: 4500, totalPaid: 9000, pendingCount: 2 },
         masters: [{ id: 8, feesType: "Tuition Fee", feesGroupId: 1, amount: 12000, dueDate: "2026-04-10", status: "Active" }],
         payments: [{ id: 55, feesTypeId: 2, paidAmount: 9000, paymentMode: "Online", paymentDate: "2026-04-08", status: "Success" }],
+      },
+    },
+    {
+      method: "GET",
+      path: "my/fees/gateways",
+      summary: "Online payment gateways the school has enabled",
+      roles: ["student", "parent"],
+      response: {
+        gateways: [
+          { code: "razorpay", name: "Razorpay", mode: "card", testMode: false },
+        ],
+      },
+    },
+    {
+      method: "POST",
+      path: "my/parent/kids/fees/pay",
+      summary: "Record a direct fee payment for one of my children",
+      desc: "Creates a fee payment row for a child (skips the Razorpay order/verify flow). paymentMode defaults to \"Online\" and may be a manual mode like Cash/Cheque.",
+      roles: ["parent"],
+      body: {
+        studentId: 15,
+        feesTypeId: 3,
+        amount: 3000,
+        paymentMode: "Cash",
+      },
+      response: {
+        success: true,
+        payment: { id: 59, studentId: 15, feesTypeId: 3, paidAmount: 3000, paymentMode: "Cash", paymentDate: "2026-08-22", status: "Paid" },
       },
     },
     {
@@ -1021,7 +1103,7 @@ export const teacherSection: RoleSection = {
 
 export type CrudModule = {
   label: string
-  endpoints: { path: string; table: string; desc: string; params?: string[] }[]
+  endpoints: { path: string; table: string; desc: string; params?: string[]; methods?: ("GET" | "POST" | "PUT" | "DELETE")[] }[]
 }
 
 export const crudDesc: Record<string, string> = {
@@ -1151,6 +1233,7 @@ export const schoolAdminModules: CrudModule[] = [
   {
     label: "Fees Collection",
     endpoints: [
+      { path: "fees/fees-assign", table: "fees_masters", desc: "Bulk-assign fee types to a class/section or specific students (GET lists assignments; POST assigns)", params: ["class_id", "section_id"], methods: ["GET", "POST"] },
       { path: "fees/fees-carry-forward", table: "fees_carry_forward", desc: "Carry forward fees", params: ["student_id", "academic_year"] },
       { path: "fees/fees-discount", table: "fees_discounts", desc: "Fee discounts", params: ["student_id", "fees_type_id"] },
       { path: "fees/fees-group", table: "fees_groups", desc: "Fee groups", params: ["class_id", "section_id"] },
@@ -1176,6 +1259,7 @@ export const schoolAdminModules: CrudModule[] = [
     label: "Front Office",
     endpoints: [
       { path: "front-office/admission-enquiry", table: "admission_enquiries", desc: "Admission enquiries", params: ["class_id", "source_id", "date_from", "date_to", "status"] },
+      { path: "front-office/admission-enquiry/followup", table: "admission_enquiry_followups", desc: "Follow-up entries per enquiry", params: ["enquiry_id"], methods: ["GET", "POST"] },
       { path: "front-office/complain", table: "complaints", desc: "Complaints", params: ["complaint_type_id", "source_id", "date_from", "date_to", "status"] },
       { path: "front-office/complaint-type", table: "complaint_types", desc: "Complaint types" },
       { path: "front-office/enquiry-type", table: "enquiry_types", desc: "Enquiry types" },
@@ -1208,6 +1292,7 @@ export const schoolAdminModules: CrudModule[] = [
       { path: "human-resource/disabled-staff", table: "disabled_staff", desc: "Disabled staff" },
       { path: "human-resource/payroll", table: "payroll", desc: "Payroll", params: ["staff_id", "month", "year"] },
       { path: "human-resource/staff", table: "staff", desc: "Staff management" },
+      { path: "human-resource/staff-profile", table: "staff", desc: "Staff profile + portal login (email/password)", params: ["staff_id"], methods: ["GET", "POST", "PUT"] },
       { path: "human-resource/teachers-rating", table: "teachers_ratings", desc: "Teacher ratings" },
     ],
   },
@@ -1258,37 +1343,44 @@ export const schoolAdminModules: CrudModule[] = [
       { path: "online-course/setting", table: "online_course_settings", desc: "Settings" },
     ],
   },
-  { label: "Online Exam", endpoints: [{ path: "online-exam", table: "online_exams", desc: "Online exams" }] },
+  { label: "Online Exam", endpoints: [{ path: "online-exam", table: "online_exams", desc: "Online exams" }, { path: "online-exam/public-link", table: "exam_public_links", desc: "Public access links for an online exam", params: ["exam_id"], methods: ["GET", "POST"] }] },
   { label: "QR Attendance", endpoints: [{ path: "qr-attendance", table: "qr_attendance", desc: "QR attendance" }] },
   { label: "Question Bank", endpoints: [{ path: "question-bank", table: "question_bank", desc: "Question bank" }] },
-  { label: "Staff", endpoints: [{ path: "staff", table: "staff", desc: "Staff" }] },
+  { label: "Reference Lists", endpoints: [{ path: "classes", table: "classes", desc: "Class list (GET)", methods: ["GET"] }, { path: "sections", table: "sections", desc: "Section list by class (GET)", methods: ["GET"] }, { path: "staff", table: "staff", desc: "Staff list (GET)", methods: ["GET"] }, { path: "students", table: "students", desc: "Student list (GET)", methods: ["GET"] }, { path: "subjects", table: "subjects", desc: "Subject list (GET)", methods: ["GET"] }] },
   {
     label: "Student Information",
     endpoints: [
-      { path: "student-information/bulk-delete", table: "students", desc: "Bulk delete students (POST only)" },
+      { path: "student-information/bulk-delete", table: "students", desc: "Bulk delete disabled students (GET template + DELETE ?ids=...)", methods: ["GET", "DELETE"] },
       { path: "student-information/disable-reason", table: "disable_reasons", desc: "Disable reasons" },
       { path: "student-information/online-admission", table: "online_admissions", desc: "Online admissions" },
       { path: "student-information/student", table: "students", desc: "Students", params: ["class_id", "section_id", "house_id", "category_id", "status"] },
+      { path: "student-information/student/login", table: "users", desc: "Look up student/parent portal login (username/password)", params: ["student_id"], methods: ["GET"] },
       { path: "student-information/student-category", table: "student_categories", desc: "Student categories" },
       { path: "student-information/student-house", table: "student_houses", desc: "Student houses" },
+      { path: "student-information/timeline", table: "student_timeline", desc: "Student timeline entries", params: ["student_id"] },
     ],
   },
-  { label: "Students", endpoints: [{ path: "students", table: "students", desc: "Students (simple)" }] },
   {
     label: "System Setting",
     endpoints: [
       { path: "system-setting", table: "system_settings", desc: "System settings" },
       { path: "system-setting/addon", table: "addons", desc: "Addons" },
-      { path: "system-setting/backup", table: "backups", desc: "Backups" },
+      { path: "system-setting/backup", table: "backups", desc: "Backups", methods: ["GET", "POST", "DELETE"] },
+      { path: "system-setting/backup/restore", table: "backup_records", desc: "Restore the database from a stored backup (POST only)", methods: ["POST"] },
       { path: "system-setting/currency", table: "currencies", desc: "Currencies" },
       { path: "system-setting/custom-field", table: "custom_fields", desc: "Custom fields" },
-      { path: "system-setting/custom-field-value", table: "custom_field_values", desc: "Custom field values" },
+      { path: "system-setting/custom-field-value", table: "custom_field_values", desc: "Custom field values", methods: ["GET", "POST"] },
       { path: "system-setting/file-type", table: "file_types", desc: "File types" },
       { path: "system-setting/language", table: "languages", desc: "Languages" },
       { path: "system-setting/module", table: "modules", desc: "Modules" },
+      { path: "system-setting/next-id", table: "id_generation_settings", desc: "Next auto-generated ID (e.g. admission number) for the admission form", methods: ["GET"] },
+      { path: "system-setting/online-admission", table: "online_admission_settings", desc: "Online admission settings (GET/PUT)", methods: ["GET", "PUT"] },
       { path: "system-setting/payment-gateway", table: "payment_gateways", desc: "Payment gateways" },
-      { path: "system-setting/session", table: "sessions", desc: "Sessions" },
+      { path: "system-setting/session", table: "sessions", desc: "Sessions (academic years)" },
+      { path: "system-setting/session/current", table: "sessions", desc: "Current academic session (GET/POST)", methods: ["GET", "POST"] },
       { path: "system-setting/sidebar-menu", table: "sidebar_menus", desc: "Sidebar menu visibility" },
+      { path: "system-setting/system-field", table: "system_fields", desc: "System fields (GET/PUT)", methods: ["GET", "PUT"] },
+      { path: "system-setting/system-update", table: "system_updates", desc: "System update records (GET/POST)", methods: ["GET", "POST"] },
       { path: "system-setting/user", table: "users", desc: "Users (create staff/student/parent logins)" },
     ],
   },
@@ -1301,6 +1393,97 @@ export const schoolAdminModules: CrudModule[] = [
       { path: "transport/route-pickup-point", table: "route_pickup_points", desc: "Route-pickup point mapping" },
       { path: "transport/student-fees", table: "student_transport_fees", desc: "Student transport fees" },
       { path: "transport/vehicle", table: "vehicles", desc: "Vehicles" },
+    ],
+  },
+  {
+    label: "Dashboards",
+    endpoints: [
+      { path: "admin/dashboard", table: "multi-table", desc: "Admin dashboard metrics (counts, recent activity, fee summary)", methods: ["GET"] },
+      { path: "admin/staff-inventory-dashboard", table: "multi-table", desc: "Staff inventory dashboard metrics", methods: ["GET"] },
+      { path: "admin/students-inventory-dashboard", table: "multi-table", desc: "Students inventory dashboard metrics", methods: ["GET"] },
+    ],
+  },
+  {
+    label: "Reports",
+    endpoints: [
+      { path: "reports/class-subjects", table: "timetable_entries", desc: "Class–subject mapping report", params: ["class_id", "section_id"], methods: ["GET"] },
+      { path: "reports/staff", table: "staff", desc: "Staff report (filters/search)", methods: ["GET"] },
+      { path: "reports/students", table: "students", desc: "Student report (filters/search)", methods: ["GET"] },
+    ],
+  },
+  {
+    label: "AI Tools",
+    endpoints: [
+      { path: "ai/settings", table: "system_settings", desc: "AI provider settings & API key fields (GET/PUT)", methods: ["GET", "PUT"] },
+      { path: "ai/settings/test", table: "system_settings", desc: "Test the AI provider connection (POST)", methods: ["POST"] },
+      { path: "ai/generate-questions", table: "question_bank", desc: "Generate exam questions with AI (POST)", methods: ["POST"] },
+      { path: "ai/student-insights", table: "students", desc: "AI-generated student performance insights (POST)", params: ["student_id"], methods: ["POST"] },
+    ],
+  },
+  {
+    label: "Billing & Subscription",
+    endpoints: [
+      { path: "billing", table: "subscriptions", desc: "School subscription, plan & invoice status (GET)", methods: ["GET"] },
+    ],
+  },
+  {
+    label: "Roles & Permissions",
+    endpoints: [
+      { path: "roles", table: "roles", desc: "Roles & JSONB permissions (CRUD)" },
+    ],
+  },
+  {
+    label: "School Settings",
+    endpoints: [
+      { path: "school-settings", table: "school_settings", desc: "School-level settings key/value store (GET/PUT)", methods: ["GET", "PUT"] },
+    ],
+  },
+  {
+    label: "Staff Inventory",
+    endpoints: [
+      { path: "staff-inventory/issue", table: "item_issues", desc: "Item issue/return records", params: ["staff_id", "item_id", "status"] },
+      { path: "staff-inventory/item", table: "items", desc: "Inventory items", params: ["category_id"] },
+      { path: "staff-inventory/item-category", table: "item_categories", desc: "Item categories" },
+      { path: "staff-inventory/stock", table: "item_stocks", desc: "Stock entries", params: ["item_id", "store_id"] },
+      { path: "staff-inventory/store", table: "item_stores", desc: "Stores/warehouses" },
+      { path: "staff-inventory/supplier", table: "item_suppliers", desc: "Suppliers" },
+    ],
+  },
+  {
+    label: "Students Inventory",
+    endpoints: [
+      { path: "students-inventory/book", table: "si_books", desc: "Books (stationery) catalogue" },
+      { path: "students-inventory/brand", table: "si_brands", desc: "Brands" },
+      { path: "students-inventory/category", table: "si_categories", desc: "Product categories" },
+      { path: "students-inventory/coupon", table: "si_coupons", desc: "Coupons/discount codes" },
+      { path: "students-inventory/ledger", table: "si_ledger", desc: "Stock ledger" },
+      { path: "students-inventory/product", table: "si_products", desc: "Products" },
+      { path: "students-inventory/purchase", table: "si_purchases", desc: "Purchase orders" },
+      { path: "students-inventory/sale", table: "si_sales", desc: "Sales/pos transactions" },
+      { path: "students-inventory/sale/invoice", table: "si_sales", desc: "Public invoice view (shared link — no auth)", methods: ["GET"] },
+      { path: "students-inventory/stock", table: "si_stock", desc: "Stock levels", params: ["store_id", "product_id"] },
+      { path: "students-inventory/store", table: "si_stores", desc: "Stores" },
+      { path: "students-inventory/unit", table: "si_units", desc: "Units of measure" },
+      { path: "students-inventory/variation", table: "si_variations", desc: "Product variations" },
+      { path: "students-inventory/vendor", table: "si_vendors", desc: "Vendors" },
+    ],
+  },
+  {
+    label: "Upload & Files",
+    endpoints: [
+      { path: "upload", table: "uploaded_files", desc: "Upload a file — max 4 MB, stored in Postgres (BYTEA), raster images auto-converted to WebP", methods: ["POST"] },
+      { path: "files/{name}", table: "uploaded_files", desc: "Serve an uploaded file by name (GET)", methods: ["GET"] },
+    ],
+  },
+  {
+    label: "Public Access (no auth)",
+    endpoints: [
+      { path: "settings/public", table: "school_settings", desc: "Public school branding/login settings (no session)", params: ["code"], methods: ["GET"] },
+      { path: "students/lookup", table: "students", desc: "Public student lookup by admission_no", params: ["admission_no"], methods: ["GET"] },
+      { path: "online-admission/public", table: "online_admissions", desc: "Public online admission form (load + submit)", params: ["code"], methods: ["GET", "POST"] },
+      { path: "exam-public", table: "exam_public_links", desc: "Public exam door (load exam by token)", params: ["token"], methods: ["GET"] },
+      { path: "exam-attempts", table: "exam_attempts", desc: "Public exam attempts — record & retrieve results", params: ["exam_id"], methods: ["GET", "POST"] },
+      { path: "exam-questions", table: "online_exam_questions", desc: "Public exam question paper", params: ["exam_id"], methods: ["GET", "POST"] },
     ],
   },
 ]

@@ -14,6 +14,18 @@ const statusToTypeId: Record<string, number> = {
   holiday: 4,
 }
 
+// Resolve the configured attendance type for a record. Prefers the explicit
+// attendanceTypeId; otherwise falls back to the well-known status names, then
+// to any custom type defined in attendance_types (case-insensitive by name).
+async function resolveTypeId(typeId?: number | null, status?: string | null): Promise<number> {
+  if (typeId) return Number(typeId)
+  if (!status) return 1
+  const fixed = statusToTypeId[String(status).toLowerCase()]
+  if (fixed) return fixed
+  const res = await query(`SELECT id FROM attendance_types WHERE LOWER(type) = $1 LIMIT 1`, [String(status).toLowerCase()])
+  return res.rows[0]?.id ?? 1
+}
+
 function snakeToCamel(row: any) {
   if (!row) return row
   return {
@@ -87,8 +99,8 @@ export async function POST(req: NextRequest) {
     if (Array.isArray(body)) {
       const results = []
       for (const record of body) {
-        const { studentId, classId, sectionId, date, status, inTime, outTime } = record
-        const attendanceTypeId = statusToTypeId[status] || 1
+        const { studentId, classId, sectionId, date, status, attendanceTypeId, inTime, outTime } = record
+        const resolvedTypeId = await resolveTypeId(attendanceTypeId, status)
 
         const existing = await query(
           `SELECT id FROM ${TABLE} WHERE student_id = $1::int AND date = $2`,
@@ -99,7 +111,7 @@ export async function POST(req: NextRequest) {
           const updated = await update(TABLE, existing.rows[0].id, {
             class_id: classId,
             section_id: sectionId,
-            attendance_type_id: attendanceTypeId,
+            attendance_type_id: resolvedTypeId,
             in_time: inTime || null,
             out_time: outTime || null,
           })
@@ -110,7 +122,7 @@ export async function POST(req: NextRequest) {
             class_id: classId,
             section_id: sectionId,
             date,
-            attendance_type_id: attendanceTypeId,
+            attendance_type_id: resolvedTypeId,
             in_time: inTime || null,
             out_time: outTime || null,
           })
@@ -120,8 +132,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(results, { status: 201 })
     }
 
-    const { studentId, classId, sectionId, date, status, inTime, outTime } = body
-    const attendanceTypeId = statusToTypeId[status] || 1
+    const { studentId, classId, sectionId, date, status, attendanceTypeId, inTime, outTime } = body
+    const resolvedTypeId = await resolveTypeId(attendanceTypeId, status)
 
     const existing = await query(
       `SELECT id FROM ${TABLE} WHERE student_id = $1::int AND date = $2`,
@@ -132,7 +144,7 @@ export async function POST(req: NextRequest) {
       const item = await update(TABLE, existing.rows[0].id, {
         class_id: classId,
         section_id: sectionId,
-        attendance_type_id: attendanceTypeId,
+        attendance_type_id: resolvedTypeId,
         in_time: inTime || null,
         out_time: outTime || null,
       })
@@ -144,7 +156,7 @@ export async function POST(req: NextRequest) {
       class_id: classId,
       section_id: sectionId,
       date,
-      attendance_type_id: attendanceTypeId,
+      attendance_type_id: resolvedTypeId,
       in_time: inTime || null,
       out_time: outTime || null,
     })
@@ -165,7 +177,8 @@ export async function PUT(req: NextRequest) {
     if (data.classId !== undefined) mapped.class_id = data.classId
     if (data.sectionId !== undefined) mapped.section_id = data.sectionId
     if (data.date !== undefined) mapped.date = data.date
-    if (data.status !== undefined) mapped.attendance_type_id = statusToTypeId[data.status] || 1
+    if (data.attendanceTypeId !== undefined) mapped.attendance_type_id = Number(data.attendanceTypeId)
+    else if (data.status !== undefined) mapped.attendance_type_id = await resolveTypeId(undefined, data.status)
     if (data.inTime !== undefined) mapped.in_time = data.inTime
     if (data.outTime !== undefined) mapped.out_time = data.outTime
 

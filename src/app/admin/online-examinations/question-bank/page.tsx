@@ -6,6 +6,7 @@ import {
   Plus, Pencil, Trash2, X, Search, Eye, Upload, Download, ChevronLeft, ChevronRight, ChevronDown, RotateCcw, Save, Sparkles, Loader2, KeyRound, CheckCircle
 } from "lucide-react"
 import RichEditor from "@/components/rich-editor"
+import { AI_PROVIDERS } from "@/lib/ai-providers"
 
 type Question = {
   id: number
@@ -74,14 +75,13 @@ export default function QuestionBankPage() {
   const [showImportModal, setShowImportModal] = useState(false)
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false)
 
-  const AVAILABLE_PROVIDERS = [
-    { id: "openai",     name: "OpenAI GPT-4o-mini",     free: false, keyHint: "sk-..." },
-    { id: "gemini",     name: "Google Gemini 1.5 Flash", free: true,  keyHint: "AIza..." },
-    { id: "groq",       name: "Groq Llama 3",            free: true,  keyHint: "gsk_..." },
-    { id: "openrouter", name: "OpenRouter (Free models)", free: true,  keyHint: "sk-or-..." },
-    { id: "deepseek",   name: "DeepSeek V3",             free: true,  keyHint: "sk-..." },
-    { id: "mistral",    name: "Mistral AI",              free: true,  keyHint: "..." },
-  ]
+  const AVAILABLE_PROVIDERS = AI_PROVIDERS.map((p) => ({
+    id: p.id,
+    name: p.name,
+    free: p.free || p.needsKey === false,
+    keyHint: p.keyHint,
+    needsKey: p.needsKey !== false,
+  }))
 
   const [showAiModal, setShowAiModal] = useState(false)
   const [aiForm, setAiForm] = useState({
@@ -153,14 +153,9 @@ export default function QuestionBankPage() {
         .then(data => {
           if (data) {
             setAiForm(prev => ({ ...prev, provider: data.provider || "openai" }))
-            setAiKeys({
-              openai:     data.openai     || "",
-              gemini:     data.gemini     || "",
-              groq:       data.groq       || "",
-              openrouter: data.openrouter || "",
-              deepseek:   data.deepseek   || "",
-              mistral:    data.mistral    || "",
-            })
+            const nextKeys: Record<string, string> = {}
+            for (const p of AVAILABLE_PROVIDERS) nextKeys[p.id] = data[p.id] || ""
+            setAiKeys(nextKeys)
             setAiKeyDirty(false)
           }
         })
@@ -414,7 +409,8 @@ export default function QuestionBankPage() {
     if (aiKeyDirty) {
       await handleSaveAiKeys()
     }
-    if (!aiKeys[aiForm.provider]) {
+    const selectedProvider = AVAILABLE_PROVIDERS.find((p) => p.id === aiForm.provider)
+    if (selectedProvider?.needsKey && !aiKeys[aiForm.provider]) {
       return notify.error("No API key saved for this provider. Enter and save a key in the API Keys section below.")
     }
     setAiGenerating(true)

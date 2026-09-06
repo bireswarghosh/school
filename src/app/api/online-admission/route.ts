@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { query, getAll, getById, create, update, remove } from "@/lib/db"
+import { provisionPortalLogin } from "@/lib/portal-login"
+import { nextAutoId } from "@/lib/id-generation"
 
 function getErrorMessage(e: unknown) {
   return e instanceof Error ? e.message : String(e)
@@ -38,8 +40,11 @@ async function createStudentFromApplication(app: Record<string, any>, schoolId: 
   const today = new Date().toISOString().slice(0, 10)
   const year = new Date().getFullYear().toString()
 
+  const autoAdmissionNo = await nextAutoId("student", schoolId, "admission_no")
+  const admissionNo = str(app.admission_no) || autoAdmissionNo || generateAdmissionNo()
+
   const student = await create<any>("students", {
-    admission_no: str(app.admission_no) || generateAdmissionNo(),
+    admission_no: admissionNo,
     name: fullName,
     first_name: firstName || null,
     middle_name: middleName || null,
@@ -124,6 +129,12 @@ export async function PUT(req: NextRequest) {
     if (status === "Approved" && !studentId && schoolId) {
       const { student } = await createStudentFromApplication(existing, schoolId)
       studentId = student.id
+      try {
+        const schoolRes = await query(`SELECT code FROM schools WHERE id = $1`, [schoolId])
+        await provisionPortalLogin(student, schoolId, schoolRes.rows[0]?.code)
+      } catch {
+        // best-effort; login provisioning must never block approval
+      }
       await update("online_admissions", existing.id, { status, student_id: studentId })
       return NextResponse.json({ ...existing, status, student_id: studentId, studentCreated: true })
     }

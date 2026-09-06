@@ -8,6 +8,14 @@ export type SessionPayload = {
   role: string
   name: string
   exp: number
+  // Impersonation ("login as") claims: present when an admin is viewing as a
+  // student/parent. The original account is restored by /api/auth/impersonate/back.
+  origUid?: number
+  origRole?: string
+  origSid?: number | null
+  origName?: string
+  // Where the admin should be returned after impersonation (e.g. a student profile page).
+  ret?: string
 }
 
 function b64encode(value: string): string {

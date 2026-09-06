@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Upload, RefreshCw, Check, X, Download, Clock } from "lucide-react"
+import { RefreshCw, Check, X, Clock } from "lucide-react"
 import { useApi } from "@/lib/use-api"
 
 type UpdateRecord = {
@@ -13,10 +13,8 @@ type UpdateRecord = {
 }
 
 export default function SystemUpdatePage() {
-  const { data: updates, add, loading } = useApi<UpdateRecord>("/api/system-setting/system-update")
-  const [fileName, setFileName] = useState("")
+  const { data: updates, loading } = useApi<UpdateRecord>("/api/system-setting/system-update")
   const [checking, setChecking] = useState(false)
-  const [uploading, setUploading] = useState(false)
   const [success, setSuccess] = useState("")
 
   const showSuccess = (msg: string) => {
@@ -30,15 +28,6 @@ export default function SystemUpdatePage() {
       setChecking(false)
       showSuccess("No new updates available. You are on the latest version (5.1.0).")
     }, 2000)
-  }
-
-  const handleUpload = async () => {
-    if (!fileName.trim()) return
-    setUploading(true)
-    await add({ version: "5.1.1", updateDate: new Date().toISOString().split("T")[0], description: `Uploaded update: ${fileName.trim()}`, status: "Success" })
-    setFileName("")
-    setUploading(false)
-    showSuccess("Update file uploaded and installed successfully!")
   }
 
   return (
@@ -80,30 +69,13 @@ export default function SystemUpdatePage() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6">
-        <h3 className="text-sm font-semibold text-gray-700 mb-4">Upload Update File</h3>
-        <div className="flex gap-3">
-          <div className="flex-1">
-            <input
-              type="text"
-              value={fileName}
-              onChange={(e) => setFileName(e.target.value)}
-              placeholder="Update file name (e.g. update-v5.1.1.zip)"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
-            />
-          </div>
-          <button
-            onClick={handleUpload}
-            disabled={uploading}
-            className="rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 flex items-center gap-2 disabled:opacity-60"
-          >
-            <Upload className={`h-4 w-4 ${uploading ? "animate-pulse" : ""}`} />
-            {uploading ? "Updating..." : "Update"}
-          </button>
-        </div>
-      </div>
-
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+            <Clock className="h-4 w-4 text-[var(--primary)]" /> Update Log
+          </h3>
+          <span className="text-xs font-medium text-gray-500">{updates.length} records</span>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>

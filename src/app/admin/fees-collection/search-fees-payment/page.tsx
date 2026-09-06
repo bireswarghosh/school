@@ -14,6 +14,8 @@ type PaymentRecord = {
   amount: number
   paymentDate: string
   paymentMode: string
+  paymentMethod?: string
+  transactionId?: string
   status: string
 }
 
@@ -141,6 +143,7 @@ export default function SearchFeesPaymentPage() {
                   <th className="text-right px-4 py-2.5 font-semibold text-gray-600 text-[11px] uppercase tracking-wider">Amount</th>
                   <th className="text-left px-4 py-2.5 font-semibold text-gray-600 text-[11px] uppercase tracking-wider">Payment Date</th>
                   <th className="text-left px-4 py-2.5 font-semibold text-gray-600 text-[11px] uppercase tracking-wider">Payment Mode</th>
+                  <th className="text-left px-4 py-2.5 font-semibold text-gray-600 text-[11px] uppercase tracking-wider">Gateway</th>
                   <th className="text-center px-4 py-2.5 font-semibold text-gray-600 text-[11px] uppercase tracking-wider">Status</th>
                   <th className="text-right px-4 py-2.5 font-semibold text-gray-600 text-[11px] uppercase tracking-wider">Action</th>
                 </tr>
@@ -148,7 +151,7 @@ export default function SearchFeesPaymentPage() {
               <tbody>
                 {results.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="text-center py-12 text-gray-400">
+                    <td colSpan={10} className="text-center py-12 text-gray-400">
                       <div className="flex flex-col items-center gap-2">
                         <Search className="h-8 w-8 text-gray-300" />
                         <span className="text-sm">No payments found</span>
@@ -166,6 +169,13 @@ export default function SearchFeesPaymentPage() {
                       <td className="px-4 py-2.5 text-gray-600 text-xs">{p.paymentDate}</td>
                       <td className="px-4 py-2.5">
                         <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-700">{p.paymentMode}</span>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {p.paymentMethod ? (
+                          <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded bg-indigo-50 text-indigo-700">{p.paymentMethod}</span>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-2.5 text-center">
                         <span className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full border ${statusColors[p.status] || "bg-gray-50 text-gray-600 border-gray-200"}`}>
@@ -209,6 +219,8 @@ export default function SearchFeesPaymentPage() {
               { label: "Amount", value: `${symbol}${viewPayment.amount.toLocaleString()}` },
               { label: "Payment Date", value: viewPayment.paymentDate },
               { label: "Payment Mode", value: viewPayment.paymentMode },
+              { label: "Gateway", value: viewPayment.paymentMethod || "—" },
+              { label: "Transaction ID", value: viewPayment.transactionId || "—" },
               { label: "Status", value: viewPayment.status },
             ].map((item) => (
               <div key={item.label} className="border-b border-gray-50 pb-2">

@@ -494,21 +494,26 @@ function SchoolAdminTab({ baseUrl }: { baseUrl: string }) {
   const [samplesOpen, setSamplesOpen] = useState<string[]>([])
 
   const filtered = useMemo(() => {
-    if (!keyword.trim()) return schoolAdminModules
     const kw = keyword.toLowerCase().trim()
     return schoolAdminModules
       .map((mod) => ({
         ...mod,
         endpoints: mod.endpoints.filter(
-          (ep) =>
-            ep.path.toLowerCase().includes(kw) ||
-            ep.table.toLowerCase().includes(kw) ||
-            ep.desc.toLowerCase().includes(kw) ||
-            mod.label.toLowerCase().includes(kw)
+          (ep) => {
+            const kwMatch =
+              ep.path.toLowerCase().includes(kw) ||
+              ep.table.toLowerCase().includes(kw) ||
+              ep.desc.toLowerCase().includes(kw) ||
+              mod.label.toLowerCase().includes(kw)
+            if (!kwMatch) return false
+            if (selectedMethod === "all") return true
+            const epMethods = ep.methods ?? (["GET", "POST", "PUT", "DELETE"] as const)
+            return epMethods.includes(selectedMethod as "GET" | "POST" | "PUT" | "DELETE")
+          }
         ),
       }))
       .filter((mod) => mod.endpoints.length > 0)
-  }, [keyword])
+  }, [keyword, selectedMethod, schoolAdminModules])
 
   const toggleModule = (label: string) =>
     setExpanded((prev) => (prev.includes(label) ? prev.filter((m) => m !== label) : [...prev, label]))
@@ -531,8 +536,8 @@ function SchoolAdminTab({ baseUrl }: { baseUrl: string }) {
           <h3 className="text-sm font-semibold text-[var(--title-color)]">Generic CRUD convention</h3>
         </div>
         <p className="text-xs text-[var(--subtitle-color)] mb-3">
-          Each module below exposes the same four operations. Field names are sent in{" "}
-          <b>snake_case</b> exactly as they appear in the PostgreSQL table (the UI uses camelCase internally — the API layer maps it).
+          Most modules expose the same four operations below (field names are sent in{" "}
+          <b>snake_case</b> exactly as they appear in the PostgreSQL table — the UI uses camelCase internally, the API layer maps it). Some modules — dashboards, reports, lookups, uploads — are read-only or support a different subset; check the <b>Methods</b> column on each row.
         </p>
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2">
           {(["GET", "POST", "PUT", "DELETE"] as const).map((m) => (
@@ -623,13 +628,9 @@ function SchoolAdminTab({ baseUrl }: { baseUrl: string }) {
                             <td className="px-3 py-2.5 text-[var(--subtitle-color)] max-w-[220px] truncate">{ep.desc}</td>
                             <td className="px-3 py-2.5">
                               <div className="flex gap-1 flex-wrap">
-                                {ep.path === "student-information/bulk-delete" ? (
-                                  <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-orange-500/15 text-orange-500">POST</span>
-                                ) : (
-                                  (["GET", "POST", "PUT", "DELETE"] as const)
-                                    .filter((m) => selectedMethod === "all" || selectedMethod === m)
-                                    .map((m) => <MethodBadge key={m} method={m} />)
-                                )}
+                                {(ep.methods ?? (["GET", "POST", "PUT", "DELETE"] as const))
+                                  .filter((m) => selectedMethod === "all" || selectedMethod === m)
+                                  .map((m) => <MethodBadge key={m} method={m} />)}
                               </div>
                             </td>
                             <td className="px-3 py-2.5">

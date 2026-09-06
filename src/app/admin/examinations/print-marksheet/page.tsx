@@ -4,6 +4,9 @@ import { useState } from "react"
 import { Search, Printer, Download } from "lucide-react"
 import { useApi } from "@/lib/use-api"
 import { useClassesAndSections } from "@/lib/use-classes-sections"
+import { useSchoolInfo } from "@/lib/use-school-info"
+import PrintDocModal from "@/components/PrintDocModal"
+import { docCss, docHeaderHtml, docFoot, escHtml } from "@/lib/print-doc"
 
 type ExamGroup = {
   id: number
@@ -36,6 +39,10 @@ const sessions = ["2025-26", "2024-25", "2023-24"]
 
 export default function PrintMarksheetPage() {
   const { classNames: classes, sectionNames: sections } = useClassesAndSections()
+  const { info } = useSchoolInfo()
+  const [printOpen, setPrintOpen] = useState(false)
+  const [printTitle, setPrintTitle] = useState("Marksheet")
+  const [printRows, setPrintRows] = useState<StudentMark[]>([])
   const { data: examGroups, loading } = useApi<ExamGroup>("/api/examinations/exam")
   const { data: exams } = useApi<Exam>("/api/examinations/exam")
   const { data: allMarks } = useApi<StudentMark>("/api/examinations/exam")
@@ -72,6 +79,83 @@ export default function PrintMarksheetPage() {
 
   const handleSearch = () => {
     setSearched(true)
+  }
+
+  const openPrint = (rows: StudentMark[], title: string) => {
+    if (rows.length === 0) return
+    setPrintRows(rows)
+    setPrintTitle(title)
+    setPrintOpen(true)
+  }
+
+  const buildMarksheetHtml = (): string => {
+    const groups = new Map<string, StudentMark[]>()
+    for (const m of printRows) {
+      const key = `${m.admissionNo}|${m.studentName}`
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key)!.push(m)
+    }
+    const blocks = [...groups.values()]
+      .map((rows) => {
+        const first = rows[0]
+        const subjectRows = rows
+          .map(
+            (r, i) =>
+              `<tr><td class="c">${i + 1}</td><td>${escHtml(r.subject)}</td><td class="c">${r.theoryMarks}</td><td class="c">${r.practicalMarks}</td><td class="c strong">${r.total}/${r.maxMarks}</td><td class="c">${r.percentage}%</td><td class="c">${escHtml(r.grade)}</td><td class="c">${escHtml(r.result)}</td></tr>`
+          )
+          .join("")
+        const total = rows.reduce((s, r) => s + r.total, 0)
+        const max = rows.reduce((s, r) => s + r.maxMarks, 0)
+        const pct = max ? Math.round((total / max) * 100) : 0
+        const marksheetResult = rows.every((r) => r.result === "Pass") ? "Pass" : "Fail"
+        return `<div class="student-block">
+          <div class="info">
+            <div><div class="lbl">Student</div><div class="name">${escHtml(first.studentName)}</div></div>
+            <div><div class="lbl">Admission No</div><div class="name">${escHtml(first.admissionNo)}</div></div>
+            <div><div class="lbl">Class</div><div class="name">${escHtml(first.className + (first.section ? " - " + first.section : ""))}</div></div>
+            <div><div class="lbl">Exam</div><div class="name">${escHtml(selectedExam || "-")}</div></div>
+          </div>
+          <table>
+            <thead><tr><th class="c">#</th><th>Subject</th><th class="c">Theory</th><th class="c">Practical</th><th class="c">Total</th><th class="c">%</th><th class="c">Grade</th><th class="c">Result</th></tr></thead>
+            <tbody>${subjectRows}</tbody>
+          </table>
+          <div class="totals">
+            <div class="row"><span>Overall Marks</span><span>${total}/${max}</span></div>
+            <div class="row"><span>Overall Percentage</span><span>${pct}%</span></div>
+            <div class="row grand"><span>Result</span><span>${marksheetResult}</span></div>
+          </div>
+        </div>`
+      })
+      .join("")
+
+    return `<!doctype html>
+<html>
+<head><meta charset="utf-8" /><title>Marksheet</title>
+<style>${docCss}</style>
+</head>
+<body>
+  <div class="sheet">
+    ${docHeaderHtml(info, "MARKSHEET", info.session)}
+    ${blocks || `<p class="c">No marks found for the selected criteria.</p>`}
+    ${docFoot("This is a computer-generated marksheet. Marks are exactly as entered in the marks entry module.")}
+  </div>
+</body>
+</html>`
+  }
+
+  const exportCsv = () => {
+    if (filteredMarks.length === 0) return
+    const q = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`
+    const head = ["Admission No", "Student Name", "Class", "Section", "Subject", "Theory Marks", "Practical Marks", "Total", "Max Marks", "Percentage", "Grade", "Result"]
+    const lines = filteredMarks.map((m) =>
+      [m.admissionNo, m.studentName, m.className, m.section, m.subject, m.theoryMarks, m.practicalMarks, m.total, m.maxMarks, `${m.percentage}%`, m.grade, m.result].map(q).join(",")
+    )
+    const blob = new Blob(["\uFEFF" + [head.map(q).join(","), ...lines].join("\n")], { type: "text/csv;charset=utf-8" })
+    const a = document.createElement("a")
+    a.href = URL.createObjectURL(blob)
+    a.download = "marksheet.csv"
+    a.click()
+    URL.revokeObjectURL(a.href)
   }
 
   return (
@@ -177,11 +261,13 @@ export default function PrintMarksheetPage() {
               Showing <span className="font-medium">{filteredMarks.length}</span> records
             </p>
             <div className="flex items-center gap-2">
-              <button className="flex items-center gap-1.5 text-sm text-white bg-[var(--primary)] hover:bg-[var(--secondary)] px-4 py-1.5 rounded-lg transition-colors">
+              <button
+                onClick={() => openPrint(selectedIds.size > 0 ? filteredMarks.filter((m) => selectedIds.has(m.id)) : filteredMarks, `Marksheet · ${selectedExam || "All Exams"}`)}
+                className="flex items-center gap-1.5 text-sm text-white bg-[var(--primary)] hover:bg-[var(--secondary)] px-4 py-1.5 rounded-lg transition-colors">
                 <Printer className="h-4 w-4" />
                 Print Selected ({selectedIds.size})
               </button>
-              <button className="flex items-center gap-1.5 text-sm text-gray-600 px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+              <button onClick={exportCsv} className="flex items-center gap-1.5 text-sm text-gray-600 px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
                 <Download className="h-4 w-4" />
                 Download
               </button>
@@ -256,7 +342,7 @@ export default function PrintMarksheetPage() {
                       </span>
                     </td>
                     <td className="px-4 py-2.5 text-center">
-                      <button className="p-1.5 text-[var(--primary)] hover:bg-[var(--primary-light)] rounded-lg transition-colors" title="Print">
+                      <button onClick={() => openPrint(filteredMarks.filter((m) => m.id === mark.id), `Marksheet · ${mark.studentName}`)} className="p-1.5 text-[var(--primary)] hover:bg-[var(--primary-light)] rounded-lg transition-colors" title="Print">
                         <Printer className="h-4 w-4" />
                       </button>
                     </td>
@@ -274,6 +360,14 @@ export default function PrintMarksheetPage() {
           </div>
         </div>
       )}
+
+      <PrintDocModal
+        open={printOpen}
+        onClose={() => setPrintOpen(false)}
+        title={printTitle}
+        subtitle={info.name}
+        html={buildMarksheetHtml()}
+      />
     </div>
   )
 }

@@ -1,21 +1,25 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, Pencil, Trash2, X, Save, Check, Filter } from "lucide-react"
+import { Plus, Pencil, Trash2, X, Save, Check, Filter, Shield } from "lucide-react"
 import { useApi } from "@/lib/use-api"
+import { enabledPermissionCount } from "@/lib/permissions"
+import PermissionMatrixModal from "@/components/PermissionMatrixModal"
 
 type User = {
   id: number
   username: string
   name: string
   email: string
-  phone: string
   role: string
-  status: boolean
+  status: string
   lastLogin: string
+  permissions: string[]
 }
 
 const roleOptions = ["Admin", "Teacher", "Accountant", "Librarian", "Receptionist"]
+
+const emptyForm = { username: "", password: "", confirmPassword: "", name: "", email: "", role: "Teacher", status: true }
 
 export default function UsersPanel() {
   const { data: users, add, update, remove, loading } = useApi<User>("/api/system-setting/user")
@@ -24,7 +28,8 @@ export default function UsersPanel() {
   const [editing, setEditing] = useState<User | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [showDelete, setShowDelete] = useState(false)
-  const [form, setForm] = useState({ username: "", password: "", confirmPassword: "", name: "", email: "", phone: "", role: "Teacher", status: true })
+  const [permUser, setPermUser] = useState<User | null>(null)
+  const [form, setForm] = useState(emptyForm)
   const [success, setSuccess] = useState("")
 
   const showSuccess = (msg: string) => {
@@ -35,24 +40,26 @@ export default function UsersPanel() {
   const filteredUsers = filterRole === "All" ? users : users.filter((u) => u.role === filterRole)
 
   const handleAdd = async () => {
-    if (!form.username.trim() || !form.name.trim() || !form.email.trim()) return
-    if (form.password && form.password !== form.confirmPassword) { showSuccess("Passwords do not match!"); return }
-    await add({ username: form.username.trim(), name: form.name.trim(), email: form.email.trim(), phone: form.phone.trim(), role: form.role, status: form.status, lastLogin: "Never" })
+    if (!form.username.trim() || !form.name.trim() || !form.email.trim() || !form.password) return
+    if (form.password !== form.confirmPassword) { showSuccess("Passwords do not match!"); return }
+    await add({ username: form.username.trim(), name: form.name.trim(), email: form.email.trim(), role: form.role, status: form.status, password: form.password })
     setShowModal(false)
-    setForm({ username: "", password: "", confirmPassword: "", name: "", email: "", phone: "", role: "Teacher", status: true })
+    setForm(emptyForm)
     showSuccess("User added successfully!")
   }
 
   const handleEditOpen = (u: User) => {
     setEditing(u)
-    setForm({ username: u.username, password: "", confirmPassword: "", name: u.name, email: u.email, phone: u.phone, role: u.role, status: u.status })
+    setForm({ username: u.username, password: "", confirmPassword: "", name: u.name, email: u.email, role: u.role, status: u.status !== "inactive" })
     setShowModal(true)
   }
 
   const handleEditSave = async () => {
     if (!editing || !form.username.trim() || !form.name.trim() || !form.email.trim()) return
     if (form.password && form.password !== form.confirmPassword) { showSuccess("Passwords do not match!"); return }
-    await update(editing.id, { username: form.username.trim(), name: form.name.trim(), email: form.email.trim(), phone: form.phone.trim(), role: form.role, status: form.status })
+    const payload: Record<string, unknown> = { username: form.username.trim(), name: form.name.trim(), email: form.email.trim(), role: form.role, status: form.status }
+    if (form.password) payload.password = form.password
+    await update(editing.id, payload)
     setShowModal(false)
     setEditing(null)
     showSuccess("User updated successfully!")
@@ -71,10 +78,17 @@ export default function UsersPanel() {
     showSuccess("User deleted successfully!")
   }
 
+  const handleSavePermissions = async (permissions: string[]) => {
+    if (!permUser) return
+    await update(permUser.id, { permissions })
+    setPermUser(null)
+    showSuccess("Permissions saved")
+  }
+
   const getUser = (id: number) => users.find((u) => u.id === id)
 
   const clearForm = () => {
-    setForm({ username: "", password: "", confirmPassword: "", name: "", email: "", phone: "", role: "Teacher", status: true })
+    setForm(emptyForm)
     setEditing(null)
   }
 
@@ -112,46 +126,63 @@ export default function UsersPanel() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50">
-                {["#", "Username", "Name", "Email", "Role", "Status", "Last Login", "Action"].map((h) => (
+                {["#", "Username", "Name", "Email", "Role", "Permissions", "Status", "Last Login", "Action"].map((h) => (
                   <th key={h} className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading && filteredUsers.length === 0 ? (
-                <tr><td colSpan={8} className="text-center py-8 text-gray-400">Loading...</td></tr>
+                <tr><td colSpan={9} className="text-center py-8 text-gray-400">Loading...</td></tr>
               ) : filteredUsers.length === 0 ? (
-                <tr><td colSpan={8} className="text-center py-8 text-gray-400">No users found</td></tr>
+                <tr><td colSpan={9} className="text-center py-8 text-gray-400">No users found</td></tr>
               ) : (
-                filteredUsers.map((u, idx) => (
-                  <tr key={u.id} className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/50"}`}>
-                    <td className="px-4 py-3 text-gray-600">{idx + 1}</td>
-                    <td className="px-4 py-3 font-medium text-gray-800">{u.username}</td>
-                    <td className="px-4 py-3 text-gray-800">{u.name}</td>
-                    <td className="px-4 py-3 text-gray-600">{u.email}</td>
-                    <td className="px-4 py-3">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
-                        {u.role}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${u.status ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                        {u.status ? "Active" : "Inactive"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-500 text-xs">{u.lastLogin}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => handleEditOpen(u)} className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Edit">
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button onClick={() => handleDeleteOpen(u.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                filteredUsers.map((u, idx) => {
+                  const permCount = Array.isArray(u.permissions) && u.permissions.length > 0
+                    ? enabledPermissionCount(u.permissions)
+                    : null
+                  return (
+                    <tr key={u.id} className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/50"}`}>
+                      <td className="px-4 py-3 text-gray-600">{idx + 1}</td>
+                      <td className="px-4 py-3 font-medium text-gray-800">{u.username}</td>
+                      <td className="px-4 py-3 text-gray-800">{u.name}</td>
+                      <td className="px-4 py-3 text-gray-600">{u.email}</td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                          {u.role}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {permCount !== null ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[var(--primary-light)] text-[var(--primary)]">
+                            {permCount} custom
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">Uses role</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${String(u.status).toLowerCase() === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                          {String(u.status).toLowerCase() === "active" ? "Active" : "Inactive"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-500 text-xs">{u.lastLogin || "Never"}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => setPermUser(u)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Assign Permissions">
+                            <Shield className="h-4 w-4" />
+                          </button>
+                          <button onClick={() => handleEditOpen(u)} className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Edit">
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button onClick={() => handleDeleteOpen(u.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })
               )}
             </tbody>
           </table>
@@ -160,6 +191,16 @@ export default function UsersPanel() {
           Showing {filteredUsers.length} of {users.length} records
         </div>
       </div>
+
+      {permUser && (
+        <PermissionMatrixModal
+          title={`Permissions - ${permUser.name}`}
+          subtitle="Custom permissions override the user's role. Leave everything unchecked and save to revert to the role's permissions."
+          initialPermissions={permUser.permissions}
+          onClose={() => setPermUser(null)}
+          onSave={handleSavePermissions}
+        />
+      )}
 
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -213,15 +254,6 @@ export default function UsersPanel() {
                   type="email"
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                <input
-                  type="text"
-                  value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
                 />
               </div>

@@ -5,6 +5,7 @@ import { UserCheck, Search, ShoppingCart, Plus, Minus, Trash2, Ticket, Save, Pac
 import { useApi } from "@/lib/use-api"
 import { useCurrency } from "@/lib/currency-context"
 import { useAuth } from "@/lib/auth-context"
+import { useSchoolInfo } from "@/lib/use-school-info"
 import { toast as notify } from "@/lib/toast"
 
 type Product = { id?: number; name: string; sellingPrice?: number | string }
@@ -83,6 +84,7 @@ export default function StudentSalesPage() {
   const [receipt, setReceipt] = useState<Receipt | null>(null)
   const [receiptOpen, setReceiptOpen] = useState(false)
   const { school } = useAuth()
+  const { info: schoolInfo } = useSchoolInfo()
   const [catalogTab, setCatalogTab] = useState<"products" | "books">("products")
   const [search, setSearch] = useState("")
   const [cart, setCart] = useState<CartItem[]>([])
@@ -375,11 +377,12 @@ export default function StudentSalesPage() {
 
   const buildReceiptHtml = (r: Receipt): string => {
     const fmt = (n: number) => `${symbol}${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-    const sName = esc(school?.name || "Smart School")
+    const sName = esc(schoolInfo.name || school?.name || "Smart School")
     const sTagline = school?.tagline ? esc(school.tagline) : ""
-    const sAddress = school?.address ? esc(school.address) : ""
-    const sPhone = school?.phone ? esc(school.phone) : ""
-    const sEmail = school?.email ? esc(school.email) : ""
+    const sAddress = esc(schoolInfo.address || school?.address || "")
+    const sPhone = esc(schoolInfo.phone || school?.phone || "")
+    const sEmail = esc(schoolInfo.email || school?.email || "")
+    const sLogo = schoolInfo.logoSrc ? esc(schoolInfo.logoSrc) : ""
     const items = r.items
       .map(
         (it) =>
@@ -397,6 +400,7 @@ export default function StudentSalesPage() {
   body { font-family: Arial, Helvetica, sans-serif; color: #1f2937; font-size: 13px; }
   .sheet { max-width: 420px; margin: 0 auto; padding: 30px 24px; }
   .r-head { text-align: center; border-bottom: 2px dashed #d1d5db; padding-bottom: 14px; margin-bottom: 14px; }
+  .r-head img { width: 58px; height: 58px; object-fit: contain; margin-bottom: 6px; }
   .r-head h1 { font-size: 18px; color: #111827; }
   .r-head .tag { color: #ff7732; font-size: 11px; margin-top: 2px; }
   .r-head .meta { font-size: 12px; color: #4b5563; margin-top: 8px; line-height: 1.6; }
@@ -418,6 +422,7 @@ export default function StudentSalesPage() {
 <body>
   <div class="sheet">
     <div class="r-head">
+      ${sLogo ? `<img src="${sLogo}" alt="logo" />` : ""}
       <h1>${sName}</h1>
       ${sTagline ? `<div class="tag">${sTagline}</div>` : ""}
       ${sAddress ? `<div style="font-size:11px;color:#4b5563;margin-top:3px;">${sAddress}</div>` : ""}

@@ -26,7 +26,7 @@ export const TENANT_TABLES = new Set<string>([
   "postal_receives", "complaints", "enquiry_types", "purpose_types", "complaint_types", "source_types", "reference_types",
   "admission_enquiry_followups",
   "subject_group_sections", "subject_group_subjects",
-  "user_logs", "sidebar_menus", "system_fields", "backup_records", "online_admission_settings",
+  "user_logs", "sidebar_menus", "system_fields", "system_updates", "backup_records", "online_admission_settings",
   "si_categories", "si_brands", "si_units", "si_stores", "si_vendors", "si_products", "si_books",
   "si_variations", "si_purchases", "si_stock", "si_sales", "si_ledger", "si_coupons",
   "school_settings",

@@ -95,6 +95,8 @@ export async function getFeeLedger(student: any) {
     const paidAmount = paid ? paid.paid : 0
     return {
       masterId: Number(m.id),
+      feesTypeId: Number(m.feesTypeId),
+      feesGroupId: Number(m.feesGroupId) || null,
       feesType: m.feesType,
       feesGroup: m.feesGroup,
       amount: Number(m.amount),

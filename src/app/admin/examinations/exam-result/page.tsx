@@ -1,8 +1,11 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { Search, Filter, Download } from "lucide-react"
+import { Search, Filter, Download, Printer } from "lucide-react"
 import { useClassesAndSections } from "@/lib/use-classes-sections"
+import { useSchoolInfo } from "@/lib/use-school-info"
+import PrintDocModal from "@/components/PrintDocModal"
+import { docCss, docHeaderHtml, docFoot, escHtml } from "@/lib/print-doc"
 
 type ExamGroup = { id: number; name: string }
 type Exam = { id: number; groupId: number; name: string; session: string; passingPercentage: number }
@@ -44,6 +47,8 @@ async function fetchJson(url: string) {
 
 export default function ExamResultPage() {
   const { classNames: classes, sectionNames: sections } = useClassesAndSections()
+  const { info } = useSchoolInfo()
+  const [printOpen, setPrintOpen] = useState(false)
   const [examGroups, setExamGroups] = useState<ExamGroup[]>([])
   const [exams, setExams] = useState<Exam[]>([])
   const [subjects, setSubjects] = useState<Subject[]>([])
@@ -120,6 +125,78 @@ export default function ExamResultPage() {
     }
     return rows
   }, [searched, filterExam, filterClass, filterSection, exams, subjects, marks, students])
+
+  const buildResultHtml = (): string => {
+    const exam = exams.find((e) => e.id === parseInt(filterExam))
+    const groups = new Map<string, ResultRow[]>()
+    for (const row of resultRows) {
+      const key = `${row.admissionNo}|${row.studentName}`
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key)!.push(row)
+    }
+    const blocks = [...groups.values()]
+      .map((rows) => {
+        const first = rows[0]
+        const subjectRows = rows
+          .map(
+            (r, i) =>
+              `<tr><td class="c">${i + 1}</td><td>${escHtml(r.subject)}</td><td class="c">${r.theoryMarks}</td><td class="c">${r.practicalMarks}</td><td class="c strong">${r.total}/${r.maxMarks}</td><td class="c">${r.percentage}%</td><td class="c">${escHtml(r.grade)}</td><td class="c">${escHtml(r.result)}</td></tr>`
+          )
+          .join("")
+        const total = rows.reduce((s, r) => s + r.total, 0)
+        const max = rows.reduce((s, r) => s + r.maxMarks, 0)
+        const pct = max ? Math.round((total / max) * 100) : 0
+        const grade = getGrade(pct)
+        const result = rows.every((r) => r.result === "Pass") ? "Pass" : "Fail"
+        return `<div class="student-block">
+          <div class="info">
+            <div><div class="lbl">Student</div><div class="name">${escHtml(first.studentName)}</div></div>
+            <div><div class="lbl">Admission No</div><div class="name">${escHtml(first.admissionNo)}</div></div>
+            <div><div class="lbl">Class</div><div class="name">${escHtml(first.className)}</div></div>
+            <div><div class="lbl">Exam</div><div class="name">${escHtml(exam?.name || "")}</div></div>
+          </div>
+          <table>
+            <thead><tr><th class="c">#</th><th>Subject</th><th class="c">Theory</th><th class="c">Practical</th><th class="c">Total</th><th class="c">%</th><th class="c">Grade</th><th class="c">Result</th></tr></thead>
+            <tbody>${subjectRows}</tbody>
+          </table>
+          <div class="totals">
+            <div class="row"><span>Overall Marks</span><span>${total}/${max}</span></div>
+            <div class="row"><span>Overall Percentage</span><span>${pct}%</span></div>
+            <div class="row grand"><span>Result</span><span>${result} (${grade})</span></div>
+          </div>
+        </div>`
+      })
+      .join("")
+
+    return `<!doctype html>
+<html>
+<head><meta charset="utf-8" /><title>Exam Result</title>
+<style>${docCss}</style>
+</head>
+<body>
+  <div class="sheet">
+    ${docHeaderHtml(info, exam?.name ? `EXAM RESULT · ${escHtml(exam.name)}` : "EXAM RESULT", info.session)}
+    ${blocks || `<p class="c">No results found for the selected criteria.</p>`}
+    ${docFoot("This is a computer-generated result sheet. Marks are exactly as entered in the Exam Result module.")}
+  </div>
+</body>
+</html>`
+  }
+
+  const exportCsv = () => {
+    if (resultRows.length === 0) return
+    const q = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`
+    const head = ["Admission No", "Student Name", "Class", "Subject", "Theory Marks", "Practical Marks", "Total", "Max Marks", "Percentage", "Grade", "Result"]
+    const lines = resultRows.map((r) =>
+      [r.admissionNo, r.studentName, r.className, r.subject, r.theoryMarks, r.practicalMarks, r.total, r.maxMarks, `${r.percentage}%`, r.grade, r.result].map(q).join(",")
+    )
+    const blob = new Blob(["\uFEFF" + [head.map(q).join(","), ...lines].join("\n")], { type: "text/csv;charset=utf-8" })
+    const a = document.createElement("a")
+    a.href = URL.createObjectURL(blob)
+    a.download = "exam-result.csv"
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
 
   return (
     <div className="space-y-6">
@@ -201,10 +278,18 @@ export default function ExamResultPage() {
         <div className="px-5 py-3 border-b border-gray-200 flex flex-wrap items-center justify-between gap-4">
           <h3 className="text-sm font-semibold text-gray-700">Exam Result List</h3>
           {resultRows.length > 0 && (
-            <button
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-[var(--primary)] border border-indigo-300 rounded-lg hover:bg-[var(--primary-light)] transition-colors">
-              <Download className="h-4 w-4" /> Export
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPrintOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-[var(--primary)] hover:opacity-90 rounded-lg transition-colors">
+                <Printer className="h-4 w-4" /> Print Result
+              </button>
+              <button
+                onClick={exportCsv}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-[var(--primary)] border border-indigo-300 rounded-lg hover:bg-[var(--primary-light)] transition-colors">
+                <Download className="h-4 w-4" /> Export
+              </button>
+            </div>
           )}
         </div>
         <div className="overflow-x-auto">
@@ -261,6 +346,14 @@ export default function ExamResultPage() {
           </div>
         )}
       </div>
+
+      <PrintDocModal
+        open={printOpen}
+        onClose={() => setPrintOpen(false)}
+        title="Exam Result"
+        subtitle={resultRows[0] ? `${resultRows[0].studentName} and ${Math.max(0, new Set(resultRows.map((r) => r.admissionNo)).size - 1)} more · ${info.name}` : info.name}
+        html={buildResultHtml()}
+      />
     </div>
   )
 }

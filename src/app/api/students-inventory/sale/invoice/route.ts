@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server"
 import { query } from "@/lib/db"
+import { getSchoolDocInfo } from "@/lib/school-info"
 
 const esc = (v: string | number | null | undefined) =>
   String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
@@ -25,8 +26,7 @@ export async function GET(req: NextRequest) {
   const rows = result.rows
   if (rows.length === 0) return new Response("Invoice not found", { status: 404 })
 
-  const schoolResult = await query(`SELECT name, tagline, address, phone, email FROM schools WHERE id = $1`, [rows[0].school_id])
-  const school = schoolResult.rows[0] || {}
+  const school = await getSchoolDocInfo(rows[0].school_id)
 
   const fmt = (n: string | number | null | undefined) =>
     "₹" + Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -70,6 +70,8 @@ export async function GET(req: NextRequest) {
   .toolbar .hint { font-size: 12px; color: #6b7280; }
   .sheet { max-width: 780px; margin: 0 auto; background: #fff; padding: 40px 44px; border: 1px solid #e5e7eb; border-radius: 10px; }
   .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; border-bottom: 3px solid #ff7732; padding-bottom: 18px; margin-bottom: 22px; }
+  .head .brand { display: flex; align-items: center; gap: 14px; }
+  .head .brand img { width: 58px; height: 58px; object-fit: contain; }
   .head h1 { font-size: 24px; color: #111827; line-height: 1.2; }
   .head .tag { color: #ff7732; font-size: 12px; margin-top: 3px; }
   .head .contact { font-size: 12px; color: #4b5563; margin-top: 4px; }
@@ -112,11 +114,14 @@ export async function GET(req: NextRequest) {
   </div>
   <div class="sheet">
     <div class="head">
-      <div>
-        <h1>${esc(school.name || "Smart School")}</h1>
-        ${school.tagline ? `<div class="tag">${esc(school.tagline)}</div>` : ""}
-        ${school.address ? `<div class="contact">${esc(school.address)}</div>` : ""}
-        ${school.phone || school.email ? `<div class="contact">${[school.phone, school.email].filter(Boolean).map(esc).join(" | ")}</div>` : ""}
+      <div class="brand">
+        ${school.logo ? `<img src="${esc(school.logo)}" alt="logo" />` : ""}
+        <div>
+          <h1>${esc(school.name)}</h1>
+          ${school.tagline ? `<div class="tag">${esc(school.tagline)}</div>` : ""}
+          ${school.address ? `<div class="contact">${esc(school.address)}</div>` : ""}
+          ${school.phone || school.email ? `<div class="contact">${[school.phone, school.email].filter(Boolean).map(esc).join(" | ")}</div>` : ""}
+        </div>
       </div>
       <div class="meta">
         <div class="inv-no">Invoice ${esc(first.sale_no)}</div>

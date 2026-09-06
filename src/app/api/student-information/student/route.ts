@@ -1,6 +1,19 @@
 import { NextRequest, NextResponse } from "next/server"
 import { query, create, update, remove } from "@/lib/db"
 import { camelToSnake } from "@/lib/field-mapping"
+import { provisionPortalLogin } from "@/lib/portal-login"
+
+function getSchoolId(req: NextRequest): number | null {
+  const raw = req.headers.get("x-school-id")
+  if (!raw) return null
+  const n = parseInt(raw, 10)
+  return Number.isNaN(n) ? null : n
+}
+
+async function getSchoolCode(schoolId: number): Promise<string | undefined> {
+  const r = await query(`SELECT code FROM schools WHERE id = $1`, [schoolId])
+  return r.rows[0]?.code ?? undefined
+}
 
 function getErrorMessage(e: unknown) {
   return e instanceof Error ? e.message : String(e)
@@ -167,12 +180,25 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const lookup = await getClassSectionLookup()
+    const schoolId = getSchoolId(req)
+    const schoolCode = schoolId ? await getSchoolCode(schoolId) : undefined
+
     if (Array.isArray(body)) {
       const created = []
       const errors = []
+      let provisioned = 0
       for (const item of body) {
         try {
           const rec = await create(TABLE, await buildInsertData(item, lookup))
+          if (schoolId && rec?.id) {
+            try {
+              const raw = (await query(`SELECT * FROM ${TABLE} WHERE id = $1`, [rec.id])).rows[0]
+              if (raw) await provisionPortalLogin(raw, schoolId, schoolCode)
+              provisioned += 1
+            } catch {
+              // login provisioning is best-effort; never fail the import
+            }
+          }
           const rows = rec ? await getWithJoins(rec.id) : []
           created.push(rows[0] || rec)
         } catch (e: any) {
@@ -187,9 +213,22 @@ export async function POST(req: NextRequest) {
           })
         }
       }
-      return NextResponse.json({ created, errors }, { status: 200 })
+      return NextResponse.json({
+        created,
+        errors,
+        provisioned: schoolId ? provisioned : 0,
+        loginsProvisioned: provisioned,
+      }, { status: 200 })
     }
     const item = await create(TABLE, await buildInsertData(body, lookup))
+    if (schoolId && item?.id) {
+      try {
+        const raw = (await query(`SELECT * FROM ${TABLE} WHERE id = $1`, [item.id])).rows[0]
+        if (raw) await provisionPortalLogin(raw, schoolId, schoolCode)
+      } catch {
+        // best-effort
+      }
+    }
     const rows = await getWithJoins(item.id)
     return NextResponse.json(rows[0] || item, { status: 201 })
   } catch (e: any) {

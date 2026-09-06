@@ -21,18 +21,21 @@ export const GET = handle(async (req: NextRequest, ctx) => {
     [student.class_id]
   )
 
-  const paidRes = await query(
+  const paymentRes = await query(
     `SELECT fp.id, fp.fees_type_id AS "feesTypeId", fp.amount, fp.discount_amount AS "discountAmount",
        fp.fine_amount AS "fineAmount", fp.paid_amount AS "paidAmount", fp.payment_mode AS "paymentMode",
-       fp.payment_date AS "paymentDate", fp.status, fp.created_at AS "createdAt"
+       fp.payment_method AS "paymentMethod", fp.transaction_id AS "transactionId", fp.payment_date AS "paymentDate", fp.status, fp.created_at AS "createdAt"
      FROM fees_payments fp
      WHERE fp.student_id = $1
-     ORDER BY fp.payment_date DESC`,
+     ORDER BY fp.payment_date DESC NULLS LAST, fp.id DESC`,
     [studentId]
   )
+  const statusL = (s: any) => String(s || "").toLowerCase()
+  const paidRows = paymentRes.rows.filter((p: any) => ["paid", "success"].includes(statusL(p.status)))
+  const pendingRows = paymentRes.rows.filter((p: any) => statusL(p.status) === "pending")
 
   const byType = new Map<number, { paid: number; paidAt: string | null }>()
-  for (const p of paidRes.rows) {
+  for (const p of paidRows) {
     const key = Number(p.feesTypeId)
     const cur = byType.get(key) || { paid: 0, paidAt: null }
     cur.paid += Number(p.paidAmount || p.amount || 0)
@@ -46,6 +49,7 @@ export const GET = handle(async (req: NextRequest, ctx) => {
     return {
       masterId: Number(m.id),
       feesTypeId: Number(m.feesTypeId),
+      feesGroupId: Number(m.feesGroupId) || null,
       feesType: m.feesType,
       feesGroup: m.feesGroup,
       amount: Number(m.amount),
@@ -61,10 +65,10 @@ export const GET = handle(async (req: NextRequest, ctx) => {
     student,
     summary: {
       totalDue: dues.reduce((s, d) => s + d.balance, 0),
-      totalPaid: paidRes.rows.reduce((s: number, p: any) => s + Number(p.paidAmount || p.amount || 0), 0),
+      totalPaid: paidRows.reduce((s: number, p: any) => s + Number(p.paidAmount || p.amount || 0), 0),
       pendingCount: dues.filter((d) => d.balance > 0).length,
     },
     dues,
-    payments: paidRes.rows,
+    payments: [...pendingRows, ...paidRows],
   }
 })

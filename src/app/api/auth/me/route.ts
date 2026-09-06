@@ -34,7 +34,8 @@ export async function GET(req: NextRequest) {
       role = roleResult.rows[0].name
       permissions = roleResult.rows[0].permissions || []
     }
-  } else if (Array.isArray(user.permissions)) {
+  }
+  if (Array.isArray(user.permissions) && user.permissions.length > 0) {
     permissions = user.permissions
   }
 
@@ -47,6 +48,7 @@ export async function GET(req: NextRequest) {
       role,
       permissions,
       schoolId: user.school_id ?? null,
+      ...(session.origUid ? { origUid: session.origUid, origRole: session.origRole, origName: session.origName } : {}),
     },
     school,
   })

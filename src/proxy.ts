@@ -12,6 +12,7 @@ const PUBLIC_API_PREFIXES = [
   "/api/online-exam/public-link",
   "/api/online-admission/public",
   "/api/students-inventory/sale/invoice",
+  "/api/settings/public",
 ]
 
 const PUBLIC_PAGE_PREFIXES = [

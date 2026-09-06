@@ -105,7 +105,14 @@ const todayStr = () => {
   return `${mm}/${dd}/${yyyy}`
 }
 
-function generateAdmissionNo() {
+async function generateAdmissionNo() {
+  try {
+    const res = await fetch("/api/system-setting/next-id")
+    const data = await res.json()
+    if (data?.admissionNo) return String(data.admissionNo)
+  } catch {
+    // fall through to the local generator
+  }
   const year = new Date().getFullYear()
   const rand = String(Math.floor(Math.random() * 9000) + 1000)
   return `S${year}${rand}`
@@ -298,7 +305,7 @@ export default function StudentAdmissionPage() {
   })
 
   useEffect(() => {
-    setForm((prev) => ({ ...prev, admissionNo: generateAdmissionNo() }))
+    generateAdmissionNo().then((admissionNo) => setForm((prev) => ({ ...prev, admissionNo })))
     fetch("/api/system-setting/custom-field")
       .then((r) => r.json())
       .then((data: CustomField[]) => setCustomFields(data.filter((f) => f.module === "Student")))
@@ -522,7 +529,7 @@ export default function StudentAdmissionPage() {
         setCustomValues({})
         setForm({
           ...defaultFormState(),
-          admissionNo: generateAdmissionNo(),
+          admissionNo: await generateAdmissionNo(),
         })
       }
     } catch (e: any) {

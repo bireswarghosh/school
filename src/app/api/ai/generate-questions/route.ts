@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { query } from "@/lib/db"
+import { AI_PROVIDERS } from "@/lib/ai-providers"
 
 function getErrorMessage(e: unknown) {
   return e instanceof Error ? e.message : String(e)
@@ -17,20 +18,12 @@ type QuestionInput = {
   correctAnswerTrueFalse?: string
 }
 
-type Provider = "openai" | "gemini" | "groq" | "openrouter" | "deepseek" | "mistral"
-
-const PROVIDERS: Record<Provider, { name: string; model: string; url: string; keyDb: string; free: boolean }> = {
-  openai:     { name: "OpenAI GPT-4o-mini",      model: "gpt-4o-mini",              url: "https://api.openai.com/v1/chat/completions",                              keyDb: "ai_key_openai",     free: false },
-  gemini:     { name: "Google Gemini 2.0 Flash",  model: "gemini-2.0-flash-exp",      url: "https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash-exp:generateContent", keyDb: "ai_key_gemini", free: true },
-  groq:       { name: "Groq Llama 3",             model: "llama-3.3-70b-versatile",  url: "https://api.groq.com/openai/v1/chat/completions",                          keyDb: "ai_key_groq",       free: true },
-  openrouter: { name: "OpenRouter (Free models)", model: "openrouter",               url: "https://openrouter.ai/api/v1/chat/completions",                             keyDb: "ai_key_openrouter", free: true },
-  deepseek:   { name: "DeepSeek V3",              model: "deepseek-chat",            url: "https://api.deepseek.com/v1/chat/completions",                             keyDb: "ai_key_deepseek",   free: true },
-  mistral:    { name: "Mistral AI",               model: "mistral-small-latest",     url: "https://api.mistral.ai/v1/chat/completions",                                keyDb: "ai_key_mistral",    free: true },
-}
-
-const KEY_DB_TO_PROVIDER = Object.fromEntries(
-  Object.entries(PROVIDERS).map(([k, v]) => [v.keyDb, k])
-)
+const PROVIDERS = Object.fromEntries(
+  AI_PROVIDERS.map((p) => [
+    p.id,
+    { name: p.name, model: p.model, url: p.url, keyDb: `ai_key_${p.id}`, free: p.free, needsKey: p.needsKey !== false, special: p.special },
+  ])
+) as Record<string, { name: string; model: string; url: string; keyDb: string; free: boolean; needsKey: boolean; special?: "gemini" | "openrouter" }>
 
 function buildPrompt(className: string, subject: string, schoolModel: string, numQuestions: number, typeInstruction: string, questionLevel: string) {
   const schoolMap: Record<string, string> = {
@@ -68,9 +61,11 @@ Do not include any text outside the JSON array.`
 }
 
 async function callOpenAICompatible(url: string, apiKey: string, model: string, prompt: string): Promise<string> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" }
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    headers,
     body: JSON.stringify({ model, messages: [{ role: "user", content: prompt }], temperature: 0.7, max_tokens: 4096 }),
   })
   if (!res.ok) throw new Error(`API error: ${res.status} ${await res.text()}`)
@@ -111,9 +106,10 @@ async function callOpenRouter(apiKey: string, prompt: string): Promise<string> {
   return data.choices?.[0]?.message?.content || ""
 }
 
-async function extractContent(provider: Provider, apiKey: string, prompt: string): Promise<string> {
+async function extractContent(provider: string, apiKey: string, prompt: string): Promise<string> {
   const cfg = PROVIDERS[provider]
-  switch (provider) {
+  if (!cfg) throw new Error("Unknown AI provider")
+  switch (cfg.special) {
     case "gemini":
       return callGemini(apiKey, prompt)
     case "openrouter":
@@ -128,8 +124,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { subject, questionType, questionLevel, classId, numQuestions, schoolModel, provider: rawProvider, apiKey: inlineKey } = body
 
-    const provider: Provider = Object.prototype.hasOwnProperty.call(PROVIDERS, rawProvider || "openai")
-      ? rawProvider as Provider
+    const provider: string = Object.prototype.hasOwnProperty.call(PROVIDERS, rawProvider || "openai")
+      ? rawProvider
       : "openai"
 
     if (!subject || !questionType || !questionLevel || !classId || !numQuestions) {
@@ -142,9 +138,10 @@ export async function POST(req: NextRequest) {
       const dbResult = await query("SELECT value FROM system_settings WHERE key = $1", [PROVIDERS[provider].keyDb])
       apiKey = dbResult.rows[0]?.value
     }
-    if (!apiKey) {
+    if (!apiKey && PROVIDERS[provider].needsKey) {
       return NextResponse.json({ error: `No API key found for ${PROVIDERS[provider].name}. Save it in AI Settings first.` }, { status: 400 })
     }
+    if (apiKey && !PROVIDERS[provider].needsKey) apiKey = ""
 
     const classResult = await query("SELECT name FROM classes WHERE id = $1", [parseInt(classId)])
     const className = classResult.rows[0]?.name || `Class ${classId}`

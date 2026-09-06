@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo, useEffect } from "react"
-import { Eye, EyeOff, Check, X, Search, Loader2 } from "lucide-react"
+import { Eye, EyeOff, Check, X, Search, Loader2, LayoutGrid, List } from "lucide-react"
 import { menuData, type MenuCategory } from "@/lib/menu-data"
 
 type SidebarMenu = {
@@ -14,12 +14,15 @@ type SidebarMenu = {
   is_visible: boolean
 }
 
+type ViewMode = "card" | "list"
+
 export default function ModulesPage() {
   const [dbMenus, setDbMenus] = useState<SidebarMenu[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [success, setSuccess] = useState("")
   const [keyword, setKeyword] = useState("")
+  const [view, setView] = useState<ViewMode>("card")
   const [selectedCat, setSelectedCat] = useState<MenuCategory | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [localVis, setLocalVis] = useState<Record<string, boolean>>({})
@@ -204,6 +207,22 @@ export default function ModulesPage() {
           <h2 className="text-xl font-bold text-gray-900">Modules</h2>
           <p className="text-xs text-gray-500 mt-0.5">System Setting / Modules</p>
         </div>
+        <div className="flex items-center gap-1 border border-gray-200 rounded-lg p-0.5 bg-white">
+          <button
+            onClick={() => setView("card")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === "card" ? "bg-[var(--primary)] text-white" : "text-gray-500 hover:text-gray-700"}`}
+            title="Card view"
+          >
+            <LayoutGrid className="h-3.5 w-3.5" /> Card
+          </button>
+          <button
+            onClick={() => setView("list")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === "list" ? "bg-[var(--primary)] text-white" : "text-gray-500 hover:text-gray-700"}`}
+            title="List view"
+          >
+            <List className="h-3.5 w-3.5" /> List
+          </button>
+        </div>
       </div>
 
       {success && (
@@ -236,7 +255,7 @@ export default function ModulesPage() {
 
       {loading ? (
         <div className="text-center py-12 text-gray-400">Loading...</div>
-      ) : (
+      ) : view === "card" ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filtered.length === 0 ? (
             <div className="col-span-full text-center py-12 text-gray-400">
@@ -300,6 +319,79 @@ export default function ModulesPage() {
               )
             })
           )}
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-200 bg-gray-50">
+                {["#", "Module", "Submenus", "Status", "Action"].map((h) => (
+                  <th key={h} className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="text-center py-10 text-gray-400">
+                    <div className="flex flex-col items-center gap-2">
+                      <Search className="h-8 w-8 text-gray-300" />
+                      <span className="text-sm">No modules found</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((cat, idx) => {
+                  const childCount = getChildCount(cat.label)
+                  const visibleCount = getVisibleChildCount(cat)
+                  const isSaving = saving[cat.label] || false
+                  return (
+                    <tr key={cat.label} className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/50"}`}>
+                      <td className="px-4 py-3 text-gray-600">{idx + 1}</td>
+                      <td className="px-4 py-3 font-medium text-gray-800">{cat.label}</td>
+                      <td className="px-4 py-3 text-gray-600">{childCount > 0 ? `${visibleCount}/${childCount} active` : "—"}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${cat.isVisible ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                          {cat.isVisible ? "Active" : "Inactive"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1">
+                          {childCount > 0 && (
+                            <button onClick={() => openSubmenuModal(cat)}
+                              className="px-2.5 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                              Manage Submenus
+                            </button>
+                          )}
+                          <button
+                            onClick={() => toggleModule(cat)}
+                            disabled={isSaving}
+                            className={`p-1.5 rounded-lg transition-colors disabled:opacity-50 ${
+                              cat.isVisible
+                                ? "text-green-600 bg-green-50 hover:bg-green-100"
+                                : "text-gray-300 bg-gray-50 hover:bg-gray-100"
+                            }`}
+                            title={cat.isVisible ? "Deactivate" : "Activate"}
+                          >
+                            {isSaving ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : cat.isVisible ? (
+                              <Eye className="h-4 w-4" />
+                            ) : (
+                              <EyeOff className="h-4 w-4" />
+                            )}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+          </table>
+          <div className="px-4 py-3 border-t border-gray-200 text-sm text-gray-500">
+            Showing {filtered.length} modules
+          </div>
         </div>
       )}
 

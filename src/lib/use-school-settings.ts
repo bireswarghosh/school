@@ -54,13 +54,26 @@ export function useSchoolSettings(prefix: string) {
     []
   )
 
+  // Saves values storing them with the module prefix re-applied
+  // (e.g. { enabled: "1" } with prefix "whatsapp." -> "whatsapp.enabled").
+  // Without this, panels would persist unprefixed keys that never load back.
+  const saveScoped = useCallback(
+    async (values: Record<string, string>) => {
+      if (!prefix) return save(values)
+      const prefixed: Record<string, string> = {}
+      for (const [k, v] of Object.entries(values)) prefixed[prefix + k] = v
+      return save(prefixed)
+    },
+    [prefix, save]
+  )
+
   // Scoped view of the settings map with the prefix stripped
   const scoped: Record<string, string> = {}
   for (const [k, v] of Object.entries(settings)) {
     if (!prefix || k.startsWith(prefix)) scoped[k.slice(prefix.length)] = v
   }
 
-  return { settings: scoped, rawSettings: settings, loading, saving, error, save, reload: load }
+  return { settings: scoped, rawSettings: settings, loading, saving, error, save, saveScoped, reload: load }
 }
 
 export type SchoolSettingsState = ReturnType<typeof useSchoolSettings>

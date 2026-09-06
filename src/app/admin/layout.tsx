@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import Sidebar from "@/components/Sidebar"
@@ -11,9 +11,12 @@ import QuickLinks from "@/components/QuickLinks"
 import { CurrencyProvider } from "@/lib/currency-context"
 import { SessionProvider } from "@/lib/session-context"
 import { AuthProvider, useAuth } from "@/lib/auth-context"
+import { useSchoolInfo } from "@/lib/use-school-info"
+import AdminThemeProvider from "@/components/AdminThemeProvider"
 
 function AdminHeader({ pageTitle, toggleDarkMode, darkMode, onMenu }: { pageTitle: string; toggleDarkMode: () => void; darkMode: boolean; onMenu: () => void }) {
   const { user, school, logout } = useAuth()
+  const { info } = useSchoolInfo()
   const router = useRouter()
   const pathname = usePathname()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -44,11 +47,27 @@ function AdminHeader({ pageTitle, toggleDarkMode, darkMode, onMenu }: { pageTitl
       </div>
 
       <div className="flex items-center gap-3">
-        {school && (
-          <span className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-[var(--primary-light)] text-[var(--primary)]">
-            {school.name}
-            <span className="font-mono">({school.code})</span>
-          </span>
+        {school && info.adminLogoSrc ? (
+          <div className="hidden md:flex items-center gap-2">
+            <img
+              src={info.adminLogoSrc}
+              alt={info.name}
+              className="h-9 w-9 object-contain rounded-md bg-[var(--primary-light)] p-0.5"
+            />
+            <span
+              className="text-sm font-bold max-w-[180px] truncate"
+              style={{ color: info.schoolNameColor || "var(--primary)" }}
+            >
+              {info.name}
+            </span>
+          </div>
+        ) : (
+          school && (
+            <span className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-[var(--primary-light)] text-[var(--primary)]">
+              {school.name}
+              <span className="font-mono">({school.code})</span>
+            </span>
+          )
         )}
         {isPosPage && (
           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-[var(--primary-light)] text-[var(--primary)]">
@@ -138,15 +157,26 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const hideHeader = pathname.includes("/online-exam/evaluation/")
 
+  useEffect(() => {
+    const saved = typeof window !== "undefined" ? window.localStorage.getItem("admin-dark") === "1" : false
+    setDarkMode(saved)
+  }, [])
+
+  useEffect(() => {
+    const root = typeof window !== "undefined" ? document.documentElement : null
+    if (root) root.classList.toggle("dark", darkMode)
+    if (typeof window !== "undefined") window.localStorage.setItem("admin-dark", darkMode ? "1" : "0")
+  }, [darkMode])
+
   const toggleDarkMode = () => {
-    setDarkMode(!darkMode)
-    document.documentElement.classList.toggle("dark")
+    setDarkMode((prev) => !prev)
   }
 
   return (
     <AuthProvider>
       <SessionProvider>
-        <div className={`flex h-screen ${darkMode ? "dark" : ""}`}>
+        <AdminThemeProvider />
+        <div className="flex h-screen">
           <Sidebar
             collapsed={sidebarCollapsed}
             onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}

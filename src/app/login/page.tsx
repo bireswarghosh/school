@@ -1,18 +1,55 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { GraduationCap, ShieldCheck, Eye, EyeOff, AlertCircle, Loader2 } from "lucide-react"
+
+const SAVED_KEY = "smart_school_saved_login"
 
 export default function LoginPage() {
   const router = useRouter()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [schoolCode, setSchoolCode] = useState("")
+  const [remember, setRemember] = useState(true)
   const [showPassword, setShowPassword] = useState(false)
+  const [isPortalUser, setIsPortalUser] = useState(false)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const [brand, setBrand] = useState<{ logo?: string; bg?: string; name?: string }>({})
+
+  useEffect(() => {
+    const t = setTimeout(async () => {
+      try {
+        const code = isPortalUser ? "" : schoolCode.trim()
+        const res = await fetch(`/api/settings/public?code=${encodeURIComponent(code)}`)
+        const data = await res.json()
+        setBrand({
+          logo: data.logo_printLogo || data.logo_adminLogo || data.logo_appLogo || "",
+          bg: data.loginbg_userBg || data.loginbg_adminBg || "",
+          name: data.schoolName || "Smart School",
+        })
+      } catch {
+        // keep defaults
+      }
+    }, 350)
+    return () => clearTimeout(t)
+  }, [schoolCode, isPortalUser])
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SAVED_KEY)
+      if (raw) {
+        const saved = JSON.parse(raw)
+        if (saved.email) setEmail(saved.email)
+        if (saved.password) setPassword(saved.password)
+        if (saved.schoolCode) setSchoolCode(saved.schoolCode)
+      }
+    } catch {
+      // ignore corrupted storage
+    }
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -22,13 +59,22 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, schoolCode }),
+        body: JSON.stringify({ email, password, schoolCode: isPortalUser ? "" : schoolCode }),
       })
       const data = await res.json()
       if (!res.ok) {
         setError(data.error || "Login failed")
         setLoading(false)
         return
+      }
+      try {
+        if (remember) {
+          localStorage.setItem(SAVED_KEY, JSON.stringify({ email, password, schoolCode }))
+        } else {
+          localStorage.removeItem(SAVED_KEY)
+        }
+      } catch {
+        // ignore storage errors
       }
       router.push(data.redirect || "/admin")
       router.refresh()
@@ -40,16 +86,30 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-[var(--background)] relative overflow-hidden">
-      <div className="absolute -top-32 -right-32 h-96 w-96 rounded-full bg-[var(--primary)] opacity-10 blur-3xl" />
-      <div className="absolute -bottom-32 -left-32 h-96 w-96 rounded-full bg-[var(--secondary)] opacity-10 blur-3xl" />
+      {brand.bg ? (
+        <>
+          <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${brand.bg})` }} />
+          <div className="absolute inset-0" style={{ backgroundColor: "rgba(15, 23, 42, 0.72)" }} />
+        </>
+      ) : (
+        <>
+          <div className="absolute -top-32 -right-32 h-96 w-96 rounded-full bg-[var(--primary)] opacity-10 blur-3xl" />
+          <div className="absolute -bottom-32 -left-32 h-96 w-96 rounded-full bg-[var(--secondary)] opacity-10 blur-3xl" />
+        </>
+      )}
 
       <div className="relative w-full max-w-md">
         <div className="glass-panel rounded-3xl p-8 shadow-2xl">
           <div className="text-center mb-8">
-            <div className="h-14 w-14 mx-auto rounded-2xl bg-[var(--primary)] flex items-center justify-center text-white mb-4">
-              <GraduationCap className="h-8 w-8" />
+            <div className="h-14 w-14 mx-auto rounded-2xl bg-[var(--primary)] flex items-center justify-center text-white mb-4 overflow-hidden">
+              {brand.logo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={brand.logo} alt="School logo" className="h-full w-full object-contain" />
+              ) : (
+                <GraduationCap className="h-8 w-8" />
+              )}
             </div>
-            <h1 className="text-2xl font-bold text-[var(--title-color)]">Smart School</h1>
+            <h1 className="text-2xl font-bold text-[var(--title-color)]">{brand.name}</h1>
             <p className="text-sm text-[var(--subtitle-color)] mt-1">Sign in to your academic portal</p>
           </div>
 
@@ -87,19 +147,31 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-[var(--foreground)] mb-1.5">
-                School code{" "}
-                <span className="text-xs font-normal text-[var(--subtitle-color)]">(for school staff only)</span>
-              </label>
+            {!isPortalUser && (
+              <div>
+                <label className="block text-sm font-medium text-[var(--foreground)] mb-1.5">
+                  School code{" "}
+                  <span className="text-xs font-normal text-[var(--subtitle-color)]">(for school staff only)</span>
+                </label>
+                <input
+                  type="text"
+                  value={schoolCode}
+                  onChange={(e) => setSchoolCode(e.target.value)}
+                  placeholder="e.g. DEFAULT"
+                  className="w-full px-4 py-2.5 border border-[var(--border)] rounded-xl bg-[var(--card)] text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] uppercase"
+                />
+              </div>
+            )}
+
+            <label className="flex items-center gap-2 text-sm text-[var(--subtitle-color)] cursor-pointer select-none">
               <input
-                type="text"
-                value={schoolCode}
-                onChange={(e) => setSchoolCode(e.target.value)}
-                placeholder="e.g. DEFAULT"
-                className="w-full px-4 py-2.5 border border-[var(--border)] rounded-xl bg-[var(--card)] text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] uppercase"
+                type="checkbox"
+                checked={isPortalUser}
+                onChange={(e) => setIsPortalUser(e.target.checked)}
+                className="h-4 w-4 rounded border-[var(--border)] text-[var(--primary)] focus:ring-[var(--primary)]"
               />
-            </div>
+              I&apos;m a student or parent (no school code needed)
+            </label>
 
             {error && (
               <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 dark:bg-red-950/40 px-3 py-2.5 rounded-xl">
@@ -107,6 +179,16 @@ export default function LoginPage() {
                 <span>{error}</span>
               </div>
             )}
+
+            <label className="flex items-center gap-2 text-sm text-[var(--subtitle-color)] cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={(e) => setRemember(e.target.checked)}
+                className="h-4 w-4 rounded border-[var(--border)] text-[var(--primary)] focus:ring-[var(--primary)]"
+              />
+              Remember email{!isPortalUser ? ", school code & password" : " & password"}
+            </label>
 
             <button
               type="submit"

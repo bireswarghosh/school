@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   BookOpen,
   CalendarDays,
+  Clock,
   FileSpreadsheet,
   Bell,
   User,
@@ -15,47 +16,117 @@ import {
   Wallet,
   LogOut,
   ShieldCheck,
+  ArrowLeftCircle,
+  Menu,
+  X,
+  Library as LibraryIcon,
+  ClipboardList,
 } from "lucide-react"
 
+type MeUser = {
+  id: number
+  name: string
+  email: string
+  role: string
+  origUid?: number
+  origRole?: string
+  origName?: string
+}
+
 type Me = {
-  user: { id: number; name: string; email: string; role: string } | null
+  user: MeUser | null
   school: { name: string; code: string } | null
   authenticated: boolean
 }
 
-const NAV: Record<string, { label: string; href: string; icon: any }[]> = {
+type NavItem = { label: string; href: string; icon: any }
+type NavSection = { label: string; items: NavItem[] }
+type NavMap = Record<string, NavSection[]>
+
+const NAV: NavMap = {
   student: [
-    { label: "Dashboard", href: "/portal", icon: LayoutDashboard },
-    { label: "Homework", href: "/portal/homework", icon: BookOpen },
-    { label: "Timetable", href: "/portal/timetable", icon: CalendarDays },
-    { label: "Exam Results", href: "/portal/exams", icon: FileSpreadsheet },
-    { label: "Notices", href: "/portal/notices", icon: Bell },
-    { label: "My Profile", href: "/portal/profile", icon: User },
+    {
+      label: "Overview",
+      items: [
+        { label: "Dashboard", href: "/portal", icon: LayoutDashboard },
+        { label: "My Profile", href: "/portal/profile", icon: User },
+      ],
+    },
+    {
+      label: "Academic",
+      items: [
+        { label: "Attendance", href: "/portal/attendance", icon: CalendarDays },
+        { label: "Timetable", href: "/portal/timetable", icon: Clock },
+        { label: "Homework", href: "/portal/homework", icon: BookOpen },
+        { label: "Exam Results", href: "/portal/exams", icon: FileSpreadsheet },
+        { label: "Library", href: "/portal/library", icon: LibraryIcon },
+        { label: "Leave", href: "/portal/leave", icon: ClipboardList },
+      ],
+    },
+    {
+      label: "Finance & Notices",
+      items: [
+        { label: "Fees & Payments", href: "/portal/fees", icon: Wallet },
+        { label: "Notices", href: "/portal/notices", icon: Bell },
+      ],
+    },
   ],
   parent: [
-    { label: "Dashboard", href: "/portal", icon: LayoutDashboard },
-    { label: "My Kids", href: "/portal/kids", icon: Users },
-    { label: "Fees & Payments", href: "/portal/fees", icon: Wallet },
-    { label: "Homework", href: "/portal/homework", icon: BookOpen },
-    { label: "Attendance", href: "/portal/attendance", icon: CalendarDays },
-    { label: "Exam Results", href: "/portal/exams", icon: FileSpreadsheet },
-    { label: "Notices", href: "/portal/notices", icon: Bell },
+    {
+      label: "Overview",
+      items: [
+        { label: "Dashboard", href: "/portal", icon: LayoutDashboard },
+        { label: "My Kids", href: "/portal/kids", icon: Users },
+        { label: "My Profile", href: "/portal/profile", icon: User },
+      ],
+    },
+    {
+      label: "Academic",
+      items: [
+        { label: "Attendance", href: "/portal/attendance", icon: CalendarDays },
+        { label: "Homework", href: "/portal/homework", icon: BookOpen },
+        { label: "Exam Results", href: "/portal/exams", icon: FileSpreadsheet },
+        { label: "Library", href: "/portal/library", icon: LibraryIcon },
+        { label: "Leave", href: "/portal/leave", icon: ClipboardList },
+      ],
+    },
+    {
+      label: "Finance & Notices",
+      items: [
+        { label: "Fees & Payments", href: "/portal/fees", icon: Wallet },
+        { label: "Notices", href: "/portal/notices", icon: Bell },
+      ],
+    },
   ],
   teacher: [
-    { label: "Dashboard", href: "/portal", icon: LayoutDashboard },
-    { label: "My Classes", href: "/portal/classes", icon: Users },
-    { label: "Students", href: "/portal/students", icon: GraduationCap },
-    { label: "Attendance", href: "/portal/attendance", icon: CalendarDays },
-    { label: "Homework", href: "/portal/homework", icon: BookOpen },
-    { label: "Timetable", href: "/portal/timetable", icon: CalendarDays },
+    {
+      label: "Overview",
+      items: [
+        { label: "Dashboard", href: "/portal", icon: LayoutDashboard },
+        { label: "My Classes", href: "/portal/classes", icon: Users },
+        { label: "Students", href: "/portal/students", icon: GraduationCap },
+      ],
+    },
+    {
+      label: "Academic",
+      items: [
+        { label: "Attendance", href: "/portal/attendance", icon: CalendarDays },
+        { label: "Homework", href: "/portal/homework", icon: BookOpen },
+        { label: "Timetable", href: "/portal/timetable", icon: Clock },
+      ],
+    },
   ],
 }
+
+const roleLabel = (role: string) => role.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const [me, setMe] = useState<Me>({ user: null, school: null, authenticated: false })
   const [loaded, setLoaded] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -71,11 +142,24 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
 
   const role = me.user?.role || ""
   const nav = NAV[role] || NAV.student
+  const impersonating = Boolean(me.user?.origUid)
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" })
     router.push("/login")
     router.refresh()
+  }
+
+  const handleBackToAdmin = async () => {
+    try {
+      const res = await fetch("/api/auth/impersonate/back", { method: "POST" })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to return to admin")
+      router.push(data.redirect || "/admin")
+      router.refresh()
+    } catch {
+      router.push("/login")
+    }
   }
 
   if (loaded && !me.authenticated) {
@@ -89,75 +173,205 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
     )
   }
 
-  return (
-    <div className="min-h-screen bg-[var(--background)]">
-      <header className="glass-panel sticky top-0 z-30 rounded-none border-b">
-        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="h-9 w-9 rounded-xl bg-[var(--primary)] flex items-center justify-center text-white shrink-0">
-              <GraduationCap className="h-5 w-5" />
-            </div>
+  const pageTitle =
+    pathname.split("/").filter(Boolean).pop()?.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) ||
+    "Dashboard"
+
+  const isActive = (href: string) => (href === "/portal" ? pathname === "/portal" : pathname.startsWith(href))
+
+  const sidebarContent = (
+    <div className="flex flex-col h-full" style={{ backgroundColor: "var(--sidebar-bg)" }}>
+      <div
+        className="flex items-center justify-between px-4 h-16 shrink-0"
+        style={{ borderBottom: "1px solid color-mix(in srgb, var(--sidebar-bg), white 15%)" }}
+      >
+        <div className="flex items-center gap-2 overflow-hidden">
+          <div className="h-9 w-9 rounded-xl flex items-center justify-center text-white shrink-0" style={{ backgroundColor: "var(--primary)" }}>
+            <GraduationCap className="h-5 w-5" />
+          </div>
+          {!collapsed && (
             <div className="min-w-0">
-              <h1 className="text-base font-bold text-[var(--title-color)] leading-tight truncate">My Portal</h1>
-              {me.school && (
-                <p className="text-xs text-[var(--subtitle-color)] truncate">
-                  {me.school.name} <span className="font-mono">({me.school.code})</span>
+              <p className="font-bold text-sm truncate" style={{ color: "var(--sidebar-text)" }}>
+                {me.school?.name || "Smart School"}
+              </p>
+              <p className="text-[11px] truncate" style={{ color: "color-mix(in srgb, var(--sidebar-text), transparent 40%)" }}>
+                {me.school ? `Portal (${me.school.code})` : "Student Portal"}
+              </p>
+            </div>
+          )}
+        </div>
+        <button onClick={() => setMobileOpen(false)} className="lg:hidden" style={{ color: "var(--sidebar-text)" }}>
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+
+      <div className="px-3 pt-4 shrink-0">
+        <div
+          className="rounded-xl p-3"
+          style={{ backgroundColor: "color-mix(in srgb, var(--primary), transparent 88%)", border: "1px solid color-mix(in srgb, var(--primary), transparent 75%)" }}
+        >
+          {!collapsed ? (
+            <div className="flex items-center gap-2.5">
+              <div className="h-10 w-10 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0" style={{ backgroundColor: "var(--primary)" }}>
+                {(me.user?.name || "?").charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold truncate" style={{ color: "var(--sidebar-text)" }}>{me.user?.name || "User"}</p>
+                <p className="text-[11px] capitalize truncate" style={{ color: "color-mix(in srgb, var(--sidebar-text), transparent 40%)" }}>
+                  {roleLabel(role)}
                 </p>
-              )}
+              </div>
+            </div>
+          ) : (
+            <div className="flex justify-center">
+              <div className="h-9 w-9 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{ backgroundColor: "var(--primary)" }}>
+                {(me.user?.name || "?").charAt(0).toUpperCase()}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-5">
+        {nav.map((section) => (
+          <div key={section.label}>
+            {!collapsed && (
+              <p className="px-3 text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: "color-mix(in srgb, var(--sidebar-text), transparent 50%)" }}>
+                {section.label}
+              </p>
+            )}
+            <div className="space-y-0.5">
+              {section.items.map((item) => {
+                const active = isActive(item.href)
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setMobileOpen(false)}
+                    title={item.label}
+                    className={`flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg transition-all ${collapsed ? "justify-center" : ""}`}
+                    style={{
+                      backgroundColor: active ? "color-mix(in srgb, var(--sidebar-active-bg), transparent 85%)" : undefined,
+                      color: active ? "var(--sidebar-active-bg)" : "var(--sidebar-text)",
+                    }}
+                  >
+                    <item.icon className="h-4 w-4 shrink-0" style={{ color: active ? "var(--sidebar-active-bg)" : "inherit" }} />
+                    {!collapsed && <span className="truncate">{item.label}</span>}
+                    {active && !collapsed && (
+                      <span className="ml-auto h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: "var(--sidebar-active-bg)" }} />
+                    )}
+                  </Link>
+                )
+              })}
             </div>
           </div>
+        ))}
+      </nav>
 
-          <div className="flex items-center gap-2">
-            {role !== "student" && role !== "parent" && role !== "teacher" && (
-              <Link
-                href="/admin"
-                className="hidden sm:inline-flex items-center gap-1.5 text-sm text-[var(--subtitle-color)] hover:text-[var(--primary)] px-3 py-1.5 rounded-lg hover:bg-[var(--primary-light)] transition-colors"
-              >
-                <ShieldCheck className="h-4 w-4" />
-                Admin
-              </Link>
-            )}
-            <span className="hidden md:inline-flex items-center gap-2 text-sm font-medium text-[var(--foreground)]">
-              <span className="h-7 w-7 rounded-full bg-[var(--primary)] text-white text-xs flex items-center justify-center">
-                {(me.user?.name || "?").charAt(0).toUpperCase()}
-              </span>
-              <span className="max-w-[140px] truncate">{me.user?.name || "User"}</span>
+      <div
+        className="p-3 space-y-2 shrink-0"
+        style={{ borderTop: "1px solid color-mix(in srgb, var(--sidebar-bg), white 15%)" }}
+      >
+        {impersonating && (
+          <button
+            onClick={handleBackToAdmin}
+            className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-semibold rounded-lg text-white"
+            style={{ backgroundColor: "var(--primary)" }}
+          >
+            <ArrowLeftCircle className="h-4 w-4 shrink-0" />
+            {!collapsed && <span className="truncate">Back to Admin</span>}
+          </button>
+        )}
+        <button
+          onClick={handleLogout}
+          className="w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg transition-colors"
+          style={{ color: "var(--sidebar-text)" }}
+        >
+          <LogOut className="h-4 w-4 shrink-0" />
+          {!collapsed && <span>Logout</span>}
+        </button>
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="min-h-screen bg-[var(--background)]">
+      {impersonating && (
+        <div className="relative z-40 bg-amber-100 dark:bg-amber-900/60 border-b border-amber-200 dark:border-amber-700">
+          <div className="px-4 py-2 flex items-center justify-between gap-3 text-xs text-amber-800 dark:text-amber-200">
+            <span className="flex items-center gap-1.5 font-medium truncate">
+              <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
+              Viewing portal as {me.user?.name || "this user"} ({role})
+              {me.user?.origName ? ` · logged in by ${me.user.origName}` : ""}
             </span>
             <button
-              onClick={handleLogout}
-              className="flex items-center gap-1.5 text-sm text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
-              title="Logout"
+              onClick={handleBackToAdmin}
+              className="inline-flex items-center gap-1.5 shrink-0 font-semibold px-3 py-1 rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition-colors lg:hidden"
             >
-              <LogOut className="h-4 w-4" />
-              <span className="hidden sm:inline">Logout</span>
+              <ArrowLeftCircle className="h-4 w-4" />
+              Back to Admin
             </button>
           </div>
         </div>
-      </header>
+      )}
 
-      <nav className="glass-panel rounded-none border-b">
-        <div className="max-w-6xl mx-auto px-4 flex items-center gap-1 overflow-x-auto py-2">
-          {nav.map((item) => {
-            const active = item.href === "/portal" ? pathname === "/portal" : pathname.startsWith(item.href)
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`inline-flex items-center gap-1.5 whitespace-nowrap text-sm font-medium px-3 py-1.5 rounded-lg transition-colors ${
-                  active
-                    ? "bg-[var(--primary)] text-white"
-                    : "text-[var(--foreground)] hover:bg-[var(--primary-light)] hover:text-[var(--primary)]"
-                }`}
-              >
-                <item.icon className="h-4 w-4" />
-                {item.label}
-              </Link>
-            )
-          })}
+      <div className="flex lg:h-screen">
+        <aside className={`hidden lg:flex flex-col transition-all duration-300 ${collapsed ? "w-16" : "w-64"}`}>
+          {sidebarContent}
+        </aside>
+
+        {mobileOpen && (
+          <div className="fixed inset-0 z-50 lg:hidden">
+            <div className="absolute inset-0 bg-black/50" onClick={() => setMobileOpen(false)} />
+            <aside className="relative w-64 h-full">{sidebarContent}</aside>
+          </div>
+        )}
+
+        <div className="flex-1 flex flex-col min-w-0">
+          <header className="glass-panel sticky top-0 z-30 rounded-none border-b">
+            <div className="px-4 lg:px-6 h-16 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <button onClick={() => setMobileOpen(true)} className="lg:hidden text-[var(--subtitle-color)]">
+                  <Menu className="h-6 w-6" />
+                </button>
+                <button
+                  onClick={() => setCollapsed(!collapsed)}
+                  className="hidden lg:inline-flex text-[var(--subtitle-color)] hover:text-[var(--primary)]"
+                  title="Toggle sidebar"
+                >
+                  <Menu className="h-5 w-5" />
+                </button>
+                <h1 className="text-lg font-semibold text-[var(--title-color)] capitalize truncate">{pageTitle}</h1>
+              </div>
+
+              <div className="flex items-center gap-3 min-w-0">
+                {me.school && (
+                  <span className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-[var(--primary-light)] text-[var(--primary)] max-w-[220px]">
+                    <span className="truncate">{me.school.name}</span>
+                    <span className="font-mono">({me.school.code})</span>
+                  </span>
+                )}
+                {impersonating && me.user?.origName && (
+                  <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                    Impersonated by {me.user.origName}
+                  </span>
+                )}
+                <span className="hidden md:inline-flex items-center gap-2 text-sm font-medium text-[var(--foreground)] min-w-0">
+                  <span className="h-8 w-8 rounded-full bg-[var(--primary)] text-white text-xs flex items-center justify-center shrink-0">
+                    {(me.user?.name || "?").charAt(0).toUpperCase()}
+                  </span>
+                  <span className="max-w-[140px] truncate">{me.user?.name || "User"}</span>
+                </span>
+              </div>
+            </div>
+          </header>
+
+          <main className="flex-1 overflow-y-auto p-4 lg:p-6">
+            <div className="max-w-6xl mx-auto">{children}</div>
+          </main>
         </div>
-      </nav>
-
-      <main className="max-w-6xl mx-auto px-4 py-6">{children}</main>
+      </div>
     </div>
   )
 }

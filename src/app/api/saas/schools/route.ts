@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { query, getAll, getById } from "@/lib/db"
 import { getSessionRole, hashPassword } from "@/lib/auth"
+import { schoolUsernamePrefix, generateUniqueUsername, createSchoolRoles } from "@/lib/school-setup"
 
 function getErrorMessage(e: unknown) {
   return e instanceof Error ? e.message : String(e)
@@ -87,18 +88,20 @@ export async function POST(req: NextRequest) {
     )
     const school = schoolResult.rows[0]
 
-    const adminResult = await query(`SELECT id, name, permissions FROM roles WHERE name = 'admin' AND school_id IS NULL`)
-    const adminRole = adminResult.rows[0] || null
+    const roles = await createSchoolRoles(school.id)
+    const adminRoleId = roles["admin"] ?? null
 
     const admin = adminEmail || email
     if (admin) {
       const hashed = hashPassword(adminPassword || "Admin@123")
+      const prefix = schoolUsernamePrefix(name)
+      const adminUsername = await generateUniqueUsername(`${prefix}_admin`)
       const adminUserResult = await query(
         `INSERT INTO users (username, name, email, password_hash, role, role_id, school_id, status)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-        [admin, `Admin - ${name}`, admin, hashed, "admin", adminRole?.id ?? null, school.id, "Active"]
+        [adminUsername, `Admin - ${name}`, admin, hashed, "admin", adminRoleId, school.id, "Active"]
       )
-      school.adminUser = { email: admin, password: adminPassword || "Admin@123", id: adminUserResult.rows[0].id }
+      school.adminUser = { email: admin, password: adminPassword || "Admin@123", username: adminUsername, id: adminUserResult.rows[0].id }
     }
 
     return NextResponse.json(await enrichSchool(school), { status: 201 })

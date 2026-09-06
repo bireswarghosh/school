@@ -3,9 +3,12 @@
 import { useState, useEffect, useCallback, useId } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { menuData, MenuCategory } from "@/lib/menu-data"
+import { menuData, MenuCategory, SubMenuItem } from "@/lib/menu-data"
 import { SessionPill } from "@/components/SessionSwitcher"
 import { iconMap } from "@/lib/menu-icons"
+import { useAuth } from "@/lib/auth-context"
+import { useSchoolInfo } from "@/lib/use-school-info"
+import { canViewPermission, legacyCategoryVisible } from "@/lib/permissions"
 import {
   ChevronDown,
   ChevronRight,
@@ -110,6 +113,8 @@ interface SidebarProps {
 
 export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: SidebarProps) {
   const pathname = usePathname()
+  const { user } = useAuth()
+  const { info: schoolInfo } = useSchoolInfo()
   const [expandedMenus, setExpandedMenus] = useState<string[]>([])
 
   const toggleMenu = (label: string) => {
@@ -166,9 +171,16 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
   const itemVisible = (cat: MenuCategory, itemLabel: string) =>
     visMap[cat.label.toLowerCase() + "::" + itemLabel.toLowerCase()] ?? true
 
+  const userPerms = user?.permissions || []
+  const restricted = !!user && user.role !== "super_admin" && user.role !== "admin"
+
+  const permittedItems = (category: MenuCategory): SubMenuItem[] => {
+    if (!restricted) return category.items
+    if (legacyCategoryVisible(userPerms, category.label)) return category.items
+    return category.items.filter((item) => canViewPermission(userPerms, item.path))
+  }
+
   const isActive = (path: string) => pathname === path
-  const isParentActive = (category: MenuCategory) =>
-    category.items.some((item) => pathname.startsWith(item.path))
 
   const sidebarContent = (
     <div className="flex flex-col h-full sidebar-scroll-wrap" style={{ backgroundColor: "var(--sidebar-bg)" }}>
@@ -212,8 +224,18 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
       `}</style>
       <div className="flex items-center justify-between px-4 h-16 border-b" style={{ borderColor: "color-mix(in srgb, var(--sidebar-bg), white 15%)" }}>
         <Link href="/admin" className="flex items-center gap-2" style={{ color: "var(--sidebar-text)" }}>
-          <School className="h-7 w-7" style={{ color: "var(--primary)" }} />
-          {!collapsed && <span className="font-bold text-lg">Smart School</span>}
+          {schoolInfo.adminLogoSrc ? (
+            <img
+              src={collapsed ? (schoolInfo.adminSmallLogoSrc || schoolInfo.adminLogoSrc) : schoolInfo.adminLogoSrc}
+              alt={`${schoolInfo.name} logo`}
+              className="h-9 w-9 object-contain"
+            />
+          ) : (
+            <School className="h-7 w-7" style={{ color: "var(--primary)" }} />
+          )}
+          {!collapsed && (
+            <span className="font-bold text-lg truncate">{schoolInfo.name}</span>
+          )}
         </Link>
         <button
           onClick={collapsed ? onToggle : onToggle}
@@ -232,8 +254,10 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
           {menuData.filter(catVisible).map((category) => {
             const Icon = iconMap[category.icon] || Settings
             const isExpanded = expandedMenus.includes(category.label)
-            const parentActive = isParentActive(category)
-            const visibleItems = category.items.filter((item) => itemVisible(category, item.label))
+            const allowedItems = permittedItems(category)
+            const visibleItems = allowedItems.filter((item) => itemVisible(category, item.label))
+            if (restricted && visibleItems.length === 0) return null
+            const parentActive = allowedItems.some((item) => pathname.startsWith(item.path))
 
             return (
               <div key={category.label} className="px-2 mb-0.5">

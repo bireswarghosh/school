@@ -5,7 +5,7 @@ import { useState, useEffect, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useCurrency } from "@/lib/currency-context"
 import { useAuth } from "@/lib/auth-context"
-import { ArrowLeft, Loader2, Key, Ban, X, Eye, Plus, Pencil, Trash2, Camera, Printer, FileDown } from "lucide-react"
+import { ArrowLeft, Loader2, Key, Ban, X, Eye, Plus, Pencil, Trash2, Camera, Printer, FileDown, LogIn, Link2 } from "lucide-react"
 
 type StudentRecord = {
   id: number
@@ -137,6 +137,8 @@ export default function StudentProfilePage() {
   const [bookTitles, setBookTitles] = useState<Record<number, string>>({})
 
   const [showLoginModal, setShowLoginModal] = useState(false)
+  const [loginInfo, setLoginInfo] = useState<any>(null)
+  const [loginAsBusy, setLoginAsBusy] = useState<string | null>(null)
   const [showDisableModal, setShowDisableModal] = useState(false)
   const [disableReasons, setDisableReasons] = useState<{ id: number; reason: string }[]>([])
   const [disableForm, setDisableForm] = useState({ reasonId: "", date: new Date().toISOString().split("T")[0], note: "" })
@@ -208,6 +210,41 @@ export default function StudentProfilePage() {
       .then((d) => setDisableReasons(Array.isArray(d) ? d : []))
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!showLoginModal || !student) return
+    setLoginInfo(null)
+    fetch(`/api/student-information/student/login?id=${student.id}`)
+      .then((r) => r.json())
+      .then((d) => setLoginInfo(d))
+      .catch(() => setLoginInfo(null))
+  }, [showLoginModal, student])
+
+  const handleLoginAs = async (kind: "student" | "parent") => {
+    const info = kind === "student" ? loginInfo?.student : loginInfo?.parent
+    if (!info?.userId) {
+      notify.error(`No ${kind} login account is linked yet`)
+      return
+    }
+    setLoginAsBusy(kind)
+    try {
+      const res = await fetch("/api/auth/impersonate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: info.userId,
+          returnUrl: student ? `/admin/student-information/student-details/${student.id}` : "/admin",
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Login as failed")
+      router.push(data.redirect || "/portal")
+    } catch (e: any) {
+      notify.error(e.message || "Failed to login as user")
+    } finally {
+      setLoginAsBusy(null)
+    }
+  }
 
   const handleDisableStudent = async () => {
     if (!student || !disableForm.reasonId) return
@@ -1291,6 +1328,15 @@ export default function StudentProfilePage() {
 
       <Modal title="Login Details" show={showLoginModal} onClose={() => setShowLoginModal(false)}>
         <div className="space-y-5">
+          <div className="bg-gray-50 rounded-lg px-3.5 py-2.5 flex items-center gap-2 text-xs text-gray-600">
+            <Link2 className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+            <span>
+              Portal URL:{" "}
+              <span className="font-mono font-medium text-gray-800 select-all">
+                {typeof window !== "undefined" ? `${window.location.origin}/login` : "/login"}
+              </span>
+            </span>
+          </div>
           <div>
             <h5 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
               <Eye className="h-4 w-4 text-blue-500" />
@@ -1298,13 +1344,32 @@ export default function StudentProfilePage() {
             </h5>
             <div className="bg-blue-50 rounded-lg p-4 space-y-2.5">
               <div className="flex justify-between items-center">
+                <span className="text-xs text-gray-600">Admission No</span>
+                <span className="text-sm font-mono font-medium text-gray-800">{loginInfo?.admissionNo || student.admissionNo}</span>
+              </div>
+              <div className="flex justify-between items-center">
                 <span className="text-xs text-gray-600">Username</span>
-                <span className="text-sm font-mono font-medium text-gray-800">{student.admissionNo || student.email || `student_${student.id}`}</span>
+                <span className="text-sm font-mono font-medium text-gray-800">{loginInfo?.student?.username || (loginInfo ? "-" : "Loading...")}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-gray-600">Email (login)</span>
+                <span className="text-sm text-gray-800 break-all text-right select-all">{loginInfo?.student?.email || "—"}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs text-gray-600">Password</span>
-                <span className="text-sm font-mono font-medium text-gray-800">â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢</span>
+                <span className="text-sm font-mono font-medium text-gray-800">{loginInfo?.student?.defaultPassword || "••••••••"}</span>
               </div>
+              {loginInfo && !loginInfo.student?.exists && (
+                <p className="text-[11px] text-amber-700 bg-amber-50 rounded px-2 py-1.5">Login will be auto-created on admission/import.</p>
+              )}
+              <button
+                onClick={() => handleLoginAs("student")}
+                disabled={loginAsBusy === "student" || !loginInfo?.student?.userId}
+                className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              >
+                {loginAsBusy === "student" ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
+                Login as Student (switch profile)
+              </button>
             </div>
           </div>
           <div>
@@ -1315,15 +1380,30 @@ export default function StudentProfilePage() {
             <div className="bg-green-50 rounded-lg p-4 space-y-2.5">
               <div className="flex justify-between items-center">
                 <span className="text-xs text-gray-600">Username</span>
-                <span className="text-sm font-mono font-medium text-gray-800">{student.fatherPhone || student.motherPhone || `parent_${student.id}`}</span>
+                <span className="text-sm font-mono font-medium text-gray-800">{loginInfo?.parent?.username || (loginInfo ? "-" : "Loading...")}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-gray-600">Email (login)</span>
+                <span className="text-sm text-gray-800 break-all text-right select-all">{loginInfo?.parent?.email || "—"}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs text-gray-600">Password</span>
-                <span className="text-sm font-mono font-medium text-gray-800">â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢</span>
+                <span className="text-sm font-mono font-medium text-gray-800">{loginInfo?.parent?.defaultPassword || "••••••••"}</span>
               </div>
+              {loginInfo && !loginInfo.parent?.exists && (
+                <p className="text-[11px] text-amber-700 bg-amber-50 rounded px-2 py-1.5">Login will be auto-created on admission/import.</p>
+              )}
+              <button
+                onClick={() => handleLoginAs("parent")}
+                disabled={loginAsBusy === "parent" || !loginInfo?.parent?.userId}
+                className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700 disabled:opacity-50 transition-colors"
+              >
+                {loginAsBusy === "parent" ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
+                Login as Parent (switch profile)
+              </button>
             </div>
           </div>
-          <p className="text-[10px] text-gray-400 italic">Contact administrator to reset passwords.</p>
+          <p className="text-[10px] text-gray-400 italic">Students & parents sign in with the email above — school code is NOT required. The portal shows a "Back to Admin" button while viewing as a student/parent.</p>
         </div>
       </Modal>
 

@@ -1,18 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { query } from "@/lib/db"
-
-const KEY_MAP: Record<string, string> = {
-  openai: "ai_key_openai",
-  gemini: "ai_key_gemini",
-  groq: "ai_key_groq",
-  openrouter: "ai_key_openrouter",
-  deepseek: "ai_key_deepseek",
-  mistral: "ai_key_mistral",
-}
+import { AI_KEY_MAP } from "@/lib/ai-providers"
 
 export async function GET() {
   try {
-    const keys = Object.values(KEY_MAP)
+    const keys = Object.values(AI_KEY_MAP)
     const placeholders = keys.map((_, i) => `$${i + 1}`).join(", ")
     const result = await query(
       `SELECT key, value FROM system_settings WHERE key IN (${placeholders}) OR key = 'ai_provider'`,
@@ -23,13 +15,14 @@ export async function GET() {
       if (row.key === "ai_provider") {
         settings.provider = row.value
       } else {
-        const provider = Object.entries(KEY_MAP).find(([, v]) => v === row.key)?.[0]
+        const provider = Object.entries(AI_KEY_MAP).find(([, v]) => v === row.key)?.[0]
         if (provider) settings[provider] = row.value
       }
     }
     return NextResponse.json(settings)
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 400 })
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e)
+    return NextResponse.json({ error: message }, { status: 400 })
   }
 }
 
@@ -40,7 +33,7 @@ export async function PUT(req: NextRequest) {
 
     if (keys && typeof keys === "object") {
       for (const [prov, apiKey] of Object.entries(keys)) {
-        const dbKey = KEY_MAP[prov]
+        const dbKey = AI_KEY_MAP[prov]
         if (!dbKey) continue
         await query(
           `INSERT INTO system_settings (key, value) VALUES ($1, $2)
@@ -59,7 +52,8 @@ export async function PUT(req: NextRequest) {
     }
 
     return NextResponse.json({ success: true })
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 400 })
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e)
+    return NextResponse.json({ error: message }, { status: 400 })
   }
 }
