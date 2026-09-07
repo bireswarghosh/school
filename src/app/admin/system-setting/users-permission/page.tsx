@@ -1,17 +1,21 @@
 "use client"
 
 import { useState } from "react"
-import { Users, Shield, UserCog } from "lucide-react"
+import { Users, Shield, UserCog, GraduationCap, UsersRound } from "lucide-react"
 import UsersPanel from "@/components/UsersPanel"
 import RolesPermissionsPanel from "@/components/RolesPermissionsPanel"
+import StudentsPanel from "@/components/StudentsPanel"
+import ParentsPanel from "@/components/ParentsPanel"
 
-type TabKey = "users" | "permissions"
+type TabKey = "users" | "students" | "parents" | "permissions"
 
 export default function UsersPermissionsPage() {
   const [tab, setTab] = useState<TabKey>("users")
 
   const tabs: { key: TabKey; label: string; icon: React.ElementType }[] = [
     { key: "users", label: "Users", icon: Users },
+    { key: "students", label: "Students", icon: GraduationCap },
+    { key: "parents", label: "Parents", icon: UsersRound },
     { key: "permissions", label: "Permissions", icon: Shield },
   ]
 
@@ -42,7 +46,10 @@ export default function UsersPermissionsPage() {
         </div>
       </div>
 
-      {tab === "users" ? <UsersPanel /> : <RolesPermissionsPanel />}
+      {tab === "users" && <UsersPanel />}
+      {tab === "students" && <StudentsPanel />}
+      {tab === "parents" && <ParentsPanel />}
+      {tab === "permissions" && <RolesPermissionsPanel />}
     </div>
   )
 }

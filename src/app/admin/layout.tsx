@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import Sidebar from "@/components/Sidebar"
-import { Menu, Search, Moon, Sun, LogOut, ChevronDown, User, Store } from "lucide-react"
+import { Menu, Search, Moon, Sun, LogOut, ChevronDown, User, Store, ArrowLeft } from "lucide-react"
 import NotificationBell from "@/components/NotificationBell"
 import ThemeSettings from "@/components/ThemeSettings"
 import QuickLinks from "@/components/QuickLinks"
@@ -22,13 +22,38 @@ function AdminHeader({ pageTitle, toggleDarkMode, darkMode, onMenu }: { pageTitl
   const [menuOpen, setMenuOpen] = useState(false)
 
   const isPosPage = pathname === "/admin/students-inventory/student-sales"
+  const impersonating = Boolean(user?.origUid)
 
   const handleLogout = async () => {
     await logout()
     router.push("/login")
   }
 
+  const handleBackToAdmin = async () => {
+    try {
+      const res = await fetch("/api/auth/impersonate/back", { method: "POST" })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to return to admin")
+      router.push(data.redirect || "/admin")
+      router.refresh()
+    } catch {
+      router.push("/login")
+    }
+  }
+
   return (
+    <>
+    {impersonating && (
+      <div className="bg-amber-500 text-white px-4 py-2 flex items-center justify-between text-sm">
+        <div className="flex items-center gap-2">
+          <span className="font-medium">Viewing as: {user?.name}</span>
+          <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs capitalize">{user?.role}</span>
+        </div>
+        <button onClick={handleBackToAdmin} className="flex items-center gap-1.5 font-medium hover:underline">
+          <ArrowLeft className="h-4 w-4" /> Back to Admin
+        </button>
+      </div>
+    )}
     <header className="h-16 glass-panel flex items-center justify-between px-4 lg:px-6 sticky top-0 z-30 rounded-none border-b">
       <div className="flex items-center gap-4">
         <button
@@ -139,6 +164,7 @@ function AdminHeader({ pageTitle, toggleDarkMode, darkMode, onMenu }: { pageTitl
         </div>
       </div>
     </header>
+    </>
   )
 }
 

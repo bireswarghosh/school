@@ -9,6 +9,9 @@ export type AuthUser = {
   role: string
   permissions: string[]
   schoolId: number | null
+  origUid?: number
+  origRole?: string
+  origName?: string
 }
 
 export type School = {

@@ -90,11 +90,16 @@ export async function POST(req: NextRequest) {
 
     const roles = await createSchoolRoles(school.id)
     const adminRoleId = roles["admin"] ?? null
+    const teacherRoleId = roles["teacher"] ?? null
+    const staffRoleId = roles["staff"] ?? null
+    const studentRoleId = roles["student"] ?? null
+    const parentRoleId = roles["parent"] ?? null
+
+    const prefix = schoolUsernamePrefix(name)
 
     const admin = adminEmail || email
     if (admin) {
       const hashed = hashPassword(adminPassword || "Admin@123")
-      const prefix = schoolUsernamePrefix(name)
       const adminUsername = await generateUniqueUsername(`${prefix}_admin`)
       const adminUserResult = await query(
         `INSERT INTO users (username, name, email, password_hash, role, role_id, school_id, status)
@@ -103,6 +108,32 @@ export async function POST(req: NextRequest) {
       )
       school.adminUser = { email: admin, password: adminPassword || "Admin@123", username: adminUsername, id: adminUserResult.rows[0].id }
     }
+
+    const defaultUsers = [
+      { role: "teacher", roleId: teacherRoleId, name: "Teacher", password: "Teacher@123" },
+      { role: "staff", roleId: staffRoleId, name: "Staff", password: "Staff@123" },
+      { role: "student", roleId: studentRoleId, name: "Student", password: "Student@123" },
+      { role: "parent", roleId: parentRoleId, name: "Parent", password: "Parent@123" },
+    ]
+
+    const createdUsers: { role: string; username: string; email: string; password: string }[] = []
+    for (const du of defaultUsers) {
+      if (!du.roleId) continue
+      const username = await generateUniqueUsername(`${prefix}_${du.role}`)
+      const userEmail = `${prefix}_${du.role}@${slugify(name)}.school`
+      const hashed = hashPassword(du.password)
+      try {
+        await query(
+          `INSERT INTO users (username, name, email, password_hash, role, role_id, school_id, status)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [username, `${du.name} - ${name}`, userEmail, hashed, du.role, du.roleId, school.id, "Active"]
+        )
+        createdUsers.push({ role: du.role, username, email: userEmail, password: du.password })
+      } catch {
+        // skip if unique constraint fails
+      }
+    }
+    school.defaultUsers = createdUsers
 
     return NextResponse.json(await enrichSchool(school), { status: 201 })
   } catch (e) {

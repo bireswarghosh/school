@@ -39,8 +39,8 @@ export async function POST(req: NextRequest) {
     if (!target) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
-    if (!["student", "parent"].includes(target.role)) {
-      return NextResponse.json({ error: "Only student or parent accounts can be impersonated" }, { status: 400 })
+    if (["super_admin"].includes(target.role)) {
+      return NextResponse.json({ error: "Super admin accounts cannot be impersonated" }, { status: 400 })
     }
     if (target.status && String(target.status).toLowerCase() !== "active") {
       return NextResponse.json({ error: "Target account is disabled" }, { status: 403 })
@@ -63,7 +63,12 @@ export async function POST(req: NextRequest) {
       ...(returnPath ? { ret: returnPath } : {}),
     })
 
-    const response = NextResponse.json({ redirect: "/portal", impersonatedAs: target.role })
+    let redirect = "/admin"
+    if (target.role === "student" || target.role === "parent" || target.role === "teacher") {
+      redirect = "/portal"
+    }
+
+    const response = NextResponse.json({ redirect, impersonatedAs: target.role })
     response.cookies.set(SESSION_COOKIE, token, {
       httpOnly: true,
       sameSite: "lax",
