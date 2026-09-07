@@ -128,7 +128,7 @@ export default function OfflineBankPaymentsPage() {
                     <td className="px-4 py-2.5 text-gray-600">{p.className}</td>
                     <td className="px-4 py-2.5 text-gray-600 text-xs">{p.paymentDate}</td>
                     <td className="px-4 py-2.5 text-gray-600 text-xs">{p.submitDate}</td>
-                    <td className="px-4 py-2.5 text-right font-medium text-gray-800">${symbol}${p.amount.toLocaleString()}</td>
+                    <td className="px-4 py-2.5 text-right font-medium text-gray-800">{`${symbol}${p.amount.toLocaleString()}`}</td>
                     <td className="px-4 py-2.5 text-center">
                       <span className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full border ${statusColors[p.status]}`}>
                         {p.status}

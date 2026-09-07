@@ -229,9 +229,9 @@ export default function SearchDueFeesPage() {
                         <td className="px-4 py-2.5 font-medium text-gray-800">{s.name}</td>
                         <td className="px-4 py-2.5 text-gray-600">{s.className}</td>
                         <td className="px-4 py-2.5 text-gray-600 font-mono text-xs">{s.admissionNo}</td>
-                        <td className="px-4 py-2.5 text-right font-medium text-gray-800">${symbol}${s.totalFees.toLocaleString()}</td>
-                        <td className="px-4 py-2.5 text-right text-gray-600">${symbol}${s.paidAmount.toLocaleString()}</td>
-                        <td className="px-4 py-2.5 text-right font-medium text-gray-800">${symbol}${s.dueAmount.toLocaleString()}</td>
+                        <td className="px-4 py-2.5 text-right font-medium text-gray-800">{`${symbol}${s.totalFees.toLocaleString()}`}</td>
+                        <td className="px-4 py-2.5 text-right text-gray-600">{`${symbol}${s.paidAmount.toLocaleString()}`}</td>
+                        <td className="px-4 py-2.5 text-right font-medium text-gray-800">{`${symbol}${s.dueAmount.toLocaleString()}`}</td>
                         <td className="px-4 py-2.5 text-center">
                           {isPaid ? (
                             <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full border bg-green-50 text-green-700 border-green-200">

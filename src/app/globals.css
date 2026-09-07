@@ -205,3 +205,66 @@ h1, h2, h3, h4, h5, h6 {
   from { opacity: 0; transform: translateY(12px) scale(0.97); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
+
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translate(-50%, -16px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+@keyframes toastSlideIn {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.glass-panel {
+  transition: box-shadow 0.25s ease, transform 0.25s ease;
+}
+
+.glass-panel:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 12px rgba(255, 119, 50, 0.35), 0 0 28px rgba(255, 119, 50, 0.15);
+}
+
+@media (prefers-color-scheme: dark) {
+  .glass-panel:hover {
+    box-shadow: 0 0 10px rgba(255, 119, 50, 0.25), 0 0 22px rgba(255, 119, 50, 0.1);
+  }
+}
+
+.portal-glow-hover {
+  transition: box-shadow 0.25s ease, transform 0.25s ease;
+}
+
+.portal-glow-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 12px rgba(255, 119, 50, 0.35), 0 0 28px rgba(255, 119, 50, 0.15);
+}
+
+.portal-scroll {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+.portal-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.portal-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.portal-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 119, 50, 0.35);
+  border-radius: 8px;
+}
+
+.portal-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 119, 50, 0.6);
+}
+
+@media (prefers-color-scheme: dark) {
+  .portal-glow-hover:hover {
+    box-shadow: 0 0 10px rgba(255, 119, 50, 0.25), 0 0 22px rgba(255, 119, 50, 0.1);
+  }
+}

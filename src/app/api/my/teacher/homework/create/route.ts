@@ -44,6 +44,11 @@ export const POST = handle(async (req: NextRequest, ctx) => {
       subjectId: res.rows[0].subject_id ? Number(res.rows[0].subject_id) : null,
       homeworkDate: res.rows[0].homework_date,
       submissionDate: res.rows[0].submission_date,
+      evaluationDate: res.rows[0].evaluation_date,
+      maxMarks: res.rows[0].max_marks,
+      marksObtained: res.rows[0].marks_obtained,
+      note: res.rows[0].note,
+      status: res.rows[0].status,
       description: res.rows[0].description,
     },
   }

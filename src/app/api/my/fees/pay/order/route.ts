@@ -77,64 +77,47 @@ export const POST = handle(async (req: NextRequest, ctx) => {
     .sort((a, b) => a - b)
     .join(",")
 
+  // Purge ALL stale Pending rows for these fee types across ALL gateways.
+  // This prevents leftover rows from previous attempts (different gateway,
+  // abandoned group payment, etc.) from being reused or causing duplicates.
+  const wantedIds = selected.map((h: any) => Number(h.feesTypeId))
+  if (wantedIds.length > 0) {
+    await query(
+      `DELETE FROM fees_payments
+       WHERE student_id = $1 AND status = 'Pending'
+         AND fees_type_id = ANY(string_to_array($2, ',')::int[])`,
+      [student.id, wantedIds.join(",")]
+    )
+  }
+
   // --- Real Razorpay flow ------------------------------------------------
   const razorpayReal = gateway?.code === "razorpay" && (await razorpayConfigured())
   if (razorpayReal) {
-    // Idempotent retry: reuse a pending razorpay order covering exactly these heads.
-    const pending = (
-      await query(
-        `SELECT id, fees_type_id AS "feesTypeId", transaction_id AS "orderId"
-         FROM fees_payments
-         WHERE student_id = $1 AND status = 'Pending' AND payment_method = 'razorpay' AND transaction_id IS NOT NULL`,
-        [student.id]
+    const order = await createRazorpayOrder(
+      Math.round(total * 100),
+      `FEES-${student.id}-${payAll ? "ALL" : wantedSet}-${Date.now() % 100000}`,
+      { student_id: String(student.id), fee_types: wantedSet, school_id: String(ctx.schoolId ?? "") }
+    )
+    const ids: number[] = []
+    for (const h of selected as any[]) {
+      const ins = await query(
+        `INSERT INTO fees_payments (student_id, class_id, fees_group_id, fees_type_id, amount, paid_amount, payment_mode, payment_method, transaction_id, status)
+         VALUES ($1, $2, $3, $4, $5, $6, 'Online', 'razorpay', $7, 'Pending')
+         RETURNING id`,
+        [student.id, student.class_id, h.feesGroupId ?? null, h.feesTypeId, Number(h.balance), Number(h.balance), order.id]
       )
-    ).rows
-    const byOrder = new Map<string, any[]>()
-    for (const r of pending) {
-      const key = String(r.orderId)
-      if (!byOrder.has(key)) byOrder.set(key, [])
-      byOrder.get(key)!.push(r)
-    }
-    let paymentIds: number[] | null = null
-    let orderId = ""
-    for (const [oid, rows] of byOrder) {
-      const have = rows.map((r) => Number(r.feesTypeId)).sort((a, b) => a - b).join(",")
-      if (have === wantedSet) {
-        paymentIds = rows.map((r) => Number(r.id))
-        orderId = oid
-        break
-      }
-    }
-    if (!paymentIds) {
-      const order = await createRazorpayOrder(
-        Math.round(total * 100),
-        `FEES-${student.id}-${payAll ? "ALL" : wantedSet}-${Date.now() % 100000}`,
-        { student_id: String(student.id), fee_types: wantedSet, school_id: String(ctx.schoolId ?? "") }
-      )
-      const ids: number[] = []
-      for (const h of selected as any[]) {
-        const ins = await query(
-          `INSERT INTO fees_payments (student_id, class_id, fees_group_id, fees_type_id, amount, paid_amount, payment_mode, payment_method, transaction_id, status)
-           VALUES ($1, $2, $3, $4, $5, $6, 'Online', 'razorpay', $7, 'Pending')
-           RETURNING id`,
-          [student.id, student.class_id, h.feesGroupId ?? null, h.feesTypeId, Number(h.balance), Number(h.balance), order.id]
-        )
-        ids.push(Number(ins.rows[0].id))
-      }
-      paymentIds = ids
-      orderId = order.id
+      ids.push(Number(ins.rows[0].id))
     }
 
-    if (!orderId) throw new ApiError(500, "Failed to create Razorpay order")
     const cfg = await getRazorpayConfig()
     const studentName = student.name || `${student.first_name || ""} ${student.last_name || ""}`.trim() || "Student"
     return {
       mode: "razorpay_order",
       gateway: { code: "razorpay", name: "Razorpay", mode: "Live", demo: false },
       bulk: selected.length > 1,
-      paymentIds,
+      paymentIds: ids,
       studentId: Number(student.id),
-      orderId,
+      orderId: order.id,
       amount: total,
       amountPaise: Math.round(total * 100),
       currency: cfg.currency || "INR",
@@ -146,55 +129,24 @@ export const POST = handle(async (req: NextRequest, ctx) => {
   }
 
   // --- Demo gateway flow (Test-mode gateway or unconfigured gateway) ------
-  // Records Pending rows labelled with the chosen gateway so the transaction
-  // details (which gateway, how much, when) are kept for the school and the payer.
   if (gateway) {
-    const pendingDemo = (
-      await query(
-        `SELECT id, fees_type_id AS "feesTypeId", transaction_id AS "groupId"
-         FROM fees_payments
-         WHERE student_id = $1 AND status = 'Pending' AND payment_method = $2 AND transaction_id IS NOT NULL`,
-        [student.id, gateway.code]
+    const token = `${gateway.code.toUpperCase()}-${student.id}-${Date.now() % 100000}`
+    const ids: number[] = []
+    for (const h of selected as any[]) {
+      const ins = await query(
+        `INSERT INTO fees_payments (student_id, class_id, fees_group_id, fees_type_id, amount, paid_amount, payment_mode, payment_method, transaction_id, status)
+         VALUES ($1, $2, $3, $4, $5, $6, 'Online', $7, $8, 'Pending')
+         RETURNING id`,
+        [student.id, student.class_id, h.feesGroupId ?? null, h.feesTypeId, Number(h.balance), Number(h.balance), gateway.code, token]
       )
-    ).rows
-    const demoGroups = new Map<string, number[]>()
-    for (const r of pendingDemo) {
-      const key = String(r.groupId)
-      if (!demoGroups.has(key)) demoGroups.set(key, [])
-      demoGroups.get(key)!.push(Number(r.feesTypeId))
-    }
-    let paymentIds: number[] = []
-    let reused = false
-    for (const [groupKey, typeIds] of demoGroups) {
-      const have = typeIds.sort((a, b) => a - b).join(",")
-      if (have === wantedSet) {
-        paymentIds = pendingDemo
-          .filter((r: any) => String(r.groupId) === groupKey)
-          .map((r: any) => Number(r.id))
-        reused = true
-        break
-      }
-    }
-    if (!reused) {
-      const token = `${gateway.code.toUpperCase()}-${student.id}-${Date.now() % 100000}`
-      const ids: number[] = []
-      for (const h of selected as any[]) {
-        const ins = await query(
-          `INSERT INTO fees_payments (student_id, class_id, fees_group_id, fees_type_id, amount, paid_amount, payment_mode, payment_method, transaction_id, status)
-           VALUES ($1, $2, $3, $4, $5, $6, 'Online', $7, $8, 'Pending')
-           RETURNING id`,
-          [student.id, student.class_id, h.feesGroupId ?? null, h.feesTypeId, Number(h.balance), Number(h.balance), gateway.code, token]
-        )
-        ids.push(Number(ins.rows[0].id))
-      }
-      paymentIds = ids
+      ids.push(Number(ins.rows[0].id))
     }
 
     return {
       mode: "demo",
       gateway: { code: gateway.code, name: gateway.name, mode: gateway.mode, demo: (gateway.mode || "Test") === "Test" },
       bulk: selected.length > 1,
-      paymentIds,
+      paymentIds: ids,
       studentId: Number(student.id),
       amount: total,
       heads: selected.map((h: any) => ({ feesTypeId: Number(h.feesTypeId), feesType: h.feesType, balance: Number(h.balance) })),
@@ -202,56 +154,23 @@ export const POST = handle(async (req: NextRequest, ctx) => {
   }
 
   // --- Manual flow (no gateway) -------------------------------------------
-  // Record as Pending and ask the payer how/when they actually paid. Each insert
-  // batch shares a local transaction_id token (MANUAL-<ts>) used for idempotent
-  // re-use; the token is replaced by the payer's own reference on verify.
-  const pendingManual = (
-    await query(
-      `SELECT id, fees_type_id AS "feesTypeId", transaction_id AS "groupId"
-       FROM fees_payments
-       WHERE student_id = $1 AND status = 'Pending' AND payment_method = 'manual' AND transaction_id IS NOT NULL`,
-      [student.id]
+  const token = `MANUAL-${student.id}-${Date.now() % 100000}`
+  const ids: number[] = []
+  for (const h of selected as any[]) {
+    const ins = await query(
+      `INSERT INTO fees_payments (student_id, class_id, fees_group_id, fees_type_id, amount, paid_amount, payment_mode, payment_method, transaction_id, status)
+       VALUES ($1, $2, $3, $4, $5, $6, NULL, 'manual', $7, 'Pending')
+       RETURNING id`,
+      [student.id, student.class_id, h.feesGroupId ?? null, h.feesTypeId, Number(h.balance), Number(h.balance), token]
     )
-  ).rows
-  const manualGroups = new Map<string, number[]>()
-  for (const r of pendingManual) {
-    const key = String(r.groupId)
-    if (!manualGroups.has(key)) manualGroups.set(key, [])
-    manualGroups.get(key)!.push(Number(r.feesTypeId))
-  }
-
-  let paymentIds: number[] = []
-  let reused = false
-  for (const [groupKey, typeIds] of manualGroups) {
-    const have = typeIds.sort((a, b) => a - b).join(",")
-    if (have === wantedSet) {
-      paymentIds = pendingManual
-        .filter((r: any) => String(r.groupId) === groupKey)
-        .map((r: any) => Number(r.id))
-      reused = true
-      break
-    }
-  }
-  if (!reused) {
-    const token = `MANUAL-${student.id}-${Date.now() % 100000}`
-    const ids: number[] = []
-    for (const h of selected as any[]) {
-      const ins = await query(
-        `INSERT INTO fees_payments (student_id, class_id, fees_group_id, fees_type_id, amount, paid_amount, payment_mode, payment_method, transaction_id, status)
-         VALUES ($1, $2, $3, $4, $5, $6, NULL, 'manual', $7, 'Pending')
-         RETURNING id`,
-        [student.id, student.class_id, h.feesGroupId ?? null, h.feesTypeId, Number(h.balance), Number(h.balance), token]
-      )
-      ids.push(Number(ins.rows[0].id))
-    }
-    paymentIds = ids
+    ids.push(Number(ins.rows[0].id))
   }
 
   return {
     mode: "manual",
     gateway: null,
     bulk: selected.length > 1,
-    paymentIds,
+    paymentIds: ids,
     studentId: Number(student.id),
     amount: total,
     heads: selected.map((h: any) => ({ feesTypeId: Number(h.feesTypeId), feesType: h.feesType, balance: Number(h.balance) })),

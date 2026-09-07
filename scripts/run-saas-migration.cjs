@@ -47,7 +47,7 @@ const TENANT_TABLES = [
   "sessions","student_categories","student_houses","disable_reasons","student_promotions","online_admissions",
   "alumni","alumni_events","alumni_attendance","alumni_finance","class_teachers","timetable_entries","lessons",
   "topics","lesson_plans","syllabus_statuses","content_types","content_items","video_tutorials","homework",
-  "attendance_types","student_attendance","staff_attendance","leave_types","leave_requests","qr_attendance",
+  "attendance_types","student_attendance","student_attendance_notes","staff_attendance","leave_types","leave_requests","qr_attendance",
   "exam_groups","exams","exam_subjects","exam_marks","marks_divisions","marks_grades","online_exams","questions",
   "question_bank","exam_attempts","exam_answers","exam_public_links","online_exam_questions",
   "cbse_exams","cbse_exam_subjects","cbse_exam_students","cbse_exam_marks","cbse_terms","cbse_assessments",

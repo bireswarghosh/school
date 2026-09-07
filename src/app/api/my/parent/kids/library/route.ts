@@ -11,7 +11,9 @@ export const GET = handle(async (req: NextRequest, ctx) => {
 
   const res = await query(
     `SELECT bi.id, b.name AS "book", b.book_number AS "bookNumber", b.author,
-       bi.issue_date AS "issueDate", bi.return_date AS "returnDate", bi.status
+       bi.issue_date AS "issueDate",
+       bi.due_return_date AS "dueReturnDate",
+       bi.return_date AS "returnDate", bi.status
      FROM book_issues bi
      LEFT JOIN books b ON b.id = bi.book_id
      WHERE bi.member_type = 'student' AND bi.member_id = $1

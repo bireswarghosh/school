@@ -21,7 +21,15 @@ import {
   X,
   Library as LibraryIcon,
   ClipboardList,
+  Bus,
+  Building2,
+  School,
+  ListChecks,
+  MonitorPlay,
+  Download,
+  Star,
 } from "lucide-react"
+import { useSchoolInfo } from "@/lib/use-school-info"
 
 type MeUser = {
   id: number
@@ -56,11 +64,29 @@ const NAV: NavMap = {
       label: "Academic",
       items: [
         { label: "Attendance", href: "/portal/attendance", icon: CalendarDays },
-        { label: "Timetable", href: "/portal/timetable", icon: Clock },
+        { label: "Class Timetable", href: "/portal/timetable", icon: Clock },
         { label: "Homework", href: "/portal/homework", icon: BookOpen },
         { label: "Exam Results", href: "/portal/exams", icon: FileSpreadsheet },
+        { label: "Online Exam", href: "/portal/exams/online-exam", icon: MonitorPlay },
+        { label: "Lesson Plan", href: "/portal/lesson-plan", icon: BookOpen },
+        { label: "Syllabus Status", href: "/portal/syllabus-status", icon: ListChecks },
         { label: "Library", href: "/portal/library", icon: LibraryIcon },
         { label: "Leave", href: "/portal/leave", icon: ClipboardList },
+        { label: "Download Center", href: "/portal/download-center", icon: Download },
+        { label: "Teacher Reviews", href: "/portal/teacher-reviews", icon: Star },
+        { label: "Online Courses", href: "/portal/online-courses", icon: GraduationCap },
+      ],
+    },
+    {
+      label: "Transport",
+      items: [
+        { label: "Transport Routes", href: "/portal/transport", icon: Bus },
+      ],
+    },
+    {
+      label: "Hostel",
+      items: [
+        { label: "Hostel Rooms", href: "/portal/hostel", icon: Building2 },
       ],
     },
     {
@@ -86,8 +112,12 @@ const NAV: NavMap = {
         { label: "Attendance", href: "/portal/attendance", icon: CalendarDays },
         { label: "Homework", href: "/portal/homework", icon: BookOpen },
         { label: "Exam Results", href: "/portal/exams", icon: FileSpreadsheet },
+        { label: "Online Exam", href: "/portal/exams/online-exam", icon: MonitorPlay },
+        { label: "Lesson Plan", href: "/portal/lesson-plan", icon: BookOpen },
+        { label: "Syllabus Status", href: "/portal/syllabus-status", icon: ListChecks },
         { label: "Library", href: "/portal/library", icon: LibraryIcon },
         { label: "Leave", href: "/portal/leave", icon: ClipboardList },
+        { label: "Download Center", href: "/portal/download-center", icon: Download },
       ],
     },
     {
@@ -112,7 +142,10 @@ const NAV: NavMap = {
       items: [
         { label: "Attendance", href: "/portal/attendance", icon: CalendarDays },
         { label: "Homework", href: "/portal/homework", icon: BookOpen },
-        { label: "Timetable", href: "/portal/timetable", icon: Clock },
+        { label: "Class Timetable", href: "/portal/timetable", icon: Clock },
+        { label: "Lesson Plan", href: "/portal/lesson-plan", icon: BookOpen },
+        { label: "Syllabus Status", href: "/portal/syllabus-status", icon: ListChecks },
+        { label: "Download Center", href: "/portal/download-center", icon: Download },
       ],
     },
   ],
@@ -127,6 +160,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const [loaded, setLoaded] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const { info: schoolInfo } = useSchoolInfo()
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -186,13 +220,22 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         style={{ borderBottom: "1px solid color-mix(in srgb, var(--sidebar-bg), white 15%)" }}
       >
         <div className="flex items-center gap-2 overflow-hidden">
-          <div className="h-9 w-9 rounded-xl flex items-center justify-center text-white shrink-0" style={{ backgroundColor: "var(--primary)" }}>
-            <GraduationCap className="h-5 w-5" />
-          </div>
+          {schoolInfo.adminLogoSrc ? (
+            <img
+              src={collapsed ? (schoolInfo.adminSmallLogoSrc || schoolInfo.adminLogoSrc) : schoolInfo.adminLogoSrc}
+              alt={`${schoolInfo.name} logo`}
+              className="h-9 w-9 rounded-xl object-contain shrink-0"
+              style={{ background: "var(--primary)", padding: 4 }}
+            />
+          ) : (
+            <div className="h-9 w-9 rounded-xl flex items-center justify-center text-white shrink-0" style={{ backgroundColor: "var(--primary)" }}>
+              <GraduationCap className="h-5 w-5" />
+            </div>
+          )}
           {!collapsed && (
             <div className="min-w-0">
               <p className="font-bold text-sm truncate" style={{ color: "var(--sidebar-text)" }}>
-                {me.school?.name || "Smart School"}
+                {schoolInfo.name || me.school?.name || "Smart School"}
               </p>
               <p className="text-[11px] truncate" style={{ color: "color-mix(in srgb, var(--sidebar-text), transparent 40%)" }}>
                 {me.school ? `Portal (${me.school.code})` : "Student Portal"}
@@ -232,7 +275,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         </div>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-5">
+      <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-5 portal-scroll">
         {nav.map((section) => (
           <div key={section.label}>
             {!collapsed && (
@@ -345,10 +388,10 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
               </div>
 
               <div className="flex items-center gap-3 min-w-0">
-                {me.school && (
+                {schoolInfo.name && (
                   <span className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-[var(--primary-light)] text-[var(--primary)] max-w-[220px]">
-                    <span className="truncate">{me.school.name}</span>
-                    <span className="font-mono">({me.school.code})</span>
+                    <span className="truncate">{schoolInfo.name}</span>
+                    {me.school && <span className="font-mono">({me.school.code})</span>}
                   </span>
                 )}
                 {impersonating && me.user?.origName && (
@@ -367,8 +410,8 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
             </div>
           </header>
 
-          <main className="flex-1 overflow-y-auto p-4 lg:p-6">
-            <div className="max-w-6xl mx-auto">{children}</div>
+          <main className="flex-1 overflow-y-auto p-4 lg:p-6 portal-scroll">
+            <div>{children}</div>
           </main>
         </div>
       </div>

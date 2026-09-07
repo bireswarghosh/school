@@ -93,6 +93,18 @@ export const GET = handle(async (req: NextRequest, ctx) => {
          FROM visitor_book vb LEFT JOIN purpose_types pt ON pt.id = vb.purpose_type_id
          ORDER BY vb.date DESC, vb.id DESC LIMIT 6`
       ),
+      query(
+        `SELECT si.id, si.sale_no AS "saleNo", si.total_amount AS "totalAmount",
+           si.discount_amount AS "discountAmount", si.sale_date AS "saleDate",
+           si.payment_status AS "paymentStatus", si.quantity,
+           p.name AS "productName", b.name AS "bookName"
+         FROM si_sales si
+         LEFT JOIN si_products p ON p.id = si.product_id
+         LEFT JOIN books b ON b.id = si.book_id
+         WHERE si.student_id = $1
+         ORDER BY si.id DESC LIMIT 10`,
+        [student.id]
+      ),
     ])
 
     const attendance = data[0]
@@ -111,6 +123,7 @@ export const GET = handle(async (req: NextRequest, ctx) => {
     const staffRes = data[13]
     const studentsCount = data[14]
     const visitorRes = data[15]
+    const salesRes = data[16]
 
     const className = classRes.rows[0]?.name || null
     const sectionName = sectionRes.rows[0]?.name || null
@@ -173,6 +186,7 @@ export const GET = handle(async (req: NextRequest, ctx) => {
       teachers,
       library: libraryRes.rows,
       visitors: visitorRes.rows,
+      otherPayments: salesRes.rows,
     }
   }
 
@@ -181,18 +195,25 @@ export const GET = handle(async (req: NextRequest, ctx) => {
     const studentIds = kids.map((k) => Number(k.id))
     let hwTotal = 0
     let feeBalance = 0
+    let totalPaid = 0
+    let totalDue = 0
+    const kidsDetails: any[] = []
+
     if (studentIds.length > 0) {
       const ids = studentIds.join(",")
+
       const hw = await query(
         `SELECT COUNT(*)::int AS total FROM homework h
          JOIN students s ON s.class_id = h.class_id AND s.section_id = h.section_id
          WHERE s.id IN (${ids})`
       )
       hwTotal = hw.rows[0]?.total ?? 0
+
       const masters = await query(
-        `SELECT fm.class_id AS "classId", fm.fees_type_id AS "feesTypeId", SUM(fm.amount)::float AS amount
+        `SELECT fm.class_id AS "classId", fm.fees_type_id AS "feesTypeId", SUM(fm.amount)::float AS amount, ft.name AS "feesType"
          FROM fees_masters fm JOIN students s ON s.class_id = fm.class_id
-         WHERE s.id IN (${ids}) AND fm.status = 'Active' GROUP BY fm.class_id, fm.fees_type_id`
+         LEFT JOIN fees_types ft ON ft.id = fm.fees_type_id
+         WHERE s.id IN (${ids}) AND fm.status = 'Active' GROUP BY fm.class_id, fm.fees_type_id, ft.name`
       )
       const paid = await query(
         `SELECT fees_type_id AS "feesTypeId", SUM(COALESCE(paid_amount, amount))::float AS paid
@@ -200,12 +221,78 @@ export const GET = handle(async (req: NextRequest, ctx) => {
       )
       const paidMap = new Map(paid.rows.map((p) => [Number(p.feesTypeId), Number(p.paid)]))
       feeBalance = masters.rows.reduce((s, m) => s + Math.max(0, Number(m.amount) - (paidMap.get(Number(m.feesTypeId)) || 0)), 0)
+      totalPaid = paid.rows.reduce((s, p) => s + Number(p.paid || 0), 0)
+      totalDue = masters.rows.reduce((s, m) => s + Number(m.amount || 0), 0)
+
+      for (const kid of kids) {
+        const att = await query(
+          `SELECT at.type AS "type", COUNT(*)::int AS total FROM student_attendance sa
+           LEFT JOIN attendance_types at ON at.id = sa.attendance_type_id
+           WHERE sa.student_id = $1 GROUP BY at.type`,
+          [kid.id]
+        )
+        const attSummary: Record<string, number> = {}
+        for (const r of att.rows) attSummary[r.type || "Other"] = (attSummary[r.type || "Other"] || 0) + r.total
+        const attTotal = att.rows.reduce((s: number, r: any) => s + r.total, 0)
+        const attPresent = (attSummary["Present"] || 0) + (attSummary["Late"] || 0)
+        const attPct = attTotal > 0 ? Math.round((attPresent / attTotal) * 100) : 0
+
+        const kidHw = await query(
+          `SELECT COUNT(*)::int AS total FROM homework h
+           WHERE h.class_id = (SELECT class_id FROM students WHERE id = $1)
+           AND h.section_id = (SELECT section_id FROM students WHERE id = $1)`,
+          [kid.id]
+        )
+
+        kidsDetails.push({
+          ...kid,
+          attendance: { total: attTotal, percentage: attPct, summary: attSummary },
+          homeworkCount: kidHw.rows[0]?.total ?? 0,
+        })
+      }
+
+      const notices = await query(
+        `SELECT id, title, notice_date AS "noticeDate", publish_date AS "publishDate", message
+         FROM notices ORDER BY publish_date DESC NULLS LAST, notice_date DESC NULLS LAST LIMIT 5`
+      )
+
+      const sales = await query(
+        `SELECT si.id, si.sale_no AS "saleNo", si.total_amount AS "totalAmount",
+           si.discount_amount AS "discountAmount", si.sale_date AS "saleDate",
+           si.payment_status AS "paymentStatus", si.quantity, si.student_id AS "studentId",
+           si.student_name AS "studentName",
+           p.name AS "productName", b.name AS "bookName"
+         FROM si_sales si
+         LEFT JOIN si_products p ON p.id = si.product_id
+         LEFT JOIN books b ON b.id = si.book_id
+         WHERE si.student_id IN (${ids})
+         ORDER BY si.id DESC LIMIT 10`
+      )
+
+      return {
+        role,
+        name: kids[0]?.name ? `${kids[0].name}'s Parent` : "Parent",
+        kids: kids.length,
+        summary: {
+          kids: kids.length,
+          homework: hwTotal,
+          feesBalance: Math.round(feeBalance),
+          totalPaid: Math.round(totalPaid),
+          totalDue: Math.round(totalDue),
+        },
+        kidsDetails,
+        notices: notices.rows,
+        otherPayments: sales.rows,
+      }
     }
+
     return {
       role,
       name: "Parent",
       kids: kids.length,
-      summary: { kids: kids.length, homework: hwTotal, feesBalance: Math.round(feeBalance) },
+      summary: { kids: kids.length, homework: hwTotal, feesBalance: Math.round(feeBalance), totalPaid: 0, totalDue: 0 },
+      kidsDetails: [],
+      notices: [],
     }
   }
 

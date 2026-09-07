@@ -119,6 +119,7 @@ export const config = {
     "/api/:path*",
     "/admin/:path*",
     "/portal/:path*",
+    "/user/:path*",
     "/saas/:path*",
     "/login",
     "/register",

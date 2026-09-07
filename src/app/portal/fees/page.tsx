@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { Wallet, Loader2, CheckCircle2, ListChecks, History, ChevronDown, ChevronRight, CreditCard, Landmark, ShieldCheck } from "lucide-react"
+import { useCurrency } from "@/lib/currency-context"
 
 function loadScript(src: string): Promise<boolean> {
   return new Promise((resolve, reject) => {
@@ -46,6 +47,7 @@ type Tab = "dues" | "history"
 type ManualAnswer = { mode: string; reference: string }
 
 export default function PortalFees() {
+  const { symbol } = useCurrency()
   const [role, setRole] = useState("")
   const [kids, setKids] = useState<any[]>([])
   const [studentId, setStudentId] = useState("")
@@ -254,7 +256,6 @@ export default function PortalFees() {
   }
 
   const summary = data?.summary || {}
-  const symbol = "₹"
   const gatewayName = (code: string | null | undefined) => {
     if (!code) return "—"
     const g = gateways.find((x: any) => x.code === code)
@@ -611,7 +612,7 @@ function ManualPayDialog({
 }) {
   const [mode, setMode] = useState("")
   const [reference, setReference] = useState("")
-  const symbol = "₹"
+  const { symbol } = useCurrency()
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -680,7 +681,7 @@ function PaymentChooser({
   onCancel: () => void
   onSelect: (code: string) => void
 }) {
-  const symbol = "₹"
+  const { symbol } = useCurrency()
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onCancel} />
@@ -748,7 +749,7 @@ function DemoCheckoutDialog({
   onCancel: () => void
   onConfirm: () => void
 }) {
-  const symbol = "₹"
+  const { symbol } = useCurrency()
   const gw = order.gateway || {}
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

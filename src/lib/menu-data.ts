@@ -266,6 +266,7 @@ export const menuData: MenuCategory[] = [
     icon: "Library",
     items: [
       { label: "Book List", path: "/admin/library/book-list" },
+      { label: "Book Requests", path: "/admin/library/book-requests" },
       { label: "Issue - Return", path: "/admin/library/issue-return" },
       { label: "Members", path: "/admin/library/members" },
       { label: "Add Student", path: "/admin/library/add-student" },

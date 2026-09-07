@@ -17,7 +17,8 @@ export const GET = handle(async (req: NextRequest, ctx) => {
 
   const res = await query(
     `SELECT h.id, h.class_id AS "classId", h.section_id AS "sectionId", h.subject_id AS "subjectId",
-       h.homework_date AS "homeworkDate", h.submission_date AS "submissionDate", h.description, h.document,
+       h.homework_date AS "homeworkDate", h.submission_date AS "submissionDate", h.evaluation_date AS "evaluationDate",
+       h.max_marks AS "maxMarks", h.marks_obtained AS "marksObtained", h.note, h.status, h.description, h.document,
        su.name AS "subject", c.name AS "className", s.name AS "sectionName", h.created_at AS "createdAt"
      FROM homework h
      LEFT JOIN subjects su ON su.id = h.subject_id

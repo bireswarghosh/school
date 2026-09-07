@@ -165,7 +165,7 @@ export default function SearchFeesPaymentPage() {
                       <td className="px-4 py-2.5 text-gray-600 font-mono text-xs">{p.admissionNo}</td>
                       <td className="px-4 py-2.5 text-gray-800">{p.studentName}</td>
                       <td className="px-4 py-2.5 text-gray-600">{p.className}</td>
-                      <td className="px-4 py-2.5 text-right font-medium text-gray-800">${symbol}${p.amount.toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-right font-medium text-gray-800">{`${symbol}${p.amount.toLocaleString()}`}</td>
                       <td className="px-4 py-2.5 text-gray-600 text-xs">{p.paymentDate}</td>
                       <td className="px-4 py-2.5">
                         <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-700">{p.paymentMode}</span>
