@@ -99,6 +99,7 @@ const studentFolder = folder(
   [
     ...commonMy,
     req("GET", "my/student", "My profile summary."),
+    req("GET", "my/student/profile", "My profile enriched with class & section names."),
     req("GET", "my/student/details", "Full record — profile, parents, bank, fees, exams, attendance summary."),
     req("GET", "my/student/homework", "Homework for my class/section."),
     req("GET", "my/student/timetable", "My weekly timetable."),
@@ -116,6 +117,35 @@ const studentFolder = folder(
       name: "Razorpay verify",
     }),
     req("GET", "my/student/library", "My issued library books."),
+    req("GET", "my/student/book-requests", "Library book catalogue with my request status."),
+    req("POST", "my/student/book-requests", "Request a library book (Pending until librarian accepts).", {
+      body: { bookId: 12 },
+    }),
+    req("GET", "my/student/hostel", "Hostels + rooms available in my school."),
+    req("GET", "my/student/lesson-plans", "Lesson plans for my class/section with syllabus progress."),
+    req("GET", "my/student/online-courses", "Online courses catalogue with my enrollment flags."),
+    req("POST", "my/student/online-courses", "Enroll myself in an online course.", {
+      body: { courseId: 2 },
+    }),
+    req("GET", "my/student/other-payments", "Non-fee payments (stationery/book shop sales)."),
+    req("GET", "my/student/syllabus-status", "Syllabus completion status per subject (student = self).", {
+      queryParams: [{ key: "student_id", value: "", desc: "Optional" }],
+    }),
+    req("GET", "my/student/teacher-reviews", "Teachers of my class with my submitted review/rating."),
+    req("POST", "my/student/teacher-reviews", "Submit/update a review for one of my teachers (rating 1-5).", {
+      body: { teacherName: "Mrs. Anjali Deshmukh", subject: "Physics", rating: 5, comments: "Explains very clearly" },
+    }),
+    req("GET", "my/student/transport", "Transport routes with vehicles and pickup points."),
+    req("GET", "my/attendance-note", "My attendance notes for a month (or single date).", {
+      queryParams: [
+        { key: "month", value: "2026-08", desc: "YYYY-MM, defaults to current month" },
+        { key: "date", value: "", desc: "Single-day lookup" },
+      ],
+    }),
+    req("PUT", "my/attendance-note", "Add/update an attendance note for a date (empty note deletes it).", {
+      body: { date: "2026-08-20", note: "Came late due to medical appointment" },
+    }),
+    req("GET", "my/fees/gateways", "Online payment gateways the school has enabled."),
     req("GET", "my/exams", "All exams with publish flags."),
     req("GET", "my/leave", "My applied leaves with status."),
     req("POST", "my/leave", "Apply for leave (student = self).", {
@@ -161,6 +191,24 @@ const parentFolder = folder(
     }),
     req("GET", "my/parent/kids/library", "Library books issued to one child.", {
       queryParams: [{ key: "studentId", value: "15", desc: "Required - kid id" }],
+    }),
+    req("POST", "my/parent/kids/fees/pay", "Record a direct fee payment for one of my children.", {
+      body: { studentId: 15, feesTypeId: 3, amount: 3000, paymentMode: "Cash" },
+    }),
+    req("GET", "my/fees/gateways", "Online payment gateways the school has enabled."),
+    req("GET", "my/student/lesson-plans", "Lesson plans of one child's class/section."),
+    req("GET", "my/student/other-payments", "Non-fee payments (stationery/book shop sales) of all my kids."),
+    req("GET", "my/student/syllabus-status", "Syllabus completion status of one child.", {
+      queryParams: [{ key: "student_id", value: "15", desc: "Optional - defaults to first kid" }],
+    }),
+    req("GET", "my/attendance-note", "Attendance notes of one child.", {
+      queryParams: [
+        { key: "studentId", value: "15", desc: "Required - kid id" },
+        { key: "month", value: "2026-08", desc: "YYYY-MM" },
+      ],
+    }),
+    req("PUT", "my/attendance-note", "Add/update an attendance note for one child.", {
+      body: { studentId: 15, date: "2026-08-20", note: "Came late due to medical appointment" },
     }),
     req("GET", "my/student/notices", "Published notices (shared endpoint, all roles)."),
     req("GET", "my/exams", "All exams with publish flags."),
@@ -241,6 +289,21 @@ const teacherFolder = folder(
       },
     }),
     req("GET", "my/teacher/timetable", "My weekly teaching timetable."),
+    req("GET", "my/student/syllabus-status", "Syllabus completion status for classes I teach.", {
+      queryParams: [
+        { key: "class_id", value: "5", desc: "Optional - defaults to first taught class" },
+        { key: "section_id", value: "2", desc: "Optional" },
+      ],
+    }),
+    req("GET", "my/attendance-note", "Attendance note(s) of any student in my school.", {
+      queryParams: [
+        { key: "studentId", value: "15", desc: "Required" },
+        { key: "month", value: "2026-08", desc: "YYYY-MM" },
+      ],
+    }),
+    req("PUT", "my/attendance-note", "Add/update an attendance note for a student.", {
+      body: { studentId: 15, date: "2026-08-20", note: "Excused — medical appointment" },
+    }),
     req("GET", "my/student/notices", "Published notices (shared endpoint, all roles)."),
     req("GET", "my/exams", "All exams with publish flags."),
     req("GET", "my/leave", "My applied leaves with status."),
@@ -254,7 +317,7 @@ const teacherFolder = folder(
 // School Admin CRUD modules (generic /api/{module} handler)
 // ----------------------------------------------------------------
 function crud(endpoint, label, tableName, opts = {}) {
-  const { extraQuery = [], customBody, customDesc } = opts
+  const { extraQuery = [], customBody, customDesc, putBody } = opts
   const items = []
   const listDesc = customDesc
     ? `List ${label}. ${customDesc}`
@@ -267,11 +330,16 @@ function crud(endpoint, label, tableName, opts = {}) {
   )
   items.push(
     req("PUT", endpoint, `Update an existing ${label} (id required in body).`, {
-      body: { id: 1, ...(customBody ? { name: customBody.name || "updated" } : { field1: "value" }) },
+      body: putBody || { id: 1, ...(customBody ? { name: customBody.name || "updated" } : { field1: "value" }) },
     })
   )
   items.push(req("DELETE", endpoint, `Delete a ${label} by id.`, { queryParams: ["id"] }))
   return items
+}
+
+function crudSub(endpoint, label, tableName, methods, opts = {}) {
+  const all = crud(endpoint, label, tableName, opts)
+  return all.filter((it) => methods.includes(it.request.method))
 }
 
 const adminModules = [
@@ -289,7 +357,12 @@ const adminModules = [
     ...crud("academics/subject-group", "Subject Groups", "subject_groups"),
     ...crud("academics/timetable", "Timetables", "timetables"),
   ]],
-  ["Alumni", crud("alumni", "Alumni", "alumni").concat(crud("alumni/event", "Alumni Events", "alumni_events"))],
+  ["Alumni", [
+    ...crud("alumni", "Alumni", "alumni"),
+    ...crud("alumni/event", "Alumni Events", "alumni_events"),
+    ...crud("alumni/attendance", "Alumni Attendance", "alumni_attendance"),
+    ...crud("alumni/finance", "Alumni Finance", "alumni_finance"),
+  ]],
   ["Annual Calendar", [
     ...crud("annual-calendar/event", "Calendar Events", "calendar_events", { customBody: { title: "Sports Day", date: "2026-12-18", type: "event" } }),
     ...crud("annual-calendar/holiday-type", "Holiday Types", "holiday_types"),
@@ -333,6 +406,11 @@ const adminModules = [
     ...crud("cbse/marksheet", "CBSE Marksheets", "cbse_marksheets", { customBody: { exam_id: 2, student_id: 15, template_id: 1 } }),
     ...crud("cbse/terms", "CBSE Terms", "cbse_terms", { customBody: { name: "Term 1", academic_year: "2025-26", start_date: "2026-04-01", end_date: "2026-09-30" } }),
     ...crud("cbse/settings", "CBSE Settings", "cbse_settings", { customBody: { academic_year: "2025-26", max_marks_fa: 20, max_marks_sa: 80 } }),
+    ...crud("cbse/assessments", "CBSE Assessments", "cbse_assessments", { extraQuery: ["class_id", "section_id", "subject_id", "exam_id"] }),
+    ...crud("cbse/observation", "CBSE Observations", "cbse_observations", { extraQuery: ["class_id", "section_id", "subject_id"] }),
+    ...crud("cbse/obs-params", "CBSE Observation Params", "cbse_observation_params", { extraQuery: ["observation_id"] }),
+    ...crud("cbse/reports", "CBSE Reports", "cbse_reports", { extraQuery: ["exam_id", "class_id", "section_id"] }),
+    ...crud("cbse/template", "CBSE Templates", "cbse_templates", { extraQuery: ["type"] }),
   ]],
   ["Certificate", [
     ...crud("certificate/student-id-card", "Student ID Cards", "student_id_cards"),
@@ -371,6 +449,11 @@ const adminModules = [
     }),
   ]],
   ["Fees Collection", [
+    ...crudSub("fees/fees-assign", "Fees Assignments", "fees_masters", ["GET", "POST"], {
+      extraQuery: ["class_id", "section_id"],
+      customDesc: "GET lists assignments; POST bulk-assigns fee types to a class/section or specific students.",
+      customBody: { class_id: 5, section_id: 2, fees_type_ids: [1, 3] },
+    }),
     ...crud("fees/fees-type", "Fees Types", "fees_types", { customBody: { name: "Tuition Fee", code: "TUI" } }),
     ...crud("fees/fees-group", "Fees Groups", "fees_groups", { customBody: { name: "Class Fee" } }),
     ...crud("fees/fees-master", "Fees Master", "fees_master", { customBody: { class_id: 5, fees_group_id: 1, fees_type_id: 1, amount: 12000, due_date: "2026-04-10" } }),
@@ -400,6 +483,11 @@ const adminModules = [
     ...crud("front-office/admission-enquiry", "Admission Enquiries", "admission_enquiries", {
       extraQuery: ["class_id", "source_id", "status"],
       customBody: { name: "Rohan Mehta", phone: "9922334455", email: "rohan.m@example.com", class_id: 3, source_id: 2, follow_up_date: "2026-08-30", assigned: "Mrs. Anjali", note: "Interested in science stream", status: "Pending" },
+    }),
+    ...crudSub("front-office/admission-enquiry/followup", "Enquiry Follow-ups", "admission_enquiry_followups", ["GET", "POST"], {
+      extraQuery: ["enquiry_id"],
+      customDesc: "GET lists follow-ups of an enquiry; POST adds one.",
+      customBody: { enquiry_id: 44, follow_up_date: "2026-08-30", note: "Called — visiting campus on Saturday", response: "Positive" },
     }),
     ...crud("front-office/visitor-book", "Visitor Book", "visitor_book", {
       extraQuery: ["meeting_with"],
@@ -435,6 +523,11 @@ const adminModules = [
     ...crud("human-resource/staff", "Staff", "staff", {
       customBody: { staff_id: "EMP-010", name: "Mrs. Anjali Deshmukh", gender: "Female", dob: "1988-03-12", email: "anjali@yourschool.com", phone: "9876555544", department_id: 2, designation_id: 3, date_of_joining: "2022-06-01", status: "Active" },
     }),
+    ...crudSub("human-resource/staff-profile", "Staff Profile + Portal Login", "staff", ["GET", "POST", "PUT"], {
+      extraQuery: ["staff_id"],
+      customDesc: "GET loads profile + login; POST creates portal login; PUT updates it.",
+      customBody: { staff_id: 4, email: "anjali@yourschool.com", password: "Teacher@123" },
+    }),
     ...crud("human-resource/payroll", "Payroll", "payroll", { extraQuery: ["staff_id", "month", "year"], customBody: { staff_id: 4, month: "August", year: 2026, basic_salary: 45000, allowances: 8000, deduction: 2000, status: "generated" } }),
     ...crud("human-resource/teachers-rating", "Teachers Rating", "teachers_ratings"),
     ...crud("human-resource/disabled-staff", "Disabled Staff", "disabled_staff"),
@@ -456,6 +549,11 @@ const adminModules = [
     }),
     ...crud("library/members", "Library Members", "library_members", { customBody: { member_type: "student", member_id: 15, library_card_no: "LIB-015" } }),
     ...crud("library/issue", "Book Issues", "library_issues", { extraQuery: ["status"], customBody: { book_id: 3, member_id: 1, issue_date: "2026-08-22", due_return_date: "2026-09-05", status: "Issued" } }),
+    ...crudSub("library/book-requests", "Book Requests", "book_requests", ["GET", "PUT"], {
+      extraQuery: ["status"],
+      customDesc: "PUT {id,status:Accepted|Rejected} — accepting auto-issues the book to the student.",
+      putBody: { id: 5, status: "Accepted" },
+    }),
   ]],
   ["Live Class", crud("live-class", "Live Classes", "live_classes", {
     extraQuery: ["class_id", "date"],
@@ -476,14 +574,21 @@ const adminModules = [
     ...crud("online-course/course-category", "Course-Category Mapping", "online_course_course_categories"),
     ...crud("online-course/setting", "Settings", "online_course_settings"),
   ]],
-  ["Online Exam", crud("online-exam", "Online Exams", "online_exams")],
+  ["Online Exam", [
+    ...crud("online-exam", "Online Exams", "online_exams"),
+    ...crudSub("online-exam/public-link", "Public Exam Links", "exam_public_links", ["GET", "POST"], {
+      extraQuery: ["exam_id"],
+      customDesc: "POST creates a public access link (token) for an exam; GET lists them.",
+      customBody: { exam_id: 2 },
+    }),
+  ]],
   ["QR Attendance", crud("qr-attendance", "QR Attendance", "qr_attendance")],
   ["Question Bank", crud("question-bank", "Question Bank", "question_bank")],
-  ["Staff", crud("staff", "Staff", "staff", {
-    customBody: { staff_id: "EMP-011", name: "Mr. Suresh Reddy", email: "suresh@yourschool.com", phone: "9000011111", designation_id: 2, department_id: 1, status: "Active" },
-  })],
   ["Student Information", [
-    req("POST", "student-information/bulk-delete", "Bulk delete students by ids.", { body: { student_ids: [61, 62, 63] } }),
+    ...crudSub("student-information/bulk-delete", "Disabled Students Bulk Delete", "students", ["GET", "DELETE"], {
+      extraQuery: ["ids"],
+      customDesc: "GET lists disabled students (template); DELETE ?ids=1,2,3 removes them.",
+    }),
     ...crud("student-information/student", "Students", "students", {
       extraQuery: ["class_id", "section_id", "status"],
       customBody: {
@@ -516,8 +621,25 @@ const adminModules = [
     ...crud("student-information/student-house", "Student Houses", "student_houses"),
     ...crud("student-information/disable-reason", "Disable Reasons", "disable_reasons"),
     ...crud("student-information/online-admission", "Online Admissions", "online_admissions"),
+    ...crud("student-information/timeline", "Student Timeline", "student_timeline", { extraQuery: ["student_id"] }),
+    req("GET", "student-information/student/login", "Look up a student's portal login (username/password).", {
+      queryParams: [{ key: "student_id", value: "15", desc: "Required" }],
+    }),
+  ]],
+  ["Online Admission Queue", [
+    req("GET", "online-admission", "List online admission applications (with school code/name)."),
+    req("PUT", "online-admission", "Change application status. Approving creates the student record + portal login.", {
+      body: { id: 3, status: "Approved" },
+    }),
+    req("DELETE", "online-admission", "Delete an application.", { queryParams: [{ key: "id", value: "3" }] }),
   ]],
   ["Students", [req("GET", "students", "List students (simple). Optional: ?id=N", { queryParams: ["id"] })]],
+  ["Reference Lists (GET only)", [
+    req("GET", "classes", "Class list."),
+    req("GET", "sections", "Section list by class.", { queryParams: [{ key: "class_id", value: "5", desc: "Optional" }] }),
+    req("GET", "subjects", "Subject list."),
+    req("GET", "staff", "Staff list."),
+  ]],
   ["System Setting", [
     ...crud("system-setting/user", "Users (logins)", "users", {
       customBody: {
@@ -529,17 +651,36 @@ const adminModules = [
         status: "Active",
       },
     }),
+    req("GET", "system-setting/student-users", "Student logins with linked student record."),
+    req("GET", "system-setting/parent-users", "Parent logins with linked children summary."),
     ...crud("system-setting/session", "Sessions (academic years)", "sessions"),
+    ...crudSub("system-setting/session/current", "Current Session", "sessions", ["GET", "POST"], {
+      customDesc: "GET returns the active session; POST sets one active.",
+      customBody: { id: 2 },
+    }),
     ...crud("system-setting/language", "Languages", "languages"),
     ...crud("system-setting/currency", "Currencies", "currencies"),
     ...crud("system-setting/module", "Modules", "modules"),
     ...crud("system-setting/payment-gateway", "Payment Gateways", "payment_gateways"),
     ...crud("system-setting/file-type", "File Types", "file_types"),
     ...crud("system-setting/custom-field", "Custom Fields", "custom_fields"),
-    ...crud("system-setting/custom-field-value", "Custom Field Values", "custom_field_values"),
+    ...crudSub("system-setting/custom-field-value", "Custom Field Values", "custom_field_values", ["GET", "POST"], {}),
     ...crud("system-setting/sidebar-menu", "Sidebar Menus", "sidebar_menus"),
     ...crud("system-setting/addon", "Addons", "addons"),
-    ...crud("system-setting/backup", "Backups", "backups"),
+    ...crudSub("system-setting/backup", "Backups", "backups", ["GET", "POST", "DELETE"], {
+      customDesc: "POST creates a backup; DELETE ?id=N removes one.",
+    }),
+    req("POST", "system-setting/backup/restore", "Restore the database from a stored backup.", { body: { id: 3 } }),
+    req("GET", "system-setting/next-id", "Next auto-generated ID (e.g. admission number) for the admission form.", {
+      queryParams: [{ key: "entity", value: "student", desc: "" }],
+    }),
+    ...crudSub("system-setting/online-admission", "Online Admission Settings", "online_admission_settings", ["GET", "PUT"], {
+      putBody: { enable: true, start_date: "2026-04-01", end_date: "2026-06-30" },
+    }),
+    ...crudSub("system-setting/system-field", "System Fields", "system_fields", ["GET", "PUT"], {
+      putBody: { id: 1, visible: true },
+    }),
+    ...crudSub("system-setting/system-update", "System Updates", "system_updates", ["GET", "POST"], {}),
     ...crud("system-setting", "System Settings", "system_settings"),
   ]],
   ["Transport", [
@@ -549,6 +690,98 @@ const adminModules = [
     ...crud("transport/assign-vehicle", "Assign Vehicles", "route_vehicles"),
     ...crud("transport/route-pickup-point", "Route Pickup Points", "route_pickup_points"),
     ...crud("transport/student-fees", "Student Transport Fees", "student_transport_fees"),
+  ]],
+  ["Dashboards (GET only)", [
+    req("GET", "admin/dashboard", "Admin dashboard metrics (counts, recent activity, fee summary)."),
+    req("GET", "admin/staff-inventory-dashboard", "Staff inventory dashboard metrics."),
+    req("GET", "admin/students-inventory-dashboard", "Students inventory dashboard metrics."),
+  ]],
+  ["Reports (GET only)", [
+    req("GET", "reports/class-subjects", "Class–subject mapping report.", {
+      queryParams: [
+        { key: "class_id", value: "5", desc: "" },
+        { key: "section_id", value: "2", desc: "" },
+      ],
+    }),
+    req("GET", "reports/staff", "Staff report (filters/search)."),
+    req("GET", "reports/students", "Student report (filters/search)."),
+  ]],
+  ["AI Tools", [
+    ...crudSub("ai/settings", "AI Provider Settings", "system_settings", ["GET", "PUT"], {
+      putBody: { provider: "openai", apiKey: "sk-...", model: "gpt-4o-mini" },
+    }),
+    req("POST", "ai/settings/test", "Test the AI provider connection."),
+    req("POST", "ai/generate-questions", "Generate exam questions with AI.", {
+      body: { subject: "Physics", topic: "Motion", count: 5, difficulty: "medium" },
+    }),
+    req("POST", "ai/student-insights", "AI-generated student performance insights.", {
+      body: { studentId: 15 },
+    }),
+  ]],
+  ["Billing & Subscription", [
+    req("GET", "billing", "School subscription, plan & invoice status."),
+  ]],
+  ["Roles & Permissions", crud("roles", "Roles", "roles")],
+  ["School Settings", [
+    ...crudSub("school-settings", "School Settings", "school_settings", ["GET", "PUT"], {
+      putBody: { theme_color: "#ff7732", enable_dark_mode: true },
+    }),
+  ]],
+  ["Staff Inventory", [
+    ...crud("staff-inventory/store", "Stores/Warehouses", "item_stores"),
+    ...crud("staff-inventory/item-category", "Item Categories", "item_categories"),
+    ...crud("staff-inventory/item", "Inventory Items", "items", { extraQuery: ["category_id"] }),
+    ...crud("staff-inventory/supplier", "Suppliers", "item_suppliers"),
+    ...crud("staff-inventory/stock", "Stock Entries", "item_stocks", { extraQuery: ["item_id", "store_id"] }),
+    ...crud("staff-inventory/issue", "Item Issue/Return", "item_issues", { extraQuery: ["staff_id", "item_id", "status"] }),
+  ]],
+  ["Students Inventory (Shop)", [
+    ...crud("students-inventory/store", "Stores", "si_stores"),
+    ...crud("students-inventory/category", "Product Categories", "si_categories"),
+    ...crud("students-inventory/brand", "Brands", "si_brands"),
+    ...crud("students-inventory/unit", "Units of Measure", "si_units"),
+    ...crud("students-inventory/product", "Products", "si_products"),
+    ...crud("students-inventory/variation", "Product Variations", "si_variations"),
+    ...crud("students-inventory/book", "Books (Stationery)", "si_books"),
+    ...crud("students-inventory/vendor", "Vendors", "si_vendors"),
+    ...crud("students-inventory/purchase", "Purchase Orders", "si_purchases"),
+    ...crud("students-inventory/stock", "Stock Levels", "si_stock", { extraQuery: ["store_id", "product_id"] }),
+    ...crud("students-inventory/sale", "Sales/POS Transactions", "si_sales"),
+    ...crud("students-inventory/coupon", "Coupons", "si_coupons"),
+    ...crud("students-inventory/ledger", "Stock Ledger", "si_ledger"),
+    req("GET", "students-inventory/sale/invoice", "Public invoice view (shared link — no auth).", {
+      queryParams: [{ key: "no", value: "SLE-0009", desc: "Sale number" }],
+    }),
+  ]],
+  ["Upload & Files", [
+    req("POST", "upload", "Upload a file — multipart/form-data, max 4 MB, stored in Postgres; raster images auto-converted to WebP."),
+    req("GET", "files/{name}", "Serve an uploaded file by name."),
+  ]],
+  ["Public Access (no auth)", [
+    req("GET", "settings/public", "Public school branding/login settings.", {
+      queryParams: [{ key: "code", value: "DEFAULT", desc: "School code" }],
+    }),
+    req("GET", "students/lookup", "Public student lookup by admission number.", {
+      queryParams: [{ key: "admission_no", value: "ADM2026-042", desc: "Required" }],
+    }),
+    req("GET", "online-admission/public", "Load the public online admission form (fields, classes, settings).", {
+      queryParams: [{ key: "code", value: "DEFAULT", desc: "School code" }],
+    }),
+    req("POST", "online-admission/public", "Submit the public online admission form.", {
+      body: { code: "DEFAULT", first_name: "Rohan", last_name: "Mehta", date_of_birth: "2012-05-04", gender: "Male", class_id: 3, mobile_number: "9922334455", email: "rohan.m@example.com", father_name: "Amit Mehta", current_address: "12 MG Road, Pune" },
+    }),
+    req("GET", "exam-public", "Public exam door — load an exam by token.", {
+      queryParams: [{ key: "token", value: "abc123", desc: "Public link token" }],
+    }),
+    req("GET", "exam-questions", "Public exam question paper.", {
+      queryParams: [{ key: "exam_id", value: "2", desc: "Required" }],
+    }),
+    req("POST", "exam-attempts", "Record a public exam attempt/result.", {
+      body: { exam_id: 2, student_name: "Rohan Mehta", answers: { "1": "A", "2": "C" } },
+    }),
+    req("GET", "exam-attempts", "Retrieve attempts of a public exam.", {
+      queryParams: [{ key: "exam_id", value: "2", desc: "Required" }],
+    }),
   ]],
 ]
 
@@ -601,6 +834,12 @@ const superAdminFolder = folder(
     req("GET", "saas/invoices", "Subscription invoices across schools."),
     req("POST", "saas/invoices/pay", "Record/mark a manual invoice payment.", {
       body: { invoiceId: 88, mode: "UPI", reference: "UTR123456789" },
+    }),
+    req("GET", "saas/invoices/pay/status", "Invoice payment status (checkout page helper).", {
+      queryParams: [{ key: "invoice", value: "88", desc: "Required - invoice id" }],
+    }),
+    req("POST", "saas/invoices/pay/status", "Mark an invoice paid (verifies Razorpay paymentId when configured).", {
+      body: { invoice: 88, paymentId: "pay_LIc9k4SgwYg8mNx" },
     }),
     req("GET", "saas/users", "All platform users.", { queryParams: [{ key: "schoolId", value: "12", desc: "Optional filter" }] }),
     req("GET", "saas/payment-settings", "Global payment gateway settings."),
