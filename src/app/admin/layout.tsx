@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import Sidebar from "@/components/Sidebar"
-import { Menu, Search, Moon, Sun, LogOut, ChevronDown, User, Store, ArrowLeft } from "lucide-react"
+import { Menu, Search, Moon, Sun, LogOut, ChevronDown, User, Store, ArrowLeft, ShieldCheck } from "lucide-react"
 import NotificationBell from "@/components/NotificationBell"
 import ThemeSettings from "@/components/ThemeSettings"
 import QuickLinks from "@/components/QuickLinks"
@@ -13,6 +13,7 @@ import { SessionProvider } from "@/lib/session-context"
 import { AuthProvider, useAuth } from "@/lib/auth-context"
 import { useSchoolInfo } from "@/lib/use-school-info"
 import AdminThemeProvider from "@/components/AdminThemeProvider"
+import AdminAssistant from "@/components/admin-assistant"
 
 function AdminHeader({ pageTitle, toggleDarkMode, darkMode, onMenu }: { pageTitle: string; toggleDarkMode: () => void; darkMode: boolean; onMenu: () => void }) {
   const { user, school, logout } = useAuth()
@@ -152,6 +153,13 @@ function AdminHeader({ pageTitle, toggleDarkMode, darkMode, onMenu }: { pageTitl
                 >
                   <User className="h-4 w-4" /> My Profile
                 </Link>
+                <Link
+                  href="/admin/account/security"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                >
+                  <ShieldCheck className="h-4 w-4" /> Account Security
+                </Link>
                 <button
                   onClick={handleLogout}
                   className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
@@ -223,6 +231,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <main className="flex-1 overflow-y-auto p-4 lg:p-6">
               <CurrencyProvider>{children}</CurrencyProvider>
             </main>
+            <AdminAssistant />
           </div>
         </div>
       </SessionProvider>

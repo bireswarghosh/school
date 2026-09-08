@@ -58,7 +58,7 @@ export const authEndpoints: EndpointDoc[] = [
     method: "POST",
     path: "auth/login",
     summary: "Log in as any role and receive the session cookie",
-    desc: "Email + password are always required. schoolCode is required for every school-level role (admin, teacher, staff, student, parent) and must be omitted for super admins.",
+    desc: "Email + password are always required. schoolCode is required for every school-level role (admin, teacher, staff, student, parent) and must be omitted for super admins. If the account has 2FA enabled, the response is { requiresTwoFactor: true, challengeToken } instead — complete with POST auth/2fa/verify.",
     body: {
       email: "admin@smart-school.in",
       password: "Admin@123",
@@ -148,6 +148,51 @@ export const authEndpoints: EndpointDoc[] = [
     desc: "Only valid when the current session was created by impersonation (origUid present). Returns to the original actor's session.",
     body: {},
     response: { success: true, user: { id: 2, name: "Admin - Smart School", email: "admin@smart-school.in", role: "admin" } },
+  },
+  {
+    method: "POST",
+    path: "auth/2fa/verify",
+    summary: "Complete login for 2FA-enabled accounts (step 2)",
+    desc: "When auth/login returns requiresTwoFactor:true, call this with the challengeToken plus the 6-digit authenticator code (or a one-time backup code). Returns the normal session cookie + token on success.",
+    body: { challengeToken: "<challengeToken from login>", code: "123456" },
+    response: {
+      user: { id: 2, name: "Admin - Smart School", email: "admin@smart-school.in", role: "admin", permissions: [], schoolId: 1 },
+      redirect: "/admin",
+      token: "<smart_school_session token>",
+    },
+  },
+  {
+    method: "GET",
+    path: "auth/2fa/status",
+    summary: "Check whether 2FA is enabled on my own account",
+    response: { enabled: false },
+  },
+  {
+    method: "POST",
+    path: "auth/2fa/setup",
+    summary: "Start 2FA setup — returns secret + QR code to scan",
+    desc: "Stores a fresh TOTP secret (still disabled). Scan qrDataUrl with Google Authenticator/Authy, then confirm with auth/2fa/enable.",
+    body: {},
+    response: {
+      secret: "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP",
+      otpauthUrl: "otpauth://totp/Smart%20School:admin@smart-school.in?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&issuer=Smart%20School&algorithm=SHA1&digits=6&period=30",
+      qrDataUrl: "<data:image/png;base64,...>",
+    },
+  },
+  {
+    method: "POST",
+    path: "auth/2fa/enable",
+    summary: "Confirm setup with an authenticator code (enables 2FA + returns backup codes)",
+    desc: "Backup codes are shown only once — each works a single time if the authenticator is lost.",
+    body: { code: "123456" },
+    response: { success: true, message: "Two-factor authentication enabled", backupCodes: ["A1B2C3-D4E5F6"] },
+  },
+  {
+    method: "POST",
+    path: "auth/2fa/disable",
+    summary: "Turn off 2FA on my own account (password confirmation)",
+    body: { password: "Admin@123" },
+    response: { success: true, message: "Two-factor authentication disabled" },
   },
 ]
 
@@ -1661,7 +1706,7 @@ export const schoolAdminModules: CrudModule[] = [
   {
     label: "Dashboards",
     endpoints: [
-      { path: "admin/dashboard", table: "multi-table", desc: "Admin dashboard metrics (counts, recent activity, fee summary)", methods: ["GET"] },
+      { path: "admin/dashboard", table: "multi-table", desc: "Admin executive dashboard — KPI stats, today's attendance, fee collection/pending, upcoming exams, homework, transport, leaves, notices + computed AI insights (at-risk students, absence alerts, workload, fee projection) + per-class performance & overall exam score", methods: ["GET"] },
       { path: "admin/staff-inventory-dashboard", table: "multi-table", desc: "Staff inventory dashboard metrics", methods: ["GET"] },
       { path: "admin/students-inventory-dashboard", table: "multi-table", desc: "Students inventory dashboard metrics", methods: ["GET"] },
     ],

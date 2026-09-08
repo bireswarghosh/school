@@ -6,6 +6,7 @@ const PUBLIC_API_PREFIXES = [
   "/api/auth/logout",
   "/api/auth/me",
   "/api/auth/register",
+  "/api/auth/2fa/verify",
   "/api/exam-public",
   "/api/exam-attempts",
   "/api/students/lookup",

@@ -12,7 +12,7 @@ function applyTheme(key: string | undefined, customColor?: string) {
     root.style.setProperty("--sidebar-bg", theme.sidebar)
     root.style.setProperty("--sidebar-text", theme.sidebar === "#ffffff" ? "#334155" : "#cbd5e1")
   } else {
-    root.style.setProperty("--sidebar-bg", "#1e293b")
+    root.style.setProperty("--sidebar-bg", "#0f172a")
     root.style.setProperty("--sidebar-text", "#cbd5e1")
   }
 }

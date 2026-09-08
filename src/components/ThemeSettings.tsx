@@ -44,7 +44,7 @@ function loadGoogleFont(cssValue: string) {
 }
 
 const DEFAULTS: ThemeVars = {
-  sidebarBg: "#1e293b",
+  sidebarBg: "#0f172a",
   sidebarText: "#cbd5e1",
   sidebarActiveBg: "var(--primary)",
   bodyFont: "var(--font-sans)",

@@ -24,7 +24,7 @@ export function themeFor(key: string | null | undefined): BackendTheme {
 
 export function resolveTheme(key: string | null | undefined, customColor?: string): BackendTheme {
   if (key === CUSTOM_THEME_KEY && customColor) {
-    return { key: CUSTOM_THEME_KEY, label: "Custom", primary: customColor.toUpperCase(), sidebar: "#1e293b" }
+    return { key: CUSTOM_THEME_KEY, label: "Custom", primary: customColor.toUpperCase(), sidebar: "#0f172a" }
   }
   return themeFor(key)
 }

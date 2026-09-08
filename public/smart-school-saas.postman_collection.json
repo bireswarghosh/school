@@ -241,6 +241,167 @@
       }
     },
     {
+      "name": "POST /api/auth/2fa/verify",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/auth/2fa/verify",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "2fa",
+            "verify"
+          ]
+        },
+        "description": "Step 2 of login for 2FA accounts — challengeToken + authenticator code (or backupCode).",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"challengeToken\": \"<from login>\",\n  \"code\": \"123456\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "GET /api/auth/2fa/status",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/auth/2fa/status",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "2fa",
+            "status"
+          ]
+        },
+        "description": "Check whether 2FA is enabled on my account."
+      }
+    },
+    {
+      "name": "POST /api/auth/2fa/setup",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/auth/2fa/setup",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "2fa",
+            "setup"
+          ]
+        },
+        "description": "Start 2FA setup — returns secret + QR code (still disabled until confirmed).",
+        "body": {
+          "mode": "raw",
+          "raw": "{}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "POST /api/auth/2fa/enable",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/auth/2fa/enable",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "2fa",
+            "enable"
+          ]
+        },
+        "description": "Confirm setup with an authenticator code (returns one-time backup codes).",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"code\": \"123456\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "POST /api/auth/2fa/disable",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/auth/2fa/disable",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "2fa",
+            "disable"
+          ]
+        },
+        "description": "Turn off 2FA (password confirmation).",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"Admin@123\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
       "name": "POST /api/auth/register",
       "request": {
         "method": "POST",

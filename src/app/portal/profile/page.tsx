@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { User, Wallet, FileSpreadsheet, CalendarCheck, FolderOpen, History, Loader2, Printer, FileDown } from "lucide-react"
 import { useCurrency } from "@/lib/currency-context"
+import TwoFactorManager from "@/components/two-factor-manager"
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
@@ -301,6 +302,7 @@ export default function PortalProfile() {
               </div>
             </div>
           </div>
+          <TwoFactorManager />
         </div>
 
         <div className="flex-1 min-w-0 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">

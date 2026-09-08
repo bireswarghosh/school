@@ -65,6 +65,17 @@ function buildAuthItems(includeSuperAdmin) {
     folder("Login (pick your role)", "Run ONE of these first. Postman saves the session cookie automatically.", includeSuperAdmin ? [...loginItems, loginReq("Super Admin", { email: "superadmin@smart-school.in", password: "Super@123" }, "Omit schoolCode entirely - redirects to /saas.")] : loginItems),
     req("GET", "auth/me", "Current user, role, permissions and school."),
     req("POST", "auth/logout", "Clear the session cookie.", { body: {} }),
+    req("POST", "auth/2fa/verify", "Step 2 of login for 2FA accounts — challengeToken + authenticator code (or backupCode).", {
+      body: { challengeToken: "<from login>", code: "123456" },
+    }),
+    req("GET", "auth/2fa/status", "Check whether 2FA is enabled on my account."),
+    req("POST", "auth/2fa/setup", "Start 2FA setup — returns secret + QR code (still disabled until confirmed).", { body: {} }),
+    req("POST", "auth/2fa/enable", "Confirm setup with an authenticator code (returns one-time backup codes).", {
+      body: { code: "123456" },
+    }),
+    req("POST", "auth/2fa/disable", "Turn off 2FA (password confirmation).", {
+      body: { password: "Admin@123" },
+    }),
     req(
       "POST",
       "auth/register",

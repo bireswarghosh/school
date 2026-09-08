@@ -39,7 +39,7 @@
   --modal-bg: #fff;
   --white: #fff;
   --glass-border: #ffffff14;
-  --sidebar-bg: #1e293b;
+  --sidebar-bg: #0f172a;
   --sidebar-text: #cbd5e1;
   --sidebar-active-bg: var(--primary);
   --font-size-base: 15px;
@@ -52,52 +52,52 @@
 
 .dark {
   color-scheme: dark;
-  --background: #1e293b;
+  --background: #0f172a;
   --foreground: #e2e8f0;
-  --card: #1e293b;
-  --card-bg: #1e293b;
+  --card: #0f172a;
+  --card-bg: #0f172a;
   --card-foreground: #e2e8f0;
-  --bg-card: #24314a;
-  --popover: #1e293b;
+  --bg-card: #0f172a;
+  --popover: #0f172a;
   --popover-foreground: #e2e8f0;
   --primary: #ff7732;
   --primary-light: #ff773214;
   --primary-foreground: #fff;
   --secondary: #ff530a;
   --secondary-foreground: #fff;
-  --muted: #24314a;
+  --muted: #1e293b;
   --muted-foreground: #94a3b8;
-  --accent: #334155;
+  --accent: #1e293b;
   --accent-foreground: #e2e8f0;
   --destructive: #ef4444;
   --destructive-foreground: #fff;
-  --border: #334155;
-  --input: #24314a;
-  --input-background: #1a2637;
+  --border: #1e293b;
+  --input: #1e293b;
+  --input-background: #1e293b;
   --ring: var(--primary);
   --glass-border: #ffffff14;
-  --light-body: #1e293b;
-  --sidebar-color: #1e293b;
+  --light-body: #0f172a;
+  --sidebar-color: #0f172a;
   --title-color: #f1f5f9;
   --subtitle-color: #94a3b8;
-  --modal-bg: #1e293b;
+  --modal-bg: #0f172a;
   --white: #fff;
-  background-color: #1e293b;
+  background-color: #0f172a;
   color: #e2e8f0;
 }
 
 /* Global dark-mode overrides — adapts hard-coded Tailwind light utilities
    (white cards, gray text, gray borders) inside any .dark subtree. Kept
    un-layered so they win over Tailwind's @layer utilities. */
-.dark [class~="bg-white"] { background-color: #1e293b; }
-.dark [class*="bg-white/"] { background-color: #1e293b; }
-.dark [class~="bg-slate-50"] { background-color: #24314a; }
-.dark [class~="bg-slate-100"] { background-color: #2a3750; }
-.dark [class~="bg-slate-200"] { background-color: #334155; }
-.dark [class~="bg-gray-50"] { background-color: #24314a; }
-.dark [class~="bg-gray-100"] { background-color: #2a3750; }
-.dark [class~="bg-gray-200"] { background-color: #334155; }
-.dark [class~="bg-gray-300"] { background-color: #475569; }
+.dark [class~="bg-white"] { background-color: #0f172a; }
+.dark [class*="bg-white/"] { background-color: #0f172a; }
+.dark [class~="bg-slate-50"] { background-color: #0f172a; }
+.dark [class~="bg-slate-100"] { background-color: #0f172a; }
+.dark [class~="bg-slate-200"] { background-color: #1e293b; }
+.dark [class~="bg-gray-50"] { background-color: #0f172a; }
+.dark [class~="bg-gray-100"] { background-color: #0f172a; }
+.dark [class~="bg-gray-200"] { background-color: #1e293b; }
+.dark [class~="bg-gray-300"] { background-color: #334155; }
 
 .dark [class~="text-black"] { color: #e2e8f0; }
 .dark [class~="text-gray-900"] { color: #f1f5f9; }
@@ -108,23 +108,23 @@
 .dark [class~="text-gray-400"] { color: #64748b; }
 .dark [class~="text-gray-300"] { color: #475569; }
 .dark [class~="text-gray-200"] { color: #334155; }
-.dark [class~="text-gray-100"] { color: #1e293b; }
+.dark [class~="text-gray-100"] { color: #0f172a; }
 .dark [class~="text-slate-700"] { color: #cbd5e1; }
 .dark [class~="text-slate-600"] { color: #94a3b8; }
 .dark [class~="text-slate-500"] { color: #94a3b8; }
 
-.dark [class~="border-gray-100"] { border-color: #24314a; }
-.dark [class~="border-gray-200"] { border-color: #334155; }
-.dark [class~="border-gray-300"] { border-color: #475569; }
-.dark [class~="border-slate-100"] { border-color: #24314a; }
-.dark [class~="border-slate-200"] { border-color: #334155; }
-.dark [class~="border-slate-300"] { border-color: #475569; }
+.dark [class~="border-gray-100"] { border-color: #1e293b; }
+.dark [class~="border-gray-200"] { border-color: #1e293b; }
+.dark [class~="border-gray-300"] { border-color: #1e293b; }
+.dark [class~="border-slate-100"] { border-color: #1e293b; }
+.dark [class~="border-slate-200"] { border-color: #1e293b; }
+.dark [class~="border-slate-300"] { border-color: #1e293b; }
 
-.dark .hover\:bg-gray-50:hover { background-color: #2a3750; }
-.dark .hover\:bg-gray-100:hover { background-color: #2a3750; }
-.dark .hover\:bg-gray-200:hover { background-color: #334155; }
-.dark .hover\:bg-slate-50:hover { background-color: #2a3750; }
-.dark .hover\:bg-slate-100:hover { background-color: #2a3750; }
+.dark .hover\:bg-gray-50:hover { background-color: #1e293b; }
+.dark .hover\:bg-gray-100:hover { background-color: #1e293b; }
+.dark .hover\:bg-gray-200:hover { background-color: #1e293b; }
+.dark .hover\:bg-slate-50:hover { background-color: #1e293b; }
+.dark .hover\:bg-slate-100:hover { background-color: #1e293b; }
 
 body {
   font-family: var(--font-family);

@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { ShieldCheck, Eye, EyeOff, AlertCircle, Loader2 } from "lucide-react"
+import { ShieldCheck, Eye, EyeOff, AlertCircle, Loader2, Smartphone } from "lucide-react"
 
 export default function SaasLoginPage() {
   const router = useRouter()
@@ -12,6 +12,9 @@ export default function SaasLoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const [challengeToken, setChallengeToken] = useState("")
+  const [otp, setOtp] = useState("")
+  const [useBackup, setUseBackup] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -26,6 +29,44 @@ export default function SaasLoginPage() {
       const data = await res.json()
       if (!res.ok) {
         setError(data.error || "Login failed")
+        setLoading(false)
+        return
+      }
+      if (data.requiresTwoFactor) {
+        setChallengeToken(data.challengeToken || "")
+        setOtp("")
+        setUseBackup(false)
+        setLoading(false)
+        return
+      }
+      if (data.user?.role !== "super_admin") {
+        setError("This portal is for super admins only")
+        setLoading(false)
+        return
+      }
+      router.push("/saas")
+      router.refresh()
+    } catch {
+      setError("Network error")
+      setLoading(false)
+    }
+  }
+
+  async function handleVerify(e: React.FormEvent) {
+    e.preventDefault()
+    setError("")
+    setLoading(true)
+    try {
+      const res = await fetch("/api/auth/2fa/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: useBackup
+          ? JSON.stringify({ challengeToken, backupCode: otp })
+          : JSON.stringify({ challengeToken, code: otp }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || "Verification failed")
         setLoading(false)
         return
       }
@@ -57,6 +98,65 @@ export default function SaasLoginPage() {
             <p className="text-sm text-[var(--subtitle-color)] mt-1">Manage all schools from one dashboard</p>
           </div>
 
+          {challengeToken ? (
+            <form onSubmit={handleVerify} className="space-y-4">
+              <div className="flex items-center gap-3 rounded-xl bg-[var(--primary-light)] px-4 py-3">
+                <Smartphone className="h-5 w-5 text-[var(--primary)] shrink-0" />
+                <p className="text-sm text-[var(--foreground)]">
+                  Two-factor authentication is enabled. Enter the 6-digit code from your authenticator app.
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-[var(--foreground)] mb-1.5">
+                  {useBackup ? "Backup code" : "Authenticator code"}
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value)}
+                  placeholder={useBackup ? "XXXXXX-XXXXXX" : "123456"}
+                  inputMode={useBackup ? "text" : "numeric"}
+                  autoComplete="one-time-code"
+                  autoFocus
+                  className="w-full px-4 py-2.5 border border-[var(--border)] rounded-xl bg-[var(--card)] text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] tracking-widest text-center text-lg font-mono"
+                />
+              </div>
+
+              {error && (
+                <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 dark:bg-red-950/40 px-3 py-2.5 rounded-xl">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3 rounded-xl bg-[var(--secondary)] text-white font-semibold hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+                Verify & sign in
+              </button>
+
+              <div className="flex items-center justify-between text-sm">
+                <button
+                  type="button"
+                  onClick={() => { setUseBackup(!useBackup); setOtp(""); setError("") }}
+                  className="text-[var(--primary)] hover:underline font-medium"
+                >
+                  {useBackup ? "Use authenticator code instead" : "Lost access? Use a backup code"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setChallengeToken(""); setOtp(""); setError("") }}
+                  className="text-[var(--subtitle-color)] hover:text-[var(--primary)]"
+                >
+                  ← Back
+                </button>
+              </div>
+            </form>
+          ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-[var(--foreground)] mb-1.5">Email address</label>
@@ -106,6 +206,7 @@ export default function SaasLoginPage() {
               Sign in to SaaS
             </button>
           </form>
+          )}
 
           <div className="mt-6 pt-6 border-t border-[var(--border)] text-center text-sm">
             <Link href="/login" className="text-[var(--subtitle-color)] hover:text-[var(--primary)]">

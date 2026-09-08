@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { query } from "@/lib/db"
 import { verifyPassword, signSession, SESSION_COOKIE } from "@/lib/auth"
+import { signChallenge } from "@/lib/two-factor"
 
 function getErrorMessage(e: unknown) {
   return e instanceof Error ? e.message : String(e)
@@ -164,6 +165,21 @@ export async function POST(req: NextRequest) {
       redirect = "/saas"
     } else if (role === "student" || role === "parent" || role === "teacher") {
       redirect = "/portal"
+    }
+
+    if (user.two_factor_enabled && user.two_factor_secret) {
+      const challengeToken = signChallenge({
+        uid: user.id,
+        sid: schoolId,
+        role,
+        name: user.name || user.username || email,
+        redirect,
+      })
+      return NextResponse.json({
+        requiresTwoFactor: true,
+        challengeToken,
+        user: { id: user.id, name: user.name, email: user.email, role },
+      })
     }
 
     const response = NextResponse.json({
