@@ -107,10 +107,11 @@ export default function StudentSalesPage() {
   const [bookModalOpen, setBookModalOpen] = useState(false)
   const [bookSelection, setBookSelection] = useState<Record<number, BookSelection>>({})
 
-  // variation picker state
+  // variation picker state - simple color/size flow
   const [varProduct, setVarProduct] = useState<Product | null>(null)
   const [varPickerOpen, setVarPickerOpen] = useState(false)
-  const [selectedVarId, setSelectedVarId] = useState<number | null>(null)
+  const [pickerColor, setPickerColor] = useState("")
+  const [pickerSize, setPickerSize] = useState("")
   const [varQty, setVarQty] = useState(1)
 
   const filteredProducts = useMemo(() => {
@@ -234,7 +235,10 @@ export default function StudentSalesPage() {
     const vars = getProductVariations(p.id)
     if (vars.length > 0) {
       setVarProduct(p)
-      setSelectedVarId(vars[0]?.id ?? null)
+      // init picker to first variation
+      const first = vars[0]
+      setPickerColor(first?.color || "")
+      setPickerSize(first?.size || first?.variantValue || "")
       setVarQty(1)
       setVarPickerOpen(true)
       return
@@ -242,10 +246,33 @@ export default function StudentSalesPage() {
     addToCart("product", p.id, p.name, p.sellingPrice)
   }
 
+  const pickerVars = useMemo(() => getProductVariations(varProduct?.id), [varProduct, variations])
+  const pickerColors = useMemo(() => {
+    const set = new Set(pickerVars.map((v) => (v.color || "").trim()).filter(Boolean))
+    return Array.from(set)
+  }, [pickerVars])
+  const pickerSizesForColor = useMemo(() => {
+    const filtered = pickerColor ? pickerVars.filter((v) => (v.color || "") === pickerColor) : pickerVars
+    const set = new Set(filtered.map((v) => (v.size || v.variantValue || "").trim()).filter(Boolean))
+    return Array.from(set)
+  }, [pickerVars, pickerColor])
+  const matchedVar = useMemo(() => {
+    if (!pickerVars.length) return null
+    // try exact color+size match
+    let m = pickerVars.find((v) => (v.color || "") === pickerColor && (v.size || v.variantValue || "") === pickerSize)
+    if (m) return m
+    // fallback size only
+    m = pickerVars.find((v) => (v.size || v.variantValue || "") === pickerSize)
+    if (m) return m
+    // fallback color only
+    m = pickerVars.find((v) => (v.color || "") === pickerColor)
+    if (m) return m
+    return pickerVars[0]
+  }, [pickerVars, pickerColor, pickerSize])
+
   const confirmVarAdd = () => {
-    if (!varProduct?.id || !selectedVarId) return
-    const v = variations.find((x) => x.id === selectedVarId)
-    if (!v) return
+    if (!varProduct?.id || !matchedVar) return
+    const v = matchedVar
     const price = Number(v.price ?? v.additionalPrice ?? varProduct.sellingPrice) || 0
     const labelParts = [varProduct.name]
     const varLabel = [v.componentName || v.variantType, v.color, v.size || v.variantValue].filter(Boolean).join(" · ")
@@ -260,7 +287,8 @@ export default function StudentSalesPage() {
     })
     setVarPickerOpen(false)
     setVarProduct(null)
-    setSelectedVarId(null)
+    setPickerColor("")
+    setPickerSize("")
   }
 
   const openBookModal = () => {
@@ -1189,49 +1217,65 @@ export default function StudentSalesPage() {
       {varPickerOpen && varProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50" onClick={() => setVarPickerOpen(false)} />
-          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-hidden flex flex-col z-10">
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col z-10">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0">
               <div>
-                <h3 className="text-base font-semibold text-gray-800 flex items-center gap-2"><SlidersHorizontal className="h-5 w-5 text-violet-600" />{varProduct.name} — Select Variation</h3>
-                <p className="text-xs text-gray-500 mt-1">Choose size / color · price is per variation</p>
+                <h3 className="text-base font-semibold text-gray-800 flex items-center gap-2"><SlidersHorizontal className="h-5 w-5 text-violet-600" />{varProduct.name}</h3>
+                <p className="text-xs text-gray-500 mt-1">Choose Color → Size → Add to Cart</p>
               </div>
               <button onClick={() => setVarPickerOpen(false)} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {getProductVariations(varProduct.id).length === 0 ? (
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {pickerVars.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-8">No variations found for this product.</p>
               ) : (
-                <div className="space-y-2">
-                  {getProductVariations(varProduct.id).map((v) => {
-                    const price = Number(v.price ?? v.additionalPrice ?? varProduct.sellingPrice) || 0
-                    const selected = selectedVarId === v.id
-                    return (
-                      <label key={v.id} className={`flex items-center justify-between rounded-lg border px-3 py-2.5 cursor-pointer transition-colors ${selected ? "border-violet-500 bg-violet-50" : "border-gray-200 hover:border-violet-200 hover:bg-violet-50/40"}`}>
-                        <div className="flex items-center gap-3">
-                          <input type="radio" name="varPick" checked={selected} onChange={() => setSelectedVarId(v.id!)} className="accent-violet-600 h-4 w-4" />
-                          <div>
-                            <div className="text-sm font-medium text-gray-800">{v.componentName || v.variantType || "Variant"} {v.color ? `· ${v.color}` : ""} {v.size || v.variantValue ? `· Size ${v.size || v.variantValue}` : ""}</div>
-                            <div className="text-xs text-gray-500">SKU: {v.sku || "-"} {v.quantity != null ? `· Stock: ${v.quantity}` : ""}</div>
+                <>
+                  <div className="rounded-lg border border-violet-200 bg-violet-50/40 p-3">
+                    <div className="text-xs font-semibold text-violet-700 uppercase mb-2">Product: {varProduct.name}</div>
+                    {pickerColors.length > 0 ? (
+                      <div className="mb-3">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Color</label>
+                        <select value={pickerColor} onChange={(e) => { setPickerColor(e.target.value); const remain = pickerVars.filter((v) => (v.color || "") === e.target.value).map((v) => v.size || v.variantValue || ""); if (remain.length && !remain.includes(pickerSize)) setPickerSize(remain[0]) }} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-violet-500">
+                          {pickerColors.map((c) => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                    ) : (
+                      <div className="mb-2 text-xs text-gray-500">No color variants — size only</div>
+                    )}
+                    <div className="mb-3">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Size *</label>
+                      <select value={pickerSize} onChange={(e) => setPickerSize(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-violet-500">
+                        {pickerSizesForColor.map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                    {matchedVar && (
+                      <div className="grid grid-cols-2 gap-3 pt-2 border-t border-violet-100 mt-3">
+                        <div className="rounded-lg bg-white border border-gray-200 px-3 py-2">
+                          <div className="text-[11px] text-gray-400 uppercase font-medium">Price</div>
+                          <div className="text-base font-bold text-gray-800">{money(Number(matchedVar.price ?? matchedVar.additionalPrice ?? varProduct.sellingPrice) || 0)}</div>
+                          <div className="text-[11px] text-gray-400">SKU: {matchedVar.sku || "-"}</div>
+                        </div>
+                        <div className="rounded-lg bg-white border border-gray-200 px-3 py-2">
+                          <div className="text-[11px] text-gray-400 uppercase font-medium">Stock / Qty</div>
+                          <div className="text-sm font-medium text-gray-700">{matchedVar.quantity != null ? `${matchedVar.quantity} in stock` : "—"}</div>
+                          <div className="flex items-center gap-2 mt-1">
+                            <button onClick={() => setVarQty((q) => Math.max(1, q - 1))} className="px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50"><Minus className="h-3 w-3" /></button>
+                            <input type="number" min={1} value={varQty} onChange={(e) => setVarQty(Math.max(1, Number(e.target.value) || 1))} className="w-12 text-center text-sm rounded border border-gray-300 px-1 py-1" />
+                            <button onClick={() => setVarQty((q) => q + 1)} className="px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50"><Plus className="h-3 w-3" /></button>
                           </div>
                         </div>
-                        <div className="text-sm font-semibold text-gray-800">{money(price)}</div>
-                      </label>
-                    )
-                  })}
-                </div>
+                      </div>
+                    )}
+                    {matchedVar && (
+                      <div className="text-[11px] text-gray-500 mt-2">{matchedVar.componentName || matchedVar.variantType || varProduct.name} {matchedVar.color ? `· ${matchedVar.color}` : ""} · Size {matchedVar.size || matchedVar.variantValue}</div>
+                    )}
+                  </div>
+                </>
               )}
-              <div className="flex items-center gap-3 pt-2">
-                <label className="text-sm font-medium text-gray-700">Qty</label>
-                <div className="flex items-center rounded-lg border border-gray-300">
-                  <button onClick={() => setVarQty((q) => Math.max(1, q - 1))} className="px-2 py-1.5 text-gray-500 hover:text-violet-600"><Minus className="h-3.5 w-3.5" /></button>
-                  <input type="number" min={1} value={varQty} onChange={(e) => setVarQty(Math.max(1, Number(e.target.value) || 1))} className="w-14 text-center text-sm border-0 focus:ring-0" />
-                  <button onClick={() => setVarQty((q) => q + 1)} className="px-2 py-1.5 text-gray-500 hover:text-violet-600"><Plus className="h-3.5 w-3.5" /></button>
-                </div>
-              </div>
             </div>
             <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-2 shrink-0 bg-white">
               <button onClick={() => setVarPickerOpen(false)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
-              <button onClick={confirmVarAdd} disabled={!selectedVarId} className="px-5 py-2 bg-violet-600 text-white text-sm font-medium rounded-lg hover:bg-violet-700 disabled:opacity-50 flex items-center gap-2"><ShoppingCart className="h-4 w-4" />Add to Cart</button>
+              <button onClick={confirmVarAdd} disabled={!matchedVar} className="px-5 py-2 bg-violet-600 text-white text-sm font-medium rounded-lg hover:bg-violet-700 disabled:opacity-50 flex items-center gap-2"><ShoppingCart className="h-4 w-4" />Add to Cart</button>
             </div>
           </div>
         </div>

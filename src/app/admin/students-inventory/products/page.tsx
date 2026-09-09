@@ -93,6 +93,12 @@ export default function ProductMasterPage() {
   const [variantFormErrors, setVariantFormErrors] = useState<Record<string,string>>({})
   const [editingVariantId, setEditingVariantId] = useState<number|null>(null)
   const [variantFilter, setVariantFilter] = useState("")
+  const [bulkMode, setBulkMode] = useState(false)
+  const [bulkForm, setBulkForm] = useState({ componentName: "", color: "", basePrice: "", quantity: "1", skuPrefix: "" })
+  const [bulkSizesText, setBulkSizesText] = useState("20,22,24,26,28,30,32,34,36,38,40,42,44,S,L,XL")
+  const [bulkPricesText, setBulkPricesText] = useState("350,350,350,350,350,350,350,350,350,350,350,350,350,350,350,350")
+  const [bulkPrices, setBulkPrices] = useState<Record<string,string>>({})
+  const [bulkSaving, setBulkSaving] = useState(false)
 
   const productVariants = useMemo(()=> {
     if(!variantProduct?.id) return []
@@ -107,6 +113,11 @@ export default function ProductMasterPage() {
   const openVariantModal = (p: Product) => {
     setVariantProduct(p)
     setVariantForm({ componentName:"", color:"", size:"", price:"", sku:"", quantity:"" })
+    setBulkForm({ componentName: p.name.replace(/BLUE/i,"").trim() || p.name, color:"BLUE", basePrice:"350", quantity:"1", skuPrefix:"" })
+    setBulkSizesText("20,22,24,26,28,30,32,34,36,38,40,42,44,S,L,XL")
+    setBulkPricesText("350,360,370,380,390,400,410,420,430,440,450,460,470,350,350,350")
+    setBulkPrices({})
+    setBulkMode(false)
     setVariantFormErrors({})
     setEditingVariantId(null)
     setVariantFilter("")
@@ -154,6 +165,62 @@ export default function ProductMasterPage() {
     })
   }
   const handleDeleteVariant = async (id:number) => { await removeVar(id); if(editingVariantId===id){ setEditingVariantId(null); setVariantForm({ componentName:"", color:"", size:"", price:"", sku:"", quantity:"" }) } }
+
+  const parsedBulkSizes = useMemo(()=> bulkSizesText.split(/[\s,]+/).map(s=>s.trim()).filter(Boolean), [bulkSizesText])
+  const parsedBulkPrices = useMemo(()=> bulkPricesText.split(/[\s,]+/).map(s=>s.trim()).filter(Boolean), [bulkPricesText])
+  const autoSku = (size:string) => {
+    if(bulkForm.skuPrefix.trim()) return `${bulkForm.skuPrefix.trim()}-${size}`
+    const comp = (bulkForm.componentName||"ITEM").trim().toUpperCase().replace(/\s+/g,'-').slice(0,12) || "ITEM"
+    const col = (bulkForm.color||"NA").trim().toUpperCase().slice(0,5)
+    return `${comp}-${col}-${size}`.replace(/--+/g,'-')
+  }
+  const bulkCombined = useMemo(()=>{
+    const max = Math.max(parsedBulkSizes.length, parsedBulkPrices.length)
+    if(max===0) return [] as {size:string, price:string}[]
+    return parsedBulkSizes.map((sz,i)=> ({ size: sz, price: parsedBulkPrices[i] ?? bulkPrices[sz] ?? bulkForm.basePrice ?? "" }))
+  }, [parsedBulkSizes, parsedBulkPrices, bulkPrices, bulkForm.basePrice])
+  const handleBulkCreate = async () => {
+    if(!variantProduct?.id) return
+    if(!bulkForm.componentName.trim()){ setVariantFormErrors({ componentName:"Required" }); return }
+    if(parsedBulkSizes.length===0) return
+    if(parsedBulkPrices.length>0 && parsedBulkPrices.length !== parsedBulkSizes.length){
+      setVariantFormErrors({ price:`Sizes (${parsedBulkSizes.length}) and Prices (${parsedBulkPrices.length}) count must match` }); return
+    }
+    for(const row of bulkCombined){
+      const p = row.price
+      if(!p || isNaN(Number(p))) { setVariantFormErrors({ price:`Price for size ${row.size} required` }); return }
+    }
+    setBulkSaving(true)
+    try{
+      const makeKey = (c:string,s:string,comp:string) => `${(comp||"").trim().toUpperCase()}|${(c||"").trim().toUpperCase()}|${(s||"").trim()}`
+      const bulkComp = bulkForm.componentName.trim()
+      const bulkCol = bulkForm.color.trim()
+      const existingKeys = new Set(productVariants.map(v=> makeKey(v.color||"", v.size||v.variantValue||"", v.componentName||v.variantType||"")))
+      let created=0
+      for(const row of bulkCombined){
+        const sz = row.size
+        const key = makeKey(bulkCol, sz, bulkComp)
+        if(existingKeys.has(key)) continue
+        const priceStr = row.price
+        const payload:any={
+          productId: variantProduct.id,
+          componentName: bulkForm.componentName.trim(),
+          color: bulkForm.color.trim() || undefined,
+          size: sz,
+          price: Number(priceStr),
+          sku: autoSku(sz),
+          quantity: bulkForm.quantity ? Number(bulkForm.quantity) : 1,
+          variantType: bulkForm.componentName.trim() + (bulkForm.color.trim() ? ` (${bulkForm.color.trim()})`:""),
+          variantValue: sz,
+          additionalPrice: Number(priceStr),
+        }
+        await addVar(payload)
+        created++
+      }
+      if(created===0) alert("All sizes already exist — no new variations created.")
+      else { setBulkPrices({}); }
+    } finally { setBulkSaving(false) }
+  }
 
   const variantCount = (productId?: number) => variations.filter(v=> v.productId===productId).length
 
@@ -472,9 +539,19 @@ export default function ProductMasterPage() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-5">
-              {/* Add / Edit form */}
+              {/* Add / Edit form - Single vs Bulk */}
               <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-4">
-                <h4 className="text-sm font-semibold text-violet-800 mb-3 flex items-center gap-2"><SlidersHorizontal className="h-4 w-4"/>{editingVariantId ? "Edit Variant" : "Add Variant"}</h4>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-semibold text-violet-800 flex items-center gap-2"><SlidersHorizontal className="h-4 w-4"/>{editingVariantId ? "Edit Variant" : bulkMode ? "Bulk Create Variations" : "Add Variant"}</h4>
+                  {!editingVariantId && (
+                    <div className="flex rounded-lg border border-violet-200 overflow-hidden">
+                      <button onClick={()=> setBulkMode(false)} className={`px-3 py-1 text-xs font-medium ${!bulkMode ? "bg-violet-600 text-white" : "bg-white text-violet-700 hover:bg-violet-50"}`}>Single</button>
+                      <button onClick={()=> setBulkMode(true)} className={`px-3 py-1 text-xs font-medium ${bulkMode ? "bg-violet-600 text-white" : "bg-white text-violet-700 hover:bg-violet-50"}`}>Bulk</button>
+                    </div>
+                  )}
+                </div>
+                {!bulkMode || editingVariantId ? (
+                <>
                 <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
                   <div className="md:col-span-2">
                     <label className="block text-xs font-medium text-gray-700 mb-1">Component *</label>
@@ -511,6 +588,88 @@ export default function ProductMasterPage() {
                     {editingVariantId && <button onClick={()=>{ setEditingVariantId(null); setVariantForm({ componentName:"", color:"", size:"", price:"", sku:"", quantity:"" }); setVariantFormErrors({}) }} className="px-4 py-2 text-sm border rounded-lg bg-white">Cancel Edit</button>}
                   </div>
                 </div>
+                </>
+                ) : (
+                <>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Component *</label>
+                    <input value={bulkForm.componentName} onChange={(e)=> setBulkForm({...bulkForm, componentName:e.target.value})} placeholder="Boys Half Pant" className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Color</label>
+                    <input value={bulkForm.color} onChange={(e)=> setBulkForm({...bulkForm, color:e.target.value})} placeholder="BLUE" className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Base Price *</label>
+                    <input type="number" value={bulkForm.basePrice} onChange={(e)=> setBulkForm({...bulkForm, basePrice:e.target.value})} placeholder="350" className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Qty (each) default 1</label>
+                    <input type="number" value={bulkForm.quantity} onChange={(e)=> setBulkForm({...bulkForm, quantity:e.target.value})} placeholder="1" className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm" />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">SKU Prefix (auto if empty)</label>
+                    <input value={bulkForm.skuPrefix} onChange={(e)=> setBulkForm({...bulkForm, skuPrefix:e.target.value})} placeholder="HP-BLUE (auto: BOYS-HALF-PANT-BLUE-20)" className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm" />
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Sizes — comma or newline separated *</label>
+                    <textarea value={bulkSizesText} onChange={(e)=> setBulkSizesText(e.target.value)} rows={4} placeholder="20,22,24,26,28,30,32,34,36,38,40,42,44,S,L,XL" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono h-24" />
+                    <p className="text-[11px] text-gray-500 mt-1">{parsedBulkSizes.length} sizes</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Prices — comma or newline separated * (same order as sizes)</label>
+                    <textarea value={bulkPricesText} onChange={(e)=> setBulkPricesText(e.target.value)} rows={4} placeholder="350,360,370,380,390,400,410,420,430,440,450,460,470,350,350,350" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono h-24" />
+                    <p className="text-[11px] text-gray-500 mt-1">{parsedBulkPrices.length} prices {parsedBulkPrices.length !== parsedBulkSizes.length && parsedBulkPrices.length>0 ? <span className="text-red-500">· count must match sizes!</span> : ""}</p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-end mt-1">
+                  <button onClick={()=> { const map:Record<string,string>={}; parsedBulkSizes.forEach(s=> map[s]= bulkForm.basePrice); setBulkPrices(map); if(parsedBulkSizes.length>0){ setBulkPricesText(parsedBulkSizes.map(()=> bulkForm.basePrice).join(",")) } }} className="text-[11px] text-violet-600 hover:text-violet-700 font-medium">Apply base price to all</button>
+                </div>
+                {parsedBulkSizes.length>0 && (
+                  <div className="mt-3 rounded-lg border border-gray-200 overflow-hidden">
+                    <div className="max-h-64 overflow-y-auto">
+                    <table className="w-full text-sm">
+                      <thead><tr className="bg-gray-50 border-b"><th className="text-left px-3 py-2 text-xs uppercase font-semibold text-gray-600">Size</th><th className="text-left px-3 py-2 text-xs uppercase font-semibold text-gray-600">Price *</th><th className="text-center px-3 py-2 text-xs uppercase font-semibold text-gray-600">Qty</th><th className="text-left px-3 py-2 text-xs uppercase font-semibold text-gray-600">SKU (auto)</th><th className="text-center px-3 py-2 text-xs uppercase font-semibold text-gray-600">Status</th></tr></thead>
+                      <tbody>
+                        {bulkCombined.map(row=>{
+                          const exists = productVariants.some(v=> (v.size||v.variantValue||"").trim()===row.size.trim() && (v.color||"").trim().toUpperCase()===bulkForm.color.trim().toUpperCase() && (v.componentName||v.variantType||"").trim().toUpperCase()===bulkForm.componentName.trim().toUpperCase())
+                          return (
+                            <tr key={row.size} className={`border-b ${exists ? "bg-amber-50/50" : "hover:bg-gray-50"}`}>
+                              <td className="px-3 py-1.5 font-medium text-gray-800">{row.size}</td>
+                              <td className="px-3 py-1.5"><input type="number" value={row.price} onChange={(e)=> {
+                                const idx = parsedBulkSizes.indexOf(row.size)
+                                if(idx>=0){
+                                  const arr = bulkPricesText.split(/[\s,]+/).map(s=>s.trim()).filter(Boolean)
+                                  // ensure length
+                                  while(arr.length < parsedBulkSizes.length) arr.push(bulkForm.basePrice)
+                                  arr[idx]= e.target.value
+                                  setBulkPricesText(arr.join(","))
+                                } else {
+                                  setBulkPrices(prev=> ({...prev, [row.size]: e.target.value}))
+                                }
+                              }} placeholder="350" className="w-24 rounded border border-gray-300 px-2 py-1 text-sm" disabled={exists} /></td>
+                              <td className="px-3 py-1.5 text-center text-xs text-gray-600">{bulkForm.quantity || "1"}</td>
+                              <td className="px-3 py-1.5 font-mono text-xs text-gray-500">{autoSku(row.size)}</td>
+                              <td className="px-3 py-1.5 text-center">{exists ? <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px] font-medium">Exists</span> : <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[10px] font-medium">New</span>}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                    </div>
+                  </div>
+                )}
+                <div className="mt-3 flex gap-2">
+                  <button onClick={handleBulkCreate} disabled={bulkSaving} className="px-5 py-2 bg-violet-600 text-white text-sm font-medium rounded-lg hover:bg-violet-700 disabled:opacity-50 flex items-center gap-2"><Plus className="h-4 w-4"/>{bulkSaving ? "Creating..." : `Bulk Create ${bulkCombined.filter(row=> !productVariants.some(v=> (v.size||v.variantValue||"").trim()===row.size.trim() && (v.color||"").trim().toUpperCase()===bulkForm.color.trim().toUpperCase() && (v.componentName||v.variantType||"").trim().toUpperCase()===bulkForm.componentName.trim().toUpperCase())).length} Variations`}</button>
+                </div>
+                <p className="text-[11px] text-gray-500 mt-2">Each size becomes Component + Color + Size → Price with Qty 1 and auto SKU. Edit Price per size above before creating.</p>
+                </>
+                )}
               </div>
 
               {/* Filter */}
