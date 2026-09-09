@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { UserCheck, Search, ShoppingCart, Plus, Minus, Trash2, Ticket, Save, Package, BookOpen, X, Loader2, Printer, FileDown, MessageCircle, CheckCircle2, Pencil } from "lucide-react"
+import { UserCheck, Search, ShoppingCart, Plus, Minus, Trash2, Ticket, Save, Package, BookOpen, X, Loader2, Printer, FileDown, MessageCircle, CheckCircle2, Pencil, SlidersHorizontal } from "lucide-react"
 import { useApi } from "@/lib/use-api"
 import { useCurrency } from "@/lib/currency-context"
 import { useAuth } from "@/lib/auth-context"
@@ -9,6 +9,7 @@ import { useSchoolInfo } from "@/lib/use-school-info"
 import { toast as notify } from "@/lib/toast"
 
 type Product = { id?: number; name: string; sellingPrice?: number | string }
+type Variation = { id?: number; productId: number; componentName?: string; color?: string; size?: string; price?: number | string; sku?: string; quantity?: number; variantType?: string; variantValue?: string; additionalPrice?: number | string }
 type Book = { id?: number; title: string; publisher?: string; sellingPrice?: number | string; classId?: number | null }
 type Class = { id?: number; name: string }
 type BookSelection = { bookId: number; name: string; price: number; qty: number }
@@ -33,6 +34,7 @@ type CartItem = {
   type: "product" | "book"
   productId?: number
   bookId?: number
+  variationId?: number
   name: string
   quantity: number
   unitPrice: number
@@ -69,6 +71,7 @@ export default function StudentSalesPage() {
   const { data: classes } = useApi<Class>("/api/classes")
   const { data: coupons } = useApi<Coupon>("/api/students-inventory/coupon")
   const { data: sales, update: updateSale, remove: removeSale, refetch } = useApi<Sale>("/api/students-inventory/sale")
+  const { data: variations } = useApi<Variation>("/api/students-inventory/variation")
   const { symbol } = useCurrency()
 
   const money = (v: number) => `${symbol}${v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -103,6 +106,12 @@ export default function StudentSalesPage() {
   const [bookClass, setBookClass] = useState("")
   const [bookModalOpen, setBookModalOpen] = useState(false)
   const [bookSelection, setBookSelection] = useState<Record<number, BookSelection>>({})
+
+  // variation picker state
+  const [varProduct, setVarProduct] = useState<Product | null>(null)
+  const [varPickerOpen, setVarPickerOpen] = useState(false)
+  const [selectedVarId, setSelectedVarId] = useState<number | null>(null)
+  const [varQty, setVarQty] = useState(1)
 
   const filteredProducts = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -205,16 +214,53 @@ export default function StudentSalesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery, student])
 
-  const addToCart = (type: "product" | "book", id: number | undefined, name: string, price: number | string | undefined) => {
+  const getProductVariations = (productId?: number) => (productId ? variations.filter((v) => v.productId === productId) : [])
+  const hasVariations = (productId?: number) => getProductVariations(productId).length > 0
+
+  const addToCart = (type: "product" | "book", id: number | undefined, name: string, price: number | string | undefined, variationId?: number) => {
     if (!id) return
+    const varId = variationId ?? undefined
     setCart((prev) => {
-      const key = `${type}-${id}`
+      const key = varId ? `${type}-${id}-var-${varId}` : `${type}-${id}`
       const existing = prev.find((i) => i.key === key)
       if (existing) {
         return prev.map((i) => (i.key === key ? { ...i, quantity: i.quantity + 1 } : i))
       }
-      return [...prev, { key, type, productId: type === "product" ? id : undefined, bookId: type === "book" ? id : undefined, name, quantity: 1, unitPrice: Number(price) || 0 }]
+      return [...prev, { key, type, productId: type === "product" ? id : undefined, bookId: type === "book" ? id : undefined, variationId: varId, name, quantity: 1, unitPrice: Number(price) || 0 }]
     })
+  }
+
+  const handleProductAdd = (p: Product) => {
+    const vars = getProductVariations(p.id)
+    if (vars.length > 0) {
+      setVarProduct(p)
+      setSelectedVarId(vars[0]?.id ?? null)
+      setVarQty(1)
+      setVarPickerOpen(true)
+      return
+    }
+    addToCart("product", p.id, p.name, p.sellingPrice)
+  }
+
+  const confirmVarAdd = () => {
+    if (!varProduct?.id || !selectedVarId) return
+    const v = variations.find((x) => x.id === selectedVarId)
+    if (!v) return
+    const price = Number(v.price ?? v.additionalPrice ?? varProduct.sellingPrice) || 0
+    const labelParts = [varProduct.name]
+    const varLabel = [v.componentName || v.variantType, v.color, v.size || v.variantValue].filter(Boolean).join(" · ")
+    if (varLabel) labelParts.push(varLabel)
+    const displayName = labelParts.join(" — ")
+    const qty = Math.max(1, Number(varQty) || 1)
+    const key = `product-${varProduct.id}-var-${v.id}`
+    setCart((prev) => {
+      const existing = prev.find((i) => i.key === key)
+      if (existing) return prev.map((i) => (i.key === key ? { ...i, quantity: i.quantity + qty, unitPrice: price, name: displayName, variationId: v.id } : i))
+      return [...prev, { key, type: "product", productId: varProduct.id, variationId: v.id, name: displayName, quantity: qty, unitPrice: price }]
+    })
+    setVarPickerOpen(false)
+    setVarProduct(null)
+    setSelectedVarId(null)
   }
 
   const openBookModal = () => {
@@ -322,6 +368,9 @@ export default function StudentSalesPage() {
           return {
             productId: i.productId ?? null,
             bookId: i.bookId ?? null,
+            variationId: (i as any).variationId ?? null,
+            variantId: (i as any).variationId ?? null,
+            uniformName: i.name,
             quantity: i.quantity,
             unitPrice: i.unitPrice,
             subtotal,
@@ -778,20 +827,25 @@ export default function StudentSalesPage() {
                   <div className="text-center py-8 text-gray-400 text-sm">No products found</div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {filteredProducts.map((p) => (
-                      <div key={p.id} className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 hover:border-[var(--primary)] transition-colors">
-                        <div>
-                          <div className="text-sm font-medium text-gray-800">{p.name}</div>
-                          <div className="text-xs text-gray-500">{money(Number(p.sellingPrice) || 0)}</div>
+                    {filteredProducts.map((p) => {
+                      const vars = getProductVariations(p.id)
+                      const hasVar = vars.length > 0
+                      const fromPrice = hasVar ? Math.min(...vars.map((v: any) => Number(v.price ?? v.additionalPrice ?? p.sellingPrice) || 0)) : 0
+                      return (
+                      <div key={p.id} className={`flex items-center justify-between rounded-lg border px-4 py-3 transition-colors ${hasVar ? "border-violet-200 bg-violet-50/30 hover:border-violet-300" : "border-gray-200 hover:border-[var(--primary)]"}`}>
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium text-gray-800 flex items-center gap-2">{p.name}{hasVar && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 text-[10px] font-medium"><SlidersHorizontal className="h-3 w-3" />{vars.length} vars</span>}</div>
+                          <div className="text-xs text-gray-500">{hasVar ? `From ${money(fromPrice)} · ${vars.length} sizes` : money(Number(p.sellingPrice) || 0)}</div>
                         </div>
                         <button
-                          onClick={() => addToCart("product", p.id, p.name, p.sellingPrice)}
-                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[var(--primary)] text-white text-xs font-medium hover:bg-[var(--secondary)] transition-colors"
+                          onClick={() => handleProductAdd(p)}
+                          className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-white text-xs font-medium transition-colors ${hasVar ? "bg-violet-600 hover:bg-violet-700" : "bg-[var(--primary)] hover:bg-[var(--secondary)]"}`}
                         >
-                          <Plus className="h-3.5 w-3.5" /> Add
+                          <Plus className="h-3.5 w-3.5" /> {hasVar ? "Select" : "Add"}
                         </button>
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )
               ) : (
@@ -1127,6 +1181,57 @@ export default function StudentSalesPage() {
                   Add {bookSelectionCount > 0 ? `${bookSelectionCount} Book(s)` : "Books"} to Cart
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {varPickerOpen && varProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setVarPickerOpen(false)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-hidden flex flex-col z-10">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0">
+              <div>
+                <h3 className="text-base font-semibold text-gray-800 flex items-center gap-2"><SlidersHorizontal className="h-5 w-5 text-violet-600" />{varProduct.name} — Select Variation</h3>
+                <p className="text-xs text-gray-500 mt-1">Choose size / color · price is per variation</p>
+              </div>
+              <button onClick={() => setVarPickerOpen(false)} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {getProductVariations(varProduct.id).length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-8">No variations found for this product.</p>
+              ) : (
+                <div className="space-y-2">
+                  {getProductVariations(varProduct.id).map((v) => {
+                    const price = Number(v.price ?? v.additionalPrice ?? varProduct.sellingPrice) || 0
+                    const selected = selectedVarId === v.id
+                    return (
+                      <label key={v.id} className={`flex items-center justify-between rounded-lg border px-3 py-2.5 cursor-pointer transition-colors ${selected ? "border-violet-500 bg-violet-50" : "border-gray-200 hover:border-violet-200 hover:bg-violet-50/40"}`}>
+                        <div className="flex items-center gap-3">
+                          <input type="radio" name="varPick" checked={selected} onChange={() => setSelectedVarId(v.id!)} className="accent-violet-600 h-4 w-4" />
+                          <div>
+                            <div className="text-sm font-medium text-gray-800">{v.componentName || v.variantType || "Variant"} {v.color ? `· ${v.color}` : ""} {v.size || v.variantValue ? `· Size ${v.size || v.variantValue}` : ""}</div>
+                            <div className="text-xs text-gray-500">SKU: {v.sku || "-"} {v.quantity != null ? `· Stock: ${v.quantity}` : ""}</div>
+                          </div>
+                        </div>
+                        <div className="text-sm font-semibold text-gray-800">{money(price)}</div>
+                      </label>
+                    )
+                  })}
+                </div>
+              )}
+              <div className="flex items-center gap-3 pt-2">
+                <label className="text-sm font-medium text-gray-700">Qty</label>
+                <div className="flex items-center rounded-lg border border-gray-300">
+                  <button onClick={() => setVarQty((q) => Math.max(1, q - 1))} className="px-2 py-1.5 text-gray-500 hover:text-violet-600"><Minus className="h-3.5 w-3.5" /></button>
+                  <input type="number" min={1} value={varQty} onChange={(e) => setVarQty(Math.max(1, Number(e.target.value) || 1))} className="w-14 text-center text-sm border-0 focus:ring-0" />
+                  <button onClick={() => setVarQty((q) => q + 1)} className="px-2 py-1.5 text-gray-500 hover:text-violet-600"><Plus className="h-3.5 w-3.5" /></button>
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-2 shrink-0 bg-white">
+              <button onClick={() => setVarPickerOpen(false)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+              <button onClick={confirmVarAdd} disabled={!selectedVarId} className="px-5 py-2 bg-violet-600 text-white text-sm font-medium rounded-lg hover:bg-violet-700 disabled:opacity-50 flex items-center gap-2"><ShoppingCart className="h-4 w-4" />Add to Cart</button>
             </div>
           </div>
         </div>

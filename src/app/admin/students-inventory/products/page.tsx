@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { Search, Plus, Pencil, Trash2, X, Layers } from "lucide-react"
+import { Search, Plus, Pencil, Trash2, X, Layers, SlidersHorizontal, Package } from "lucide-react"
 import { useApi } from "@/lib/use-api"
 
 type Category = { id?: number; name: string }
@@ -20,6 +20,21 @@ type Product = {
   minStock?: number
   barcode?: string
   description?: string
+}
+
+type Variation = {
+  id?: number
+  productId: number
+  componentName?: string
+  color?: string
+  size?: string
+  price?: number
+  sku?: string
+  barcode?: string
+  quantity?: number
+  variantType?: string
+  variantValue?: string
+  additionalPrice?: number
 }
 
 type Form = {
@@ -58,6 +73,7 @@ export default function ProductMasterPage() {
   const { data: categories } = useApi<Category>("/api/students-inventory/category")
   const { data: brands } = useApi<Brand>("/api/students-inventory/brand")
   const { data: units } = useApi<Unit>("/api/students-inventory/unit")
+  const { data: variations, add: addVar, update: updateVar, remove: removeVar, refetch: refetchVar } = useApi<Variation>("/api/students-inventory/variation")
 
   const [filter, setFilter] = useState("")
   const [form, setForm] = useState<Form>(initialForm)
@@ -69,6 +85,77 @@ export default function ProductMasterPage() {
   const [showEditModal, setShowEditModal] = useState(false)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
+
+  // Variable product state
+  const [variantProduct, setVariantProduct] = useState<Product | null>(null)
+  const [showVariantModal, setShowVariantModal] = useState(false)
+  const [variantForm, setVariantForm] = useState({ componentName: "", color: "", size: "", price: "", sku: "", quantity: "" })
+  const [variantFormErrors, setVariantFormErrors] = useState<Record<string,string>>({})
+  const [editingVariantId, setEditingVariantId] = useState<number|null>(null)
+  const [variantFilter, setVariantFilter] = useState("")
+
+  const productVariants = useMemo(()=> {
+    if(!variantProduct?.id) return []
+    return variations.filter(v=> v.productId === variantProduct.id)
+  }, [variations, variantProduct])
+  const filteredVariants = useMemo(()=> {
+    if(!variantFilter) return productVariants
+    const q=variantFilter.toLowerCase()
+    return productVariants.filter(v=> (v.componentName||"").toLowerCase().includes(q) || (v.color||"").toLowerCase().includes(q) || (v.size||"").toLowerCase().includes(q))
+  }, [productVariants, variantFilter])
+
+  const openVariantModal = (p: Product) => {
+    setVariantProduct(p)
+    setVariantForm({ componentName:"", color:"", size:"", price:"", sku:"", quantity:"" })
+    setVariantFormErrors({})
+    setEditingVariantId(null)
+    setVariantFilter("")
+    setShowVariantModal(true)
+  }
+  const handleVariantSave = async () => {
+    if(!variantProduct?.id) return
+    const errs: Record<string,string>={}
+    if(!variantForm.componentName.trim()) errs.componentName="Required"
+    if(!variantForm.size.trim()) errs.size="Required"
+    if(!variantForm.price.trim() || isNaN(Number(variantForm.price))) errs.price="Valid price required"
+    setVariantFormErrors(errs)
+    if(Object.keys(errs).length) return
+    const payload:any = {
+      productId: variantProduct.id,
+      componentName: variantForm.componentName.trim(),
+      color: variantForm.color.trim() || undefined,
+      size: variantForm.size.trim(),
+      price: Number(variantForm.price),
+      sku: variantForm.sku.trim() || undefined,
+      quantity: variantForm.quantity ? Number(variantForm.quantity) : 0,
+      // keep legacy fields for compatibility
+      variantType: variantForm.componentName.trim() + (variantForm.color.trim() ? ` (${variantForm.color.trim()})`:""),
+      variantValue: variantForm.size.trim(),
+      additionalPrice: Number(variantForm.price),
+    }
+    if(editingVariantId){
+      await updateVar(editingVariantId, payload)
+      setEditingVariantId(null)
+    } else {
+      await addVar(payload)
+    }
+    setVariantForm({ componentName:"", color:"", size:"", price:"", sku:"", quantity:"" })
+    setVariantFormErrors({})
+  }
+  const startEditVariant = (v: Variation) => {
+    setEditingVariantId(v.id!)
+    setVariantForm({
+      componentName: v.componentName || v.variantType || "",
+      color: v.color || "",
+      size: v.size || v.variantValue || "",
+      price: v.price !== undefined && v.price !== null ? String(v.price) : v.additionalPrice !== undefined ? String(v.additionalPrice) : "",
+      sku: v.sku || "",
+      quantity: v.quantity !== undefined ? String(v.quantity) : "",
+    })
+  }
+  const handleDeleteVariant = async (id:number) => { await removeVar(id); if(editingVariantId===id){ setEditingVariantId(null); setVariantForm({ componentName:"", color:"", size:"", price:"", sku:"", quantity:"" }) } }
+
+  const variantCount = (productId?: number) => variations.filter(v=> v.productId===productId).length
 
   const filtered = useMemo(() => {
     return products.filter((p) => {
@@ -255,13 +342,14 @@ export default function ProductMasterPage() {
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Purchase Price</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Selling Price</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Min Stock</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Variants</th>
                 <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Action</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="text-center py-8 text-gray-400">No products found</td>
+                  <td colSpan={11} className="text-center py-8 text-gray-400">No products found</td>
                 </tr>
               ) : (
                 filtered.map((p, idx) => (
@@ -275,8 +363,16 @@ export default function ProductMasterPage() {
                     <td className="px-4 py-3 text-gray-600" dangerouslySetInnerHTML={{ __html: inr(p.purchasePrice) }} />
                     <td className="px-4 py-3 text-gray-600" dangerouslySetInnerHTML={{ __html: inr(p.sellingPrice) }} />
                     <td className="px-4 py-3 text-gray-600">{p.minStock ?? "-"}</td>
+                    <td className="px-4 py-3 text-center">
+                      <button onClick={() => openVariantModal(p)} className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border ${variantCount(p.id)>0 ? "bg-violet-100 text-violet-700 border-violet-200" : "bg-gray-100 text-gray-600 border-gray-200"} hover:bg-violet-50`} title="Manage variants">
+                        <SlidersHorizontal className="h-3 w-3" /> {variantCount(p.id)>0 ? `${variantCount(p.id)} vars` : "Add vars"}
+                      </button>
+                    </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => openVariantModal(p)} className="p-1.5 text-violet-600 hover:bg-violet-50 rounded-lg" title="Variables">
+                          <SlidersHorizontal className="h-4 w-4" />
+                        </button>
                         <button onClick={() => openEdit(p)} className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Edit">
                           <Pencil className="h-4 w-4" />
                         </button>
@@ -358,6 +454,119 @@ export default function ProductMasterPage() {
             <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-2">
               <button onClick={() => setShowDeleteModal(false)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
               <button onClick={confirmDelete} className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700">Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showVariantModal && variantProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={()=> setShowVariantModal(false)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col z-10">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2"><Package className="h-5 w-5 text-violet-600"/> {variantProduct.name} — Variables</h3>
+                <p className="text-xs text-gray-500 mt-1">School Uniform: Add Component × Color × Size with price. Example: Boys Half Pant — Blue — Size 20 → ₹350</p>
+              </div>
+              <button onClick={()=> setShowVariantModal(false)} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+              {/* Add / Edit form */}
+              <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-4">
+                <h4 className="text-sm font-semibold text-violet-800 mb-3 flex items-center gap-2"><SlidersHorizontal className="h-4 w-4"/>{editingVariantId ? "Edit Variant" : "Add Variant"}</h4>
+                <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Component *</label>
+                    <input value={variantForm.componentName} onChange={(e)=>{ setVariantForm({...variantForm, componentName:e.target.value}); if(variantFormErrors.componentName) setVariantFormErrors({}) }} placeholder="e.g. Boys Half Pant" className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent" />
+                    {variantFormErrors.componentName && <p className="text-red-500 text-xs mt-1">{variantFormErrors.componentName}</p>}
+                    <p className="text-[11px] text-gray-500 mt-1">Boys Half Pant, Bag, Blazer…</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Color</label>
+                    <input value={variantForm.color} onChange={(e)=> setVariantForm({...variantForm, color:e.target.value})} placeholder="Blue / Brown or blank" className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm focus:ring-2 focus:ring-violet-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Size *</label>
+                    <input value={variantForm.size} onChange={(e)=>{ setVariantForm({...variantForm, size:e.target.value}); if(variantFormErrors.size) setVariantFormErrors({}) }} placeholder="20, 22, S, L" className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm focus:ring-2 focus:ring-violet-500" />
+                    {variantFormErrors.size && <p className="text-red-500 text-xs mt-1">{variantFormErrors.size}</p>}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Price *</label>
+                    <input type="number" value={variantForm.price} onChange={(e)=>{ setVariantForm({...variantForm, price:e.target.value}); if(variantFormErrors.price) setVariantFormErrors({}) }} placeholder="350" className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm focus:ring-2 focus:ring-violet-500" />
+                    {variantFormErrors.price && <p className="text-red-500 text-xs mt-1">{variantFormErrors.price}</p>}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Qty</label>
+                    <input type="number" value={variantForm.quantity} onChange={(e)=> setVariantForm({...variantForm, quantity:e.target.value})} placeholder="0" className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-6 gap-3 mt-3">
+                  <div className="md:col-span-3">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">SKU (optional)</label>
+                    <input value={variantForm.sku} onChange={(e)=> setVariantForm({...variantForm, sku:e.target.value})} placeholder="e.g. HP-BLUE-20" className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm" />
+                  </div>
+                  <div className="md:col-span-3 flex items-end gap-2">
+                    <button onClick={handleVariantSave} className="px-5 py-2 bg-violet-600 text-white text-sm font-medium rounded-lg hover:bg-violet-700 flex items-center gap-2"><Plus className="h-4 w-4"/>{editingVariantId ? "Update" : "Add"} Variant</button>
+                    {editingVariantId && <button onClick={()=>{ setEditingVariantId(null); setVariantForm({ componentName:"", color:"", size:"", price:"", sku:"", quantity:"" }); setVariantFormErrors({}) }} className="px-4 py-2 text-sm border rounded-lg bg-white">Cancel Edit</button>}
+                  </div>
+                </div>
+              </div>
+
+              {/* Filter */}
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1 max-w-xs"><Search className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2"/><input value={variantFilter} onChange={(e)=> setVariantFilter(e.target.value)} placeholder="Filter by component / color / size" className="pl-9 pr-3 py-2 w-full rounded-lg border border-gray-300 text-sm" /></div>
+                <span className="text-xs text-gray-500">{filteredVariants.length} of {productVariants.length} variants</span>
+              </div>
+
+              {/* Variants table grouped */}
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <table className="w-full text-sm">
+                  <thead><tr className="bg-gray-50 border-b"><th className="text-left px-3 py-2 text-xs uppercase font-semibold text-gray-600">#</th><th className="text-left px-3 py-2 text-xs uppercase font-semibold text-gray-600">Component</th><th className="text-left px-3 py-2 text-xs uppercase font-semibold text-gray-600">Color</th><th className="text-left px-3 py-2 text-xs uppercase font-semibold text-gray-600">Size</th><th className="text-right px-3 py-2 text-xs uppercase font-semibold text-gray-600">Price</th><th className="text-center px-3 py-2 text-xs uppercase font-semibold text-gray-600">Qty</th><th className="text-left px-3 py-2 text-xs uppercase font-semibold text-gray-600">SKU</th><th className="text-right px-3 py-2 text-xs uppercase font-semibold text-gray-600">Action</th></tr></thead>
+                  <tbody>
+                    {filteredVariants.length===0 ? <tr><td colSpan={8} className="text-center py-8 text-gray-400">No variants yet. Add Boys Half Pant / Bag / Blazer etc. with Color + Size + Price.</td></tr> :
+                    filteredVariants.map((v, idx)=> (
+                      <tr key={v.id} className={`border-b hover:bg-gray-50 ${editingVariantId===v.id ? "bg-violet-50" : idx%2?"bg-gray-50/50":""}`}>
+                        <td className="px-3 py-2 text-gray-600">{idx+1}</td>
+                        <td className="px-3 py-2 font-medium text-gray-800">{v.componentName || v.variantType || "-"}</td>
+                        <td className="px-3 py-2"><span className={`px-2 py-0.5 rounded text-xs ${v.color ? "bg-blue-100 text-blue-700" : "text-gray-400"}`}>{v.color || "—"}</span></td>
+                        <td className="px-3 py-2"><span className="px-2 py-0.5 rounded bg-gray-100 text-gray-700 text-xs font-medium">{v.size || v.variantValue || "-"}</span></td>
+                        <td className="px-3 py-2 text-right font-medium" dangerouslySetInnerHTML={{__html: inr(v.price ?? v.additionalPrice)}} />
+                        <td className="px-3 py-2 text-center text-gray-600">{v.quantity ?? 0}</td>
+                        <td className="px-3 py-2 font-mono text-xs text-gray-600">{v.sku || "-"}</td>
+                        <td className="px-3 py-2 text-right"><div className="flex justify-end gap-1"><button onClick={()=> startEditVariant(v)} className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg"><Pencil className="h-4 w-4"/></button><button onClick={()=> handleDeleteVariant(v.id!)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="h-4 w-4"/></button></div></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {productVariants.length>0 && (
+                <div className="rounded-lg bg-gray-50 border border-gray-200 p-3">
+                  <p className="text-xs font-semibold text-gray-600 uppercase mb-2">Preview Hierarchy (like School Uniform)</p>
+                  <div className="space-y-2 text-xs">
+                    {Array.from(new Set(productVariants.map(v=> v.componentName || v.variantType || "Other"))).map(comp=> {
+                      const comps = productVariants.filter(v=> (v.componentName || v.variantType)===comp)
+                      const colors = Array.from(new Set(comps.map(v=> v.color || "No Color")))
+                      return (
+                        <div key={comp} className="rounded border bg-white px-3 py-2">
+                          <div className="font-medium text-gray-800">{comp} <span className="text-gray-400 font-normal">({comps.length} variants)</span></div>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {colors.map(col=> {
+                              const byColor = comps.filter(v=> (v.color||"No Color")===col)
+                              return <div key={col} className="text-[11px]"><span className="font-medium text-violet-700">{col}:</span> {byColor.map(v=> `${v.size || v.variantValue}→${inr(v.price ?? v.additionalPrice).replace("&#8377;","₹")}`).join(", ")}</div>
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 py-4 border-t flex justify-end gap-2 shrink-0 bg-white">
+              <button onClick={()=> setShowVariantModal(false)} className="px-4 py-2 text-sm border rounded-lg">Close</button>
             </div>
           </div>
         </div>

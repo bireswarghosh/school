@@ -16,9 +16,9 @@ export async function GET(req: NextRequest) {
       query(`SELECT COUNT(*)::int AS count FROM si_stores ${scope}`, params),
       query(`SELECT COUNT(*)::int AS count FROM si_coupons ${scope}`, params),
       query(
-        `SELECT COALESCE(SUM(CASE WHEN entry_type = 'IN' THEN quantity ELSE -quantity END * p.selling_price), 0)::numeric AS value,
-                COALESCE(SUM(CASE WHEN entry_type = 'IN' THEN quantity ELSE -quantity END), 0)::int AS units
-         FROM si_stock st LEFT JOIN si_products p ON p.id = st.product_id ${scope}`,
+         `SELECT COALESCE(SUM(CASE WHEN st.entry_type = 'IN' THEN st.quantity ELSE -st.quantity END * p.selling_price), 0)::numeric AS value,
+                 COALESCE(SUM(CASE WHEN st.entry_type = 'IN' THEN st.quantity ELSE -st.quantity END), 0)::int AS units
+          FROM si_stock st LEFT JOIN si_products p ON p.id = st.product_id ${schoolId ? "WHERE st.school_id = $1" : ""}`,
         params
       ),
       query(

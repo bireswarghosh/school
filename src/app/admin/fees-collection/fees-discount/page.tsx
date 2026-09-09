@@ -1,13 +1,33 @@
 "use client"
 import { toast as notify } from "@/lib/toast"
 
-import { useState, useMemo, useRef } from "react"
-import { Plus, Pencil, Trash2, X, Save, Download, Upload, Printer, ChevronLeft, ChevronRight, Search } from "lucide-react"
+import { useState, useMemo, useRef, useEffect } from "react"
+import { Plus, Pencil, Trash2, X, Save, Download, Upload, Printer, ChevronLeft, ChevronRight, Search, UserPlus, Tag } from "lucide-react"
 import { useApi } from "@/lib/use-api"
 import { useCurrency } from "@/lib/currency-context"
 
 type DiscountType = "Percentage" | "Fix"
-type FeesDiscount = { id: number; name: string; discountCode: string; discountType: DiscountType; percentage: number | null; amount: number | null; useCount: number; expiryDate: string; description: string }
+type FeesDiscount = { id: number; name: string; discountCode: string; discountType: DiscountType; percentage: number | null; amount: number | null; useCount: number; expiryDate: string; description: string; studentId?: number | null; isActive?: boolean | null; approvedBy?: string | null; approvedAt?: string | null }
+
+type StudentRef = {
+  id: number
+  admissionNo: string
+  rollNo: string | number | null
+  firstName: string
+  lastName: string
+  class: string
+  section: string
+  status: string
+}
+
+type SelectedStudent = {
+  id: number
+  name: string
+  rollNo: string
+  className: string
+  admissionNo: string
+  section: string
+}
 
 const today = () => new Date().toISOString().split("T")[0]
 
@@ -26,6 +46,107 @@ export default function FeesDiscountPage() {
   const [editDescription, setEditDescription] = useState(""); const [editErrors, setEditErrors] = useState<Record<string, string>>({})
   const [deleteId, setDeleteId] = useState<number | null>(null); const [toast, setToast] = useState("")
   const [keyword, setKeyword] = useState(""); const [currentPage, setCurrentPage] = useState(1); const [recordsPerPage, setRecordsPerPage] = useState(10)
+
+  const [students, setStudents] = useState<StudentRef[]>([])
+  const [studKeyword, setStudKeyword] = useState("")
+  const [studSearchOpen, setStudSearchOpen] = useState(false)
+  const [selectedStudent, setSelectedStudent] = useState<SelectedStudent | null>(null)
+  const [studentDiscounts, setStudentDiscounts] = useState<FeesDiscount[]>([])
+  const [showSdModal, setShowSdModal] = useState(false)
+  const [sdSaving, setSdSaving] = useState(false)
+  const [sdErrors, setSdErrors] = useState<Record<string, string>>({})
+  const [sdForm, setSdForm] = useState({ name: "", discountCode: "", discountType: "Fix" as DiscountType, percentage: "", amount: "", useCount: "0", expiryDate: "", description: "" })
+  const [confirmSdDeleteId, setConfirmSdDeleteId] = useState<number | null>(null)
+
+  useEffect(() => {
+    fetch("/api/student-information/student")
+      .then((r) => r.json())
+      .then((d) => setStudents(Array.isArray(d) ? d : []))
+      .catch(() => setStudents([]))
+  }, [])
+
+  const stuMatches = useMemo(() => {
+    const q = studKeyword.toLowerCase().trim()
+    if (!q) return []
+    return students
+      .filter((s) =>
+        [s.firstName, s.lastName, s.admissionNo, String(s.rollNo ?? ""), s.class, s.section]
+          .join(" ").toLowerCase().includes(q)
+      )
+      .slice(0, 10)
+  }, [students, studKeyword])
+
+  const loadStudentDiscounts = (sid: number) => {
+    fetch(`/api/fees/fees-discount?studentId=${sid}`)
+      .then((r) => r.json())
+      .then((d) => setStudentDiscounts(Array.isArray(d) ? d : []))
+      .catch(() => setStudentDiscounts([]))
+  }
+
+  const selectStudent = (s: StudentRef) => {
+    setSelectedStudent({ id: s.id, name: `${s.firstName} ${s.lastName}`.trim(), rollNo: String(s.rollNo ?? ""), className: s.class, admissionNo: s.admissionNo, section: s.section })
+    setStudSearchOpen(false)
+    setStudKeyword("")
+    loadStudentDiscounts(s.id)
+  }
+
+  const genCode = () => `OFF-${new Date().getTime().toString().slice(-6)}`
+
+  const openStudentDiscountModal = () => {
+    if (!selectedStudent) return
+    setSdForm({ name: `Discount - ${selectedStudent.name}`, discountCode: genCode(), discountType: "Fix", percentage: "", amount: "", useCount: "0", expiryDate: "", description: `Auto discount for ${selectedStudent.name} (${selectedStudent.admissionNo || selectedStudent.id})` })
+    setSdErrors({})
+    setShowSdModal(true)
+  }
+
+  const saveStudentDiscount = async () => {
+    if (!selectedStudent) return
+    const errs: Record<string, string> = {}
+    if (!sdForm.discountCode.trim()) errs.discountCode = "Discount code is required"
+    if (sdForm.discountType === "Percentage" && !sdForm.percentage.trim()) errs.percentage = "Percentage is required"
+    if (sdForm.discountType === "Fix" && !sdForm.amount.trim()) errs.amount = "Amount is required"
+    setSdErrors(errs)
+    if (Object.keys(errs).length) return
+    setSdSaving(true)
+    try {
+      const res = await fetch("/api/fees/fees-discount", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: sdForm.name.trim() || `Discount - ${selectedStudent.name}`,
+          studentId: selectedStudent.id,
+          discountCode: sdForm.discountCode.trim(),
+          discountType: sdForm.discountType,
+          percentage: sdForm.discountType === "Percentage" ? Number(sdForm.percentage) : null,
+          amount: sdForm.discountType === "Fix" ? Number(sdForm.amount) : null,
+          useCount: Number(sdForm.useCount || 0),
+          expiryDate: sdForm.expiryDate || null,
+          description: sdForm.description.trim() || null,
+        }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error || "Failed to save discount")
+      notify.success("Student discount added successfully")
+      setShowSdModal(false)
+      loadStudentDiscounts(selectedStudent.id)
+    } catch (e: any) {
+      notify.error(e.message)
+    } finally {
+      setSdSaving(false)
+    }
+  }
+
+  const confirmStudentDiscountDelete = async () => {
+    if (confirmSdDeleteId === null || !selectedStudent) return
+    try {
+      await fetch(`/api/fees/fees-discount?id=${confirmSdDeleteId}`, { method: "DELETE" })
+      notify.success("Student discount removed")
+      loadStudentDiscounts(selectedStudent.id)
+    } catch (e: any) {
+      notify.error(e.message)
+    } finally {
+      setConfirmSdDeleteId(null)
+    }
+  }
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(""), 3000) }
 
@@ -65,6 +186,14 @@ export default function FeesDiscountPage() {
     if (!date) return "-"
     const [y, m, d] = date.split("-")
     return `${m}/${d}/${y}`
+  }
+
+  const formatDateTime = (dt?: string | null) => {
+    if (!dt) return "-"
+    const d = new Date(dt)
+    if (isNaN(d.getTime())) return "-"
+    const pad = (n: number) => String(n).padStart(2, "0")
+    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
   }
 
   const currentData = discounts || []
@@ -157,6 +286,107 @@ export default function FeesDiscountPage() {
         </div>
       </div>
 
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
+          <Tag className="h-4 w-4 text-[var(--primary)]" />
+          <h3 className="text-sm font-semibold text-gray-800">Student Discount</h3>
+        </div>
+        <div className="p-5 grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Find Student</label>
+            <div className="relative">
+              <input
+                type="text"
+                value={studKeyword}
+                onChange={(e) => { setStudKeyword(e.target.value); setStudSearchOpen(true) }}
+                onFocus={() => { if (stuMatches.length > 0) setStudSearchOpen(true) }}
+                placeholder="Search by name, roll no, class or admission id..."
+                className="w-full h-9 pl-9 pr-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]"
+              />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              {studSearchOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setStudSearchOpen(false)} />
+                  <div className="absolute z-20 mt-1.5 w-full rounded-lg border border-gray-200 bg-white shadow-lg">
+                    {studKeyword.trim().length === 0 ? (
+                      <div className="px-4 py-3 text-sm text-gray-400">Type to search students</div>
+                    ) : stuMatches.length === 0 ? (
+                      <div className="px-4 py-3 text-sm text-gray-400">No matching students</div>
+                    ) : (
+                      <div className="max-h-64 overflow-y-auto">
+                        {stuMatches.map((r) => (
+                          <div
+                            key={r.id}
+                            onClick={() => selectStudent(r)}
+                            className="px-4 py-2.5 hover:bg-[var(--primary-light)] transition-colors border-b border-gray-100 last:border-0 cursor-pointer"
+                          >
+                            <div className="text-sm font-medium text-gray-800">{r.firstName} {r.lastName}</div>
+                            <div className="text-xs text-gray-500">
+                              Admission ID: {r.admissionNo || "—"} · Roll: {r.rollNo ?? "-"} · Class: {r.class || "-"}{r.section ? ` - ${r.section}` : ""}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="px-4 py-2 bg-gray-50 border-t border-gray-200 text-xs text-gray-500">
+                      {stuMatches.length} match{stuMatches.length === 1 ? "" : "es"} · wildcard search across all students
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {selectedStudent ? (
+              <div className="mt-3 rounded-lg border border-[var(--primary)]/30 bg-[var(--primary-light)] p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-800">{selectedStudent.name}</p>
+                    <p className="text-xs text-gray-600 mt-0.5">Admission ID: {selectedStudent.admissionNo || "—"} · Roll No: {selectedStudent.rollNo || "—"} · Class: {selectedStudent.className}{selectedStudent.section ? ` - ${selectedStudent.section}` : ""}</p>
+                  </div>
+                  <button onClick={openStudentDiscountModal} className="flex items-center gap-1.5 flex-shrink-0 px-3 py-1.5 text-xs font-medium text-white bg-[var(--primary)] rounded-lg hover:bg-[var(--secondary)]"><Plus className="h-3.5 w-3.5" />Add Discount</button>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {studentDiscounts.length === 0 ? (
+                    <p className="text-xs text-gray-500">No discounts set for this student yet.</p>
+                  ) : (
+                    studentDiscounts.map((d) => (
+                      <div key={d.id} className="flex items-center justify-between gap-2 rounded-md border border-gray-200 bg-white px-3 py-2">
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium text-gray-800 truncate">{d.name} <span className="font-mono text-[10px] text-gray-500">({d.discountCode})</span></p>
+                          <p className="text-[11px] text-gray-500">
+                            {d.discountType === "Percentage" ? `${d.percentage}%` : d.amount != null ? `${symbol}${d.amount}` : "-"}
+                            {d.expiryDate ? ` · Valid till ${formatDate(d.expiryDate)}` : " · No expiry"}
+                          </p>
+                          <p className="text-[11px]">
+                            {d.isActive === false || !d.isActive ? <span className="text-red-500">Inactive</span> : <span className="text-emerald-600">✓ Approved by {d.approvedBy || "—"} on {formatDateTime(d.approvedAt)}</span>}
+                          </p>
+                        </div>
+                        <button onClick={() => setConfirmSdDeleteId(d.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg flex-shrink-0" title="Remove discount"><Trash2 className="h-3.5 w-3.5" /></button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="mt-3 rounded-lg border border-dashed border-gray-300 p-4 text-center">
+                <UserPlus className="h-6 w-6 text-gray-300 mx-auto mb-1" />
+                <p className="text-xs text-gray-400">Select a student to set / manage their discount.</p>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-5 text-xs text-gray-500 space-y-2">
+            <p className="text-sm font-semibold text-gray-700">How student discounts work</p>
+            <ul className="list-disc pl-4 space-y-1.5">
+              <li>Search and select a student by name, roll no, class or admission id.</li>
+              <li>Set a <span className="font-medium text-gray-700">Percentage</span> or <span className="font-medium text-gray-700">Fixed {symbol}amount</span> discount for that student with a coupon code.</li>
+              <li>The discount is <span className="font-medium text-gray-700">auto-applied</span> when collecting that student's fees.</li>
+              <li>Each payment records the coupon code along with the <span className="font-medium text-gray-700">approving admin and time</span> on the note + receipt.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
       <div className="flex flex-col lg:flex-row gap-5">
         <div className="w-full lg:w-80 flex-shrink-0">
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
@@ -243,6 +473,66 @@ export default function FeesDiscountPage() {
           </div>
         </div>
       </div>
+
+      {showSdModal && selectedStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => !sdSaving && setShowSdModal(false)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-lg z-10">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+              <h3 className="text-base font-semibold text-gray-800">Set Discount for {selectedStudent.name}</h3>
+              <button onClick={() => !sdSaving && setShowSdModal(false)} className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="p-5 max-h-[70vh] overflow-y-auto space-y-4">
+              <div><label className="block text-xs font-medium text-gray-600 mb-1">Name</label>
+                <input type="text" value={sdForm.name} onChange={(e) => setSdForm((p) => ({ ...p, name: e.target.value }))} placeholder="Enter discount name" className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+              <div><label className="block text-xs font-medium text-gray-600 mb-1">Discount Coupon Code <span className="text-red-400">*</span></label>
+                <input type="text" value={sdForm.discountCode} onChange={(e) => { setSdForm((p) => ({ ...p, discountCode: e.target.value })); if (sdErrors.discountCode) setSdErrors({}) }} placeholder="Enter coupon code" className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" />
+                {sdErrors.discountCode && <p className="text-red-400 text-xs mt-0.5">{sdErrors.discountCode}</p>}</div>
+              <div><label className="block text-xs font-medium text-gray-600 mb-2">Discount Type</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer"><input type="radio" name="sdDiscountType" checked={sdForm.discountType === "Percentage"} onChange={() => { setSdForm((p) => ({ ...p, discountType: "Percentage", amount: "" })) }} className="accent-indigo-600" />Percentage</label>
+                  <label className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer"><input type="radio" name="sdDiscountType" checked={sdForm.discountType === "Fix"} onChange={() => { setSdForm((p) => ({ ...p, discountType: "Fix", percentage: "" })) }} className="accent-indigo-600" />Fix</label>
+                </div></div>
+              {sdForm.discountType === "Percentage" && <div><label className="block text-xs font-medium text-gray-600 mb-1">Percentage (%)</label>
+                <input type="number" value={sdForm.percentage} onChange={(e) => setSdForm((p) => ({ ...p, percentage: e.target.value }))} placeholder="Enter percentage" min={0} max={100} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" />
+                {sdErrors.percentage && <p className="text-red-400 text-xs mt-0.5">{sdErrors.percentage}</p>}</div>}
+              {sdForm.discountType === "Fix" && <div><label className="block text-xs font-medium text-gray-600 mb-1">{`Amount (${symbol})`}</label>
+                <input type="number" value={sdForm.amount} onChange={(e) => setSdForm((p) => ({ ...p, amount: e.target.value }))} placeholder="Enter amount" min={0} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" />
+                {sdErrors.amount && <p className="text-red-400 text-xs mt-0.5">{sdErrors.amount}</p>}</div>}
+              <div><label className="block text-xs font-medium text-gray-600 mb-1">Number Of Use Count</label>
+                <input type="number" value={sdForm.useCount} onChange={(e) => setSdForm((p) => ({ ...p, useCount: e.target.value }))} placeholder="0" min={0} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+              <div><label className="block text-xs font-medium text-gray-600 mb-1">Expiry Date</label>
+                <input type="date" value={sdForm.expiryDate} onChange={(e) => setSdForm((p) => ({ ...p, expiryDate: e.target.value }))} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+              <div><label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
+                <textarea value={sdForm.description} onChange={(e) => setSdForm((p) => ({ ...p, description: e.target.value }))} placeholder="Enter description" rows={2} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+            </div>
+            <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+              <button onClick={() => !sdSaving && setShowSdModal(false)} className="px-4 py-2 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+              <button onClick={saveStudentDiscount} disabled={sdSaving} className="flex items-center gap-1.5 px-5 py-2 text-xs font-medium text-white bg-[var(--primary)] rounded-lg hover:bg-[var(--secondary)] shadow-sm shadow-indigo-200"><Save className="h-3.5 w-3.5" />{sdSaving ? "Saving..." : "Save Discount"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmSdDeleteId !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setConfirmSdDeleteId(null)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md z-10">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+              <h3 className="text-base font-semibold text-gray-800">Remove Student Discount</h3>
+              <button onClick={() => setConfirmSdDeleteId(null)} className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="p-5 text-center">
+              <div className="mx-auto w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mb-3"><Trash2 className="h-6 w-6 text-red-500" /></div>
+              <p className="text-sm text-gray-600">This discount will no longer be auto-applied for this student. Already applied discounts on payments stay intact.</p>
+            </div>
+            <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+              <button onClick={() => setConfirmSdDeleteId(null)} className="px-4 py-2 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+              <button onClick={confirmStudentDiscountDelete} className="flex items-center gap-1.5 px-5 py-2 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 shadow-sm shadow-red-200"><Trash2 className="h-3.5 w-3.5" />Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showEditModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

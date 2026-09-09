@@ -17,6 +17,10 @@ const fieldMap: Record<string, string> = {
   totalAmount: "total_amount",
   saleDate: "sale_date",
   paymentStatus: "payment_status",
+  vpProductId: "vp_product_id",
+  componentId: "component_id",
+  variantId: "variant_id",
+  uniformName: "uniform_name",
 }
 
 function buildSaleRow(input: Record<string, any>, ctx: { saleNo: string; saleDate: string; paymentStatus: string }): Record<string, any> {
@@ -29,12 +33,20 @@ function buildSaleRow(input: Record<string, any>, ctx: { saleNo: string; saleDat
   const totalAmount = input.totalAmount !== undefined && input.totalAmount !== null && input.totalAmount !== ""
     ? Number(input.totalAmount)
     : Math.max(0, subtotal - discountAmount)
+  const isVp = input.type === "vp"
+  // support si_variations as well: variationId/variantId + uniformName for any product sale
+  const varId = input.variantId ?? input.variationId ?? null
+  const uniName = input.uniformName ?? input.uniform_name ?? null
   return {
     sale_no: ctx.saleNo,
     student_id: input.studentId ?? null,
     student_name: input.studentName ?? null,
-    product_id: input.productId ? Number(input.productId) : null,
-    book_id: input.bookId ? Number(input.bookId) : null,
+    product_id: isVp ? null : (input.productId ? Number(input.productId) : null),
+    book_id: isVp ? null : (input.bookId ? Number(input.bookId) : null),
+    vp_product_id: isVp && input.vpProductId ? Number(input.vpProductId) : null,
+    component_id: isVp && input.componentId ? Number(input.componentId) : null,
+    variant_id: varId ? Number(varId) : isVp && input.variantId ? Number(input.variantId) : null,
+    uniform_name: uniName ? String(uniName) : isVp && input.uniformName ? String(input.uniformName) : null,
     quantity,
     unit_price: unitPrice,
     subtotal,

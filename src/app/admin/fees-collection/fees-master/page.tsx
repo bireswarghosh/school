@@ -3,7 +3,7 @@ import { toast as notify } from "@/lib/toast"
 
 import { useState, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, Pencil, Trash2, X, Save, Download, Upload, Printer, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, GripVertical, Search, UserPlus } from "lucide-react"
+import { Plus, Pencil, Trash2, X, Save, Download, Upload, Printer, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, GripVertical, Search, UserPlus, Percent } from "lucide-react"
 import { useApi } from "@/lib/use-api"
 import { useCurrency } from "@/lib/currency-context"
 
@@ -20,6 +20,7 @@ interface FeesMasterRecord {
   class: string
   amount: number
   dueDate: string
+  dueDay?: number | null
   fineType: "None" | "Percentage" | "Fix Amount" | "Cumulative"
   fineValue?: number
   perDay?: boolean
@@ -90,6 +91,15 @@ export default function FeesMasterPage() {
   const [addMultipleRows, setAddMultipleRows] = useState<AddMultipleRow[]>([])
   const [addMultipleErrors, setAddMultipleErrors] = useState<Record<string, string>>({})
 
+  const [showApplyFineModal, setShowApplyFineModal] = useState(false)
+  const [applyFineTypeId, setApplyFineTypeId] = useState("")
+  const [applyDueDay, setApplyDueDay] = useState("")
+  const [applyFineType, setApplyFineType] = useState<"None" | "Percentage" | "Fix Amount" | "Cumulative">("None")
+  const [applyFineValue, setApplyFineValue] = useState("")
+  const [applyPerDay, setApplyPerDay] = useState(false)
+  const [applyFineRows, setApplyFineRows] = useState<FineRow[]>([])
+  const [applyFineErrors, setApplyFineErrors] = useState<Record<string, string>>({})
+
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [showBulkModal, setShowBulkModal] = useState(false)
   const [bulkGroupName, setBulkGroupName] = useState("")
@@ -122,7 +132,6 @@ export default function FeesMasterPage() {
     const errs: Record<string, string> = {}
     if (!feesGroup) errs.feesGroup = "Fees group is required"
     if (!feesType) errs.feesType = "Fees type is required"
-    if (!dueDate) errs.dueDate = "Due date is required"
     if (!amount || parseFloat(amount) <= 0) errs.amount = "Valid amount is required"
     setErrors(errs)
     if (Object.keys(errs).length) return
@@ -182,12 +191,90 @@ export default function FeesMasterPage() {
     setAddMultipleRows((prev) => prev.map((r) => (r.key === key ? { ...r, fineRows } : r)))
   }
 
+  function openApplyFine() {
+    setApplyFineTypeId("")
+    setApplyDueDay("")
+    setApplyFineType("None")
+    setApplyFineValue("")
+    setApplyPerDay(false)
+    setApplyFineRows([])
+    setApplyFineErrors({})
+    setShowApplyFineModal(true)
+  }
+
+  const applyFineName = () => typeList.find((t: any) => String(t.id) === applyFineTypeId)?.name || ""
+
+  const applyFineMatches = () => {
+    const name = applyFineName()
+    if (!name) return []
+    return currentData.filter((r) => r.feesType === name)
+  }
+
+  function updateApplyFineType(ft: "None" | "Percentage" | "Fix Amount" | "Cumulative") {
+    setApplyFineType(ft)
+    if (ft === "None") {
+      setApplyFineValue("")
+      setApplyPerDay(false)
+      setApplyFineRows([])
+    }
+  }
+
+  function addApplyFineRow() {
+    setApplyFineRows((prev) => [...prev, { id: nextFineRowId(), overdueDays: 0, fineAmount: 0 }])
+  }
+
+  function updateApplyFineRow(id: string, field: keyof FineRow, value: number) {
+    setApplyFineRows((prev) => prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)))
+  }
+
+  async function confirmApplyFine() {
+    const errs: Record<string, string> = {}
+    if (!applyFineTypeId) errs.feesType = "Fees type is required"
+    const dueDayNum = parseInt(applyDueDay, 10)
+    if (!(dueDayNum >= 1 && dueDayNum <= 28)) errs.dueDay = "Select a due day (1-28)"
+    if ((applyFineType === "Percentage" || applyFineType === "Fix Amount") && !(parseFloat(applyFineValue) > 0)) {
+      errs.fineValue = "Fine value is required"
+    }
+    setApplyFineErrors(errs)
+    if (Object.keys(errs).length) return
+    const matches = applyFineMatches()
+    if (matches.length === 0) {
+      notify.error("No fees master rows use this fees type")
+      return
+    }
+    try {
+      await Promise.all(
+        matches.map((r) => {
+          const payload: any = { dueDay: dueDayNum, fineType: applyFineType }
+          if (applyFineType === "Percentage" || applyFineType === "Fix Amount") {
+            payload.fineValue = parseFloat(applyFineValue) || 0
+            payload.perDay = false
+            payload.fineRows = []
+          } else if (applyFineType === "Cumulative") {
+            payload.fineValue = null
+            payload.perDay = applyPerDay
+            payload.fineRows = applyFineRows
+          } else {
+            payload.fineValue = null
+            payload.perDay = false
+            payload.fineRows = []
+          }
+          return update(r.id, payload)
+        })
+      )
+      notify.success(`Applied to ${matches.length} fee(s) using "${applyFineName()}"`)
+      setShowApplyFineModal(false)
+      await refetch()
+    } catch (e: any) {
+      notify.error(e.message || "Failed to apply changes")
+    }
+  }
+
   async function saveAddMultiple() {
     const errs: Record<string, string> = {}
     addMultipleRows.forEach((r) => {
       if (!r.feesGroup) errs[`${r.key}-feesGroup`] = "Required"
       if (!r.feesType) errs[`${r.key}-feesType`] = "Required"
-      if (!r.dueDate) errs[`${r.key}-dueDate`] = "Required"
       if (!r.amount || parseFloat(r.amount) <= 0) errs[`${r.key}-amount`] = "Required"
     })
     setAddMultipleErrors(errs)
@@ -248,7 +335,6 @@ export default function FeesMasterPage() {
     const errs: Record<string, string> = {}
     if (!editRecord.feesGroup) errs.feesGroup = "Fees group is required"
     if (!editRecord.feesType) errs.feesType = "Fees type is required"
-    if (!editRecord.dueDate) errs.dueDate = "Due date is required"
     if (!editRecord.amount || editRecord.amount <= 0) errs.amount = "Valid amount is required"
     setEditErrors(errs)
     if (Object.keys(errs).length) return
@@ -364,7 +450,6 @@ export default function FeesMasterPage() {
     const errs: Record<string, string> = {}
     for (const r of bulkRows) {
       if (!r.feesType) errs[`${r.id}-feesType`] = "Fees type is required"
-      if (!r.dueDate) errs[`${r.id}-dueDate`] = "Due date is required"
       if (!r.amount || r.amount <= 0) errs[`${r.id}-amount`] = "Valid amount is required"
     }
     setBulkErrors(errs)
@@ -641,7 +726,7 @@ export default function FeesMasterPage() {
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">
-            Due Date <span className="text-red-400">*</span>
+            Due Date <span className="text-gray-400 font-normal">(optional)</span>
           </label>
           <input
             type="date"
@@ -649,7 +734,6 @@ export default function FeesMasterPage() {
             onChange={(e) => onDateChange(e.target.value)}
             className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]"
           />
-          {errs.dueDate && <p className="text-red-400 text-xs mt-0.5">{errs.dueDate}</p>}
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">
@@ -855,14 +939,24 @@ export default function FeesMasterPage() {
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
             <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between gap-2">
               <h3 className="text-sm font-semibold text-gray-800">Add Fees Master</h3>
-              <button
-                onClick={openAddMultiple}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-[var(--primary)] border border-[var(--primary)]/30 rounded-lg hover:bg-[var(--primary-light)] transition-colors"
-                title="Add multiple fees at once"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Multiple
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={openApplyFine}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-[var(--primary)] border border-[var(--primary)]/30 rounded-lg hover:bg-[var(--primary-light)] transition-colors"
+                  title="Apply a fine to all fee master rows of a fees type"
+                >
+                  <Percent className="h-3.5 w-3.5" />
+                  Apply Fine
+                </button>
+                <button
+                  onClick={openAddMultiple}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-[var(--primary)] border border-[var(--primary)]/30 rounded-lg hover:bg-[var(--primary-light)] transition-colors"
+                  title="Add multiple fees at once"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Multiple
+                </button>
+              </div>
             </div>
             <div className="p-5">
               {FormFields({
@@ -1263,7 +1357,7 @@ export default function FeesMasterPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Due Date <span className="text-red-400">*</span></label>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Due Date <span className="text-gray-400 font-normal">(optional)</span></label>
                       <input
                         type="date"
                         value={row.dueDate}
@@ -1477,7 +1571,7 @@ export default function FeesMasterPage() {
                       {bulkErrors[`${row.id}-amount`] && <p className="text-red-400 text-xs mt-0.5">{bulkErrors[`${row.id}-amount`]}</p>}
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Due Date <span className="text-red-400">*</span></label>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Due Date <span className="text-gray-400 font-normal">(optional)</span></label>
                       <input
                         type="date"
                         value={row.dueDate}
@@ -1529,6 +1623,174 @@ export default function FeesMasterPage() {
               >
                 <Save className="h-3.5 w-3.5" />
                 Save All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showApplyFineModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowApplyFineModal(false)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md z-10 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+              <div>
+                <h3 className="text-base font-semibold text-gray-800">Apply Fine</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Apply this due date and fine to every fee using the fees type</p>
+              </div>
+              <button
+                onClick={() => setShowApplyFineModal(false)}
+                className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Fees Type <span className="text-red-400">*</span></label>
+                <select
+                  value={applyFineTypeId}
+                  onChange={(e) => setApplyFineTypeId(e.target.value)}
+                  className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] bg-white text-gray-800"
+                >
+                  <option value="">Select Fees Type</option>
+                  {typeList.map((t: any) => (
+                    <option key={t.id} value={String(t.id)}>{t.name}</option>
+                  ))}
+                </select>
+                {applyFineErrors.feesType && <p className="text-red-400 text-xs mt-0.5">{applyFineErrors.feesType}</p>}
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Due Day of Month <span className="text-red-400">*</span></label>
+                <select
+                  value={applyDueDay}
+                  onChange={(e) => setApplyDueDay(e.target.value)}
+                  className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] bg-white text-gray-800"
+                >
+                  <option value="">Select day</option>
+                  {Array.from({ length: 24 }, (_, i) => i + 5).map((d) => (
+                    <option key={d} value={String(d)}>{d}th of every month</option>
+                  ))}
+                </select>
+                {applyFineErrors.dueDay && <p className="text-red-400 text-xs mt-0.5">{applyFineErrors.dueDay}</p>}
+                <p className="text-[11px] text-gray-500 mt-0.5">Fee will be due on this day every month (e.g. 8th of every month). Late fine starts from the next day.</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-2">Fine Type <span className="text-red-400">*</span></label>
+                <div className="flex flex-wrap gap-4">
+                  {(["None", "Percentage", "Fix Amount", "Cumulative"] as const).map((ft) => (
+                    <label key={ft} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                      <input
+                        type="radio"
+                        name="applyFineType"
+                        checked={applyFineType === ft}
+                        onChange={() => updateApplyFineType(ft)}
+                        className="accent-[var(--primary)]"
+                      />
+                      {ft}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              {(applyFineType === "Percentage" || applyFineType === "Fix Amount") && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    {applyFineType === "Percentage" ? "Percentage (%)" : `Fix Amount (${symbol})`} <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    placeholder={applyFineType === "Percentage" ? "Enter percentage" : "Enter fix amount"}
+                    value={applyFineValue}
+                    onChange={(e) => setApplyFineValue(e.target.value)}
+                    className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] bg-white text-gray-800"
+                  />
+                  {applyFineErrors.fineValue && <p className="text-red-400 text-xs mt-0.5">{applyFineErrors.fineValue}</p>}
+                </div>
+              )}
+              {applyFineType === "Cumulative" && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={applyPerDay}
+                      onChange={(e) => setApplyPerDay(e.target.checked)}
+                      className="accent-[var(--primary)]"
+                    />
+                    <label className="text-xs font-medium text-gray-600 cursor-pointer">Per Day</label>
+                  </div>
+                  <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-gray-50">
+                          <th className="text-left px-3 py-2 font-medium text-gray-600">Overdue Days</th>
+                          <th className="text-left px-3 py-2 font-medium text-gray-600">Fine Amount</th>
+                          <th className="w-10"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {applyFineRows.length === 0 && (
+                          <tr>
+                            <td colSpan={3} className="text-center py-4 text-gray-400">No fine rows</td>
+                          </tr>
+                        )}
+                        {applyFineRows.map((fr) => (
+                          <tr key={fr.id} className="border-t border-gray-100">
+                            <td className="px-1 py-1">
+                              <input
+                                type="number"
+                                value={fr.overdueDays}
+                                onChange={(e) => updateApplyFineRow(fr.id, "overdueDays", parseInt(e.target.value) || 0)}
+                                className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs focus:ring-2 focus:ring-[var(--primary)] bg-white text-gray-800"
+                              />
+                            </td>
+                            <td className="px-1 py-1">
+                              <input
+                                type="number"
+                                value={fr.fineAmount}
+                                onChange={(e) => updateApplyFineRow(fr.id, "fineAmount", parseFloat(e.target.value) || 0)}
+                                className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs focus:ring-2 focus:ring-[var(--primary)] bg-white text-gray-800"
+                              />
+                            </td>
+                            <td className="px-1 py-1">
+                              <button
+                                onClick={() => setApplyFineRows((prev) => prev.filter((x) => x.id !== fr.id))}
+                                className="text-red-500 hover:text-red-700 p-1"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <button
+                    onClick={addApplyFineRow}
+                    className="flex items-center gap-1 text-xs text-[var(--primary)] hover:text-[var(--secondary)] font-medium"
+                  >
+                    <Plus size={14} /> Add Fine Row
+                  </button>
+                </div>
+              )}
+              <div className="rounded-lg bg-[var(--primary-light)] px-3 py-2 text-xs text-gray-700">
+                {applyFineMatches().length > 0
+                  ? `Will apply to ${applyFineMatches().length} fee master row(s) using "${applyFineName()}"`
+                  : "Select a fees type to see how many rows will be affected"}
+              </div>
+            </div>
+            <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+              <button
+                onClick={() => setShowApplyFineModal(false)}
+                className="px-4 py-2 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmApplyFine}
+                className="flex items-center gap-1.5 px-5 py-2 text-xs font-medium text-white bg-[var(--primary)] rounded-lg hover:bg-[var(--secondary)] shadow-sm shadow-indigo-200"
+              >
+                <Save className="h-3.5 w-3.5" />
+                Apply Fine
               </button>
             </div>
           </div>

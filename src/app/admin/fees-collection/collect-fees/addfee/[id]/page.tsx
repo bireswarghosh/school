@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation"
 import { useApi } from "@/lib/use-api"
 import { useCurrency } from "@/lib/currency-context"
 import { useSchoolInfo, type SchoolInfo } from "@/lib/use-school-info"
-import { ArrowLeft, Loader2, Printer, CreditCard, Banknote, Building2, X, Check, Trash2, FileText } from "lucide-react"
+import { ArrowLeft, Loader2, Printer, CreditCard, Banknote, Building2, X, Check, Trash2, FileText, Tag } from "lucide-react"
 
 type StudentRecord = {
   id: number
@@ -45,11 +45,36 @@ type ResolvedFee = FeeRecord & {
   feeTypeName: string
   groupName: string
   dueDate: string
+  dueDay: number | null
   amount: number
   discount: number
   fine: number
   paid: number
   balance: number
+  appliedDiscount: number
+  appliedDiscountId: number | null
+  hasAppliedNew: boolean
+}
+
+type StudentDiscount = {
+  id: number
+  name: string
+  discountCode: string
+  discountType: string
+  percentage: number | null
+  amount: number | null
+  expiryDate: string
+  useCount: number | null
+  isActive: boolean | null
+  approvedBy?: string | null
+  approvedAt?: string | null
+}
+
+type CurrentUser = {
+  id: number
+  name: string
+  role: string
+  schoolId: number
 }
 
 type PaymentFormData = {
@@ -64,6 +89,8 @@ const num = (v: unknown) => {
   const n = Number(v)
   return isNaN(n) ? 0 : n
 }
+
+const round2 = (n: number) => Math.round(n * 100) / 100
 
 const money = (symbol: string, v: number) => `${symbol}${v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
@@ -233,16 +260,19 @@ export default function AddFeePage() {
   const [student, setStudent] = useState<StudentRecord | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [studentDiscounts, setStudentDiscounts] = useState<StudentDiscount[]>([])
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
 
   const [feeGroups, setFeeGroups] = useState<Record<number, string>>({})
   const [feeTypes, setFeeTypes] = useState<Record<number, { name: string; group: string }>>({})
   const [masterDueDates, setMasterDueDates] = useState<Record<string, string>>({})
+  const [masterDueDays, setMasterDueDays] = useState<Record<string, number>>({})
 
   const feesApi = useMemo(() => `/api/fees/fees-payment?studentId=${id}`, [id])
   const { data: fees, update, refetch } = useApi<FeeRecord>(feesApi)
 
   const [selectedFeeIds, setSelectedFeeIds] = useState<number[]>([])
-  const [partialAmounts, setPartialAmounts] = useState<Record<number, number>>({})
+  const [payAmount, setPayAmount] = useState("")
   const [payment, setPayment] = useState<PaymentFormData>({
     method: "Cash", chequeNo: "", bank: "", transactionId: "", note: "",
   })
@@ -253,12 +283,11 @@ export default function AddFeePage() {
   const [receiptOpen, setReceiptOpen] = useState(false)
   const docFrameRef = useRef<HTMLIFrameElement>(null)
 
-  const buildReceipt = (countAs: ResolvedFee[]): ReceiptData | null => {
-    if (countAs.length === 0) return null
-    const lines: ReceiptLine[] = countAs.map((f, i) => {
-      const entered = partialAmounts[f.id]
-      const paid = entered !== undefined && entered > 0 ? Math.min(entered, f.balance) : f.balance
-      return { sno: i + 1, group: f.groupName, feeType: f.feeTypeName, amount: f.amount, discount: f.discount, fine: f.fine, paid }
+  const buildReceipt = (): ReceiptData | null => {
+    if (coverMeta.coverage.length === 0) return null
+    const lines: ReceiptLine[] = coverMeta.coverage.map((c, i) => {
+      const f = resolved.find((r) => r.id === c.id)!
+      return { sno: i + 1, group: f.groupName, feeType: f.feeTypeName, amount: c.amount, discount: c.discount, fine: f.fine, paid: c.paid }
     })
     const methodDetail =
       payment.method === "Cheque"
@@ -266,12 +295,13 @@ export default function AddFeePage() {
         : payment.method === "Card" || payment.method === "Online Transfer"
           ? payment.transactionId || ""
           : ""
+    const appliedNote = coverMeta.discountUsed > 0 && activeDiscount ? discountNote() : ""
     return {
       receiptNo: `RC-${Date.now().toString().slice(-8)}`,
       date: new Date().toISOString().split("T")[0],
       method: payment.method,
       methodDetail,
-      note: payment.note,
+      note: [payment.note, appliedNote].filter(Boolean).join(" | "),
       student,
       lines,
       total: lines.reduce((s, l) => s + l.paid, 0),
@@ -291,8 +321,8 @@ export default function AddFeePage() {
   }
 
   const handlePrintReceipt = () => {
-    if (selectedFeeIds.length > 0) {
-      const r = buildReceipt(selectedFees)
+    if (coverMeta.coverage.length > 0) {
+      const r = buildReceipt()
       if (r) setReceipt(r)
       else {
         notify.error("Select at least one fee to generate the receipt")
@@ -319,6 +349,20 @@ export default function AddFeePage() {
   }, [id])
 
   useEffect(() => {
+    if (!id) return
+    Promise.all([
+      fetch("/api/auth/me")
+        .then((r) => r.json())
+        .then((d) => { if (!d.error) setCurrentUser(d) })
+        .catch(() => {}),
+      fetch(`/api/fees/fees-discount?studentId=${id}`)
+        .then((r) => r.json())
+        .then((d) => { if (Array.isArray(d)) setStudentDiscounts(d) })
+        .catch(() => {}),
+    ])
+  }, [id])
+
+  useEffect(() => {
     Promise.all([
       fetch("/api/fees/fees-group").then((r) => r.json()).then((d) => {
         const map: Record<number, string> = {}
@@ -332,25 +376,66 @@ export default function AddFeePage() {
       }),
       fetch("/api/fees/fees-master").then((r) => r.json()).then((d) => {
         const map: Record<string, string> = {}
-        ;(Array.isArray(d) ? d : []).forEach((m: any) => { if (m.dueDate) map[`${m.feesGroup}|${m.feesType}`] = m.dueDate })
+        const dayMap: Record<string, number> = {}
+        ;(Array.isArray(d) ? d : []).forEach((m: any) => {
+          const key = `${m.feesGroup}|${m.feesType}`
+          if (m.dueDay && m.dueDay >= 1 && m.dueDay <= 28) {
+            dayMap[key] = Number(m.dueDay)
+            map[key] = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), Number(m.dueDay)))
+              .toISOString()
+              .split("T")[0]
+          } else if (m.dueDate) {
+            map[key] = m.dueDate
+          }
+        })
         setMasterDueDates(map)
+        setMasterDueDays(dayMap)
       }),
     ]).catch(() => {})
   }, [])
 
-  const resolved: ResolvedFee[] = useMemo(() => {
-    return (fees || []).map((f) => {
-      const amount = num(f.amount)
-      const discount = num(f.discountAmount)
-      const fine = num(f.fineAmount)
-      const paid = num(f.paidAmount)
-      const balance = amount - discount - paid
-      const groupName = f.feesGroup ? (feeGroups[Number(f.feesGroup)] ?? `Group ${f.feesGroup}`) : "-"
-      const feeTypeName = f.feesType ? (feeTypes[Number(f.feesType)]?.name ?? `Type ${f.feesType}`) : "-"
-      const dueDate = masterDueDates[`${groupName}|${feeTypeName}`] || "-"
-      return { ...f, groupName, feeTypeName, dueDate, amount, discount, fine, paid, balance }
+  useEffect(() => {
+    if (!fees) return
+    setSelectedFeeIds((prev) => {
+      if (prev.length > 0) return prev
+      return (fees || [])
+        .filter((f) => num(f.amount) - num(f.discountAmount) - num(f.paidAmount) > 0)
+        .map((f) => Number(f.id))
     })
-  }, [fees, feeGroups, feeTypes, masterDueDates])
+  }, [fees])
+
+const baseResolved: ResolvedFee[] = useMemo(() => {
+  return (fees || []).map((f) => {
+    const amount = num(f.amount)
+    const discount = num(f.discountAmount)
+    const fine = num(f.fineAmount)
+    const paid = num(f.paidAmount)
+    const balance = amount - discount - paid
+    const groupName = f.feesGroup ? (feeGroups[Number(f.feesGroup)] ?? `Group ${f.feesGroup}`) : "-"
+    const feeTypeName = f.feesType ? (feeTypes[Number(f.feesType)]?.name ?? `Type ${f.feesType}`) : "-"
+    const key = `${groupName}|${feeTypeName}`
+    const dueDate = masterDueDates[key] || "-"
+    const dueDay = masterDueDays[key] ?? null
+    return { ...f, groupName, feeTypeName, dueDate, dueDay, amount, discount, fine, paid, balance, appliedDiscount: 0, appliedDiscountId: null, hasAppliedNew: false }
+  })
+}, [fees, feeGroups, feeTypes, masterDueDates, masterDueDays])
+
+const activeDiscount = useMemo<StudentDiscount | null>(() => {
+  const t = new Date().toISOString().split("T")[0]
+  return (
+    (studentDiscounts || []).find(
+      (d) =>
+        d.isActive !== false &&
+        (!d.expiryDate || d.expiryDate >= t) &&
+        ((d.discountType === "Percentage" && num(d.percentage) > 0) ||
+          (d.discountType === "Fix" && num(d.amount) > 0))
+    ) ?? null
+  )
+}, [studentDiscounts])
+
+const resolved: ResolvedFee[] = useMemo(() => {
+  return baseResolved.map((f) => ({ ...f, appliedDiscount: 0, appliedDiscountId: null, hasAppliedNew: false }))
+}, [baseResolved])
 
   const totalBalance = resolved.reduce((s, f) => s + f.balance, 0)
 
@@ -360,31 +445,66 @@ export default function AddFeePage() {
     )
   }
 
-  const handlePartialAmount = (feeId: number, value: string) => {
-    const n = parseFloat(value) || 0
-    setPartialAmounts((prev) => ({ ...prev, [feeId]: n }))
+  const selectedFees = resolved.filter((f) => selectedFeeIds.includes(f.id) && f.balance > 0)
+  const selectedBalance = selectedFees.reduce((sum, f) => sum + f.balance, 0)
+
+  const coverMeta = useMemo(() => {
+    const sorted = [...selectedFees].sort((a, b) => a.id - b.id)
+    const enteredRaw = parseFloat(payAmount)
+    const entered = payAmount.trim() === "" || isNaN(enteredRaw) ? selectedBalance : Math.max(0, Math.min(enteredRaw, selectedBalance))
+    const discRaw = activeDiscount
+      ? activeDiscount.discountType === "Percentage"
+        ? (entered * num(activeDiscount.percentage)) / 100
+        : num(activeDiscount.amount)
+      : 0
+    const discountUsed = round2(Math.min(entered, Math.max(0, discRaw)))
+    const netPayable = round2(entered - discountUsed)
+
+    let remGross = round2(entered)
+    const coverage: { id: number; amount: number; discount: number; paid: number }[] = []
+    for (const f of sorted) {
+      if (remGross <= 0) break
+      const take = Math.min(f.balance, remGross)
+      coverage.push({ id: f.id, amount: take, discount: 0, paid: 0 })
+      remGross = round2(remGross - take)
+    }
+    let remDisc = discountUsed
+    const totalGross = coverage.reduce((s, c) => s + c.amount, 0)
+    if (totalGross > 0) {
+      for (let i = 0; i < coverage.length; i++) {
+        const c = coverage[i]
+        if (remDisc <= 0) break
+        const d =
+          i === coverage.length - 1
+            ? Math.min(c.amount, remDisc)
+            : Math.min(c.amount, round2((remDisc * c.amount) / totalGross))
+        c.discount = round2(d)
+        remDisc = round2(remDisc - d)
+      }
+    }
+    for (const c of coverage) c.paid = round2(Math.max(0, c.amount - c.discount))
+    return { entered, discountUsed, netPayable, coverage }
+  }, [selectedFees, selectedBalance, payAmount, activeDiscount])
+
+  const discountNote = () => {
+    if (!activeDiscount) return ""
+    const d = new Date()
+    const pad = (n: number) => String(n).padStart(2, "0")
+    const when = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+    return `Discount ${activeDiscount.discountCode} approved by ${currentUser?.name || "Admin"} on ${when}.`
   }
 
-  const selectedFees = resolved.filter((f) => selectedFeeIds.includes(f.id))
-  const totalAmount = selectedFees.reduce((sum, f) => {
-    const entered = partialAmounts[f.id]
-    return sum + (entered !== undefined && entered > 0 ? Math.min(entered, f.balance) : f.balance)
-  }, 0)
-
   const handlePayNow = async () => {
-    if (selectedFeeIds.length === 0) return
+    if (coverMeta.coverage.length === 0) return
     setPaying(true)
     const today = new Date().toISOString().split("T")[0]
-    const paidFees = resolved.filter((f) => selectedFeeIds.includes(f.id))
+    const note = discountNote()
     try {
-      for (const f of resolved) {
-        if (!selectedFeeIds.includes(f.id)) continue
-        const entered = partialAmounts[f.id]
-        const pay = entered !== undefined && entered > 0 ? Math.min(entered, f.balance) : f.balance
-        if (pay <= 0) continue
-        const newPaid = f.paid + pay
+      for (const c of coverMeta.coverage) {
+        const f = resolved.find((r) => r.id === c.id)!
+        const newPaid = f.paid + c.paid
         const status = newPaid >= f.amount ? "Paid" : newPaid > 0 ? "Partial" : "Unpaid"
-        await update(f.id, {
+        await update(c.id, {
           paidAmount: newPaid,
           status,
           paymentMode: payment.method,
@@ -392,17 +512,20 @@ export default function AddFeePage() {
           transactionId: payment.transactionId || null,
           bankName: payment.method === "Cheque" ? (payment.bank || null) : null,
           chequeNo: payment.method === "Cheque" ? (payment.chequeNo || null) : null,
-          note: payment.note || null,
+          discountId: c.discount > 0 && activeDiscount ? activeDiscount.id : null,
+          discountAmount: c.discount > 0 ? c.discount : null,
+          note: c.discount > 0 && note ? [payment.note || "", note].filter(Boolean).join(" | ") : payment.note || null,
         })
       }
-      setToast(`Payment of ${money(symbol, totalAmount)} collected successfully!`)
-      const r = buildReceipt(paidFees)
+      setToast(`Payment of ${money(symbol, coverMeta.netPayable)} collected successfully!`)
+      const r = buildReceipt()
       if (r) {
         setReceipt(r)
         setReceiptOpen(true)
       }
       setSelectedFeeIds([])
-      setPartialAmounts({})
+      setPayAmount("")
+      await refetch()
     } catch (e: any) {
       notify.error(e.message || "Payment failed")
     } finally {
@@ -563,7 +686,6 @@ export default function AddFeePage() {
                     resolved.map((fee, idx) => {
                       const isSelected = selectedFeeIds.includes(fee.id)
                       const isPaid = fee.status === "Paid" || fee.status === "paid"
-                      const enteredAmt = partialAmounts[fee.id]
                       return (
                         <tr key={fee.id} className={`border-b border-gray-100 hover:bg-[var(--primary-light)]/20 transition-colors ${idx % 2 === 1 ? "bg-gray-50/30" : ""}`}>
                           <td className="px-3 py-2.5">
@@ -577,25 +699,18 @@ export default function AddFeePage() {
                           </td>
                           <td className="px-3 py-2.5 text-gray-600">{fee.groupName}</td>
                           <td className="px-3 py-2.5 font-medium text-gray-800">{fee.feeTypeName}</td>
-                          <td className="px-3 py-2.5 text-gray-600">{fee.dueDate === "-" ? "-" : fmtDate(fee.dueDate)}</td>
+                          <td className="px-3 py-2.5 text-gray-600">{fee.dueDay ? `${fee.dueDay}th of every month` : fee.dueDate === "-" ? "-" : fmtDate(fee.dueDate)}</td>
                           <td className="px-3 py-2.5 text-right text-gray-800">{money(symbol, fee.amount)}</td>
-                          <td className="px-3 py-2.5 text-right text-gray-600">{fee.discount > 0 ? money(symbol, fee.discount) : "-"}</td>
+                          <td className="px-3 py-2.5 text-right">
+                          {fee.discount > 0 ? (
+                            <span className={fee.hasAppliedNew ? "font-medium text-[var(--primary)]" : "text-gray-600"}>{money(symbol, fee.discount)}{fee.hasAppliedNew ? " (auto)" : ""}</span>
+                          ) : "-"}
+                        </td>
                           <td className="px-3 py-2.5 text-right text-red-600">{fee.fine > 0 ? money(symbol, fee.fine) : "-"}</td>
                           <td className="px-3 py-2.5 text-right text-green-600">{fee.paid > 0 ? money(symbol, fee.paid) : "-"}</td>
                           <td className={`px-3 py-2.5 text-right font-medium ${fee.balance > 0 ? "text-red-600" : "text-green-600"}`}>{money(symbol, fee.balance)}</td>
                           <td className="px-3 py-2.5 text-center">
                             <div className="flex items-center justify-center gap-1">
-                              {!isPaid && isSelected && (
-                                <input
-                                  type="number"
-                                  min={0}
-                                  max={fee.balance}
-                                  value={enteredAmt ?? ""}
-                                  onChange={(e) => handlePartialAmount(fee.id, e.target.value)}
-                                  placeholder={`${fee.balance}`}
-                                  className="w-20 px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-[var(--primary)]"
-                                />
-                              )}
                               {!isPaid && (
                                 <button
                                   onClick={() => handleDeleteFee(fee)}
@@ -617,6 +732,22 @@ export default function AddFeePage() {
           </div>
         </div>
       </div>
+
+      {activeDiscount && (
+        <div className="flex items-start gap-2 rounded-lg border border-[var(--primary)]/30 bg-[var(--primary-light)] px-4 py-3 text-xs text-gray-700">
+          <Tag className="h-4 w-4 text-[var(--primary)] flex-shrink-0 mt-0.5" />
+          <span>
+            <span className="font-semibold text-gray-800">Student discount available</span> — coupon{" "}
+            <span className="font-mono font-medium text-[var(--primary)]">{activeDiscount.discountCode}</span>{" "}
+            ({activeDiscount.discountType === "Percentage" ? `${activeDiscount.percentage}%` : `${symbol}${num(activeDiscount.amount)}`}){" "}
+            is deducted from the amount you choose to pay for this student's fees.
+            {activeDiscount.approvedBy
+              ? ` Approved by ${activeDiscount.approvedBy}${activeDiscount.approvedAt ? ` on ${fmtDate(activeDiscount.approvedAt)}` : ""}.`
+              : " Approved."}
+            {activeDiscount.expiryDate ? ` Valid till ${fmtDate(activeDiscount.expiryDate)}.` : ""}
+          </span>
+        </div>
+      )}
 
       {/* Payment Section */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
@@ -702,11 +833,29 @@ export default function AddFeePage() {
               />
             </div>
 
-            {/* Total Amount */}
+            {/* Amount to Pay */}
             <div className="bg-[var(--primary-light)] rounded-xl p-4 flex flex-col justify-center">
-              <p className="text-xs font-medium text-[var(--primary)] uppercase tracking-wider">Total Amount</p>
-              <p className="text-2xl font-bold text-[var(--primary)] mt-1">{money(symbol, totalAmount)}</p>
-              <p className="text-xs text-[var(--primary)] mt-0.5">{selectedFees.length} fee(s) selected</p>
+              <label className="block text-xs font-medium text-[var(--primary)] uppercase tracking-wider">Amount to Pay (gross)</label>
+              <input
+                type="number"
+                min={0}
+                max={selectedBalance}
+                step="1"
+                value={payAmount}
+                onChange={(e) => setPayAmount(e.target.value)}
+                placeholder={String(selectedBalance)}
+                className="mt-1.5 w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white"
+              />
+              <p className="text-xs text-gray-500 mt-1.5">{selectedFees.length} fee(s) selected · Total {money(symbol, selectedBalance)}</p>
+              {activeDiscount && coverMeta.entered > 0 && (
+                <div className="mt-2 space-y-0.5 text-xs">
+                  <p className="text-emerald-700 font-medium">Discount − {money(symbol, coverMeta.discountUsed)} ({activeDiscount.discountCode})</p>
+                  <p className="text-base font-bold text-[var(--primary)] text-xl">Net Payable {money(symbol, coverMeta.netPayable)}</p>
+                </div>
+              )}
+              {activeDiscount && coverMeta.entered === 0 && (
+                <p className="text-xs text-gray-500 mt-1.5">Students with an approved discount get it deducted from the amount you choose to pay.</p>
+              )}
             </div>
           </div>
         </div>

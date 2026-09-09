@@ -11,6 +11,7 @@ const fieldMap: Record<string, string> = {
   feesGroup: "fees_group_id",
   feesType: "fees_type_id",
   dueDate: "due_date",
+  dueDay: "due_day",
   fineType: "fine_type",
   fineValue: "fine_value",
   perDay: "per_day",
@@ -49,6 +50,10 @@ async function mapBody(body: Record<string, any>) {
       data.fees_type_id = await resolveFk(value, "fees_types")
     } else if (key === "fine_rows" && Array.isArray(value)) {
       data.fine_rows = JSON.stringify(value)
+    } else if (key === "due_day" && (value === "" || value === null || value === undefined || Number(value) === 0)) {
+      data.due_day = null
+    } else if (key === "due_day") {
+      data.due_day = parseInt(value, 10)
     } else {
       data[key] = value ?? null
     }
@@ -76,6 +81,7 @@ async function getWithJoins(id?: number) {
     SELECT m.id, fg.name AS "feesGroup", ft.name AS "feesType",
       c.name AS "class", m.amount,
       m.due_date::text AS "dueDate",
+      m.due_day AS "dueDay",
       m.fine_type AS "fineType", m.fine_value AS "fineValue",
       m.per_day AS "perDay", m.fine_rows AS "fineRows",
       m.status, m.sort_order AS "sortOrder"

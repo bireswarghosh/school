@@ -3,9 +3,18 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 
+function getConnectionString() {
+  try {
+    const env = fs.readFileSync(path.join(__dirname, "..", ".env"), "utf8");
+    const m = env.match(/DATABASE_URL\s*=\s*"([^"]+)"/) || env.match(/DATABASE_URL\s*=\s*([^\r\n]+)/);
+    if (m && m[1]) return m[1].replace(/^"|"$/g, "").trim();
+  } catch {}
+  return process.env.DATABASE_URL || "postgresql://postgres:123@localhost/appstrice_school";
+}
 const pool = new Pool({
-  connectionString: "postgresql://postgres:123@localhost/appstrice_school",
+  connectionString: getConnectionString(),
   max: 4,
+  ssl: getConnectionString().includes("neon.tech") ? { rejectUnauthorized: false } : undefined,
 });
 
 const SQL_FILES = [
@@ -34,7 +43,13 @@ const SQL_FILES = [
   path.join(__dirname, "..", "src", "lib", "sql", "052_pos_book_sales.sql"),
   path.join(__dirname, "..", "src", "lib", "sql", "053_my_api_user_links.sql"),
   path.join(__dirname, "..", "src", "lib", "sql", "054_school_settings.sql"),
-];
+  path.join(__dirname, "..", "src", "lib", "sql", "055_student_discount_approval.sql"),
+  path.join(__dirname, "..", "src", "lib", "sql", "056_fees_master_due_day.sql"),
+   path.join(__dirname, "..", "src", "lib", "sql", "057_variable_products.sql"),
+   path.join(__dirname, "..", "src", "lib", "sql", "058_pos_variable_products.sql"),
+   path.join(__dirname, "..", "src", "lib", "sql", "059_variable_product_variations.sql"),
+   path.join(__dirname, "..", "src", "lib", "sql", "060_si_variations_uniform.sql"),
+ ];
 
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString("hex");
@@ -70,6 +85,9 @@ const TENANT_TABLES = [
   "subject_group_sections","subject_group_subjects",
   "si_categories","si_brands","si_units","si_stores","si_vendors","si_products","si_books",
   "si_variations","si_purchases","si_stock","si_sales","si_ledger","si_coupons",
+  "si_vp_products","si_vp_groups","si_vp_components","si_vp_variants","si_vp_prices","si_vp_price_history",
+  "si_vp_attributes","si_vp_attribute_values","si_vp_component_attributes","si_vp_component_attribute_values",
+  "si_vp_product_variations","si_vp_product_variation_values","si_vp_product_variation_prices","si_vp_product_variation_stock",
   "student_guardians",
 ];
 

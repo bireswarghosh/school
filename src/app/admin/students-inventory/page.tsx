@@ -35,9 +35,18 @@ export default function StudentsInventoryDashboard() {
 
   useEffect(() => {
     fetch("/api/admin/students-inventory-dashboard")
-      .then((r) => r.json())
-      .then((d) => { setData(d); setLoading(false) })
+      .then((r) => r.json().then((d) => {
+        if (!r.ok || d.error) throw new Error(d.error || `Request failed (${r.status})`)
+        setData({
+          ...d,
+          lowStock: Array.isArray(d.lowStock) ? d.lowStock : [],
+          recentSales: Array.isArray(d.recentSales) ? d.recentSales : [],
+          salesByCategory: Array.isArray(d.salesByCategory) ? d.salesByCategory : [],
+          topProducts: Array.isArray(d.topProducts) ? d.topProducts : [],
+        })
+      }))
       .catch((e) => { setError(e.message); setLoading(false) })
+      .finally(() => setLoading(false))
   }, [])
 
   if (loading) {

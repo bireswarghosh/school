@@ -898,7 +898,7 @@ export default function StudentAdmissionPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Mobile Number</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Registered Mobile</label>
                   <input
                     type="text"
                     value={form.mobileNumber}
@@ -907,7 +907,7 @@ export default function StudentAdmissionPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Registered Email</label>
                   <input
                     type="text"
                     value={form.email}

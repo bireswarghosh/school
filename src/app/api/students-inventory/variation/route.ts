@@ -10,6 +10,13 @@ const fieldMap: Record<string, string> = {
   variantType: "variant_type",
   variantValue: "variant_value",
   additionalPrice: "additional_price",
+  componentName: "component_name",
+  color: "color",
+  size: "size",
+  price: "price",
+  sku: "sku",
+  barcode: "barcode",
+  quantity: "quantity",
 }
 
 export async function GET(req: NextRequest) {

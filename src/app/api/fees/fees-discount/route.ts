@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { query, getAll, getById, create, update, remove } from "@/lib/db"
 import { camelToSnake, mapResponse } from "@/lib/field-mapping"
+import { getCurrentSession } from "@/lib/auth"
 
 function getErrorMessage(e: unknown) {
   return e instanceof Error ? e.message : String(e)
@@ -17,6 +18,10 @@ const fieldMap: Record<string, string> = {
   isActive: "is_active",
   feesGroup: "fees_group_id",
   feesType: "fees_type_id",
+  studentId: "student_id",
+  discountTypeKind: "discount_type",
+  approvedBy: "approved_by",
+  approvedAt: "approved_at",
 }
 
 function esc(val: string) {
@@ -32,7 +37,7 @@ function mapBody(body: Record<string, any>) {
       const tbl = key === "fees_group_id" ? "fees_groups" : key === "fees_type_id" ? "fees_types" : "classes"
       data[key] = `(SELECT id FROM ${tbl} WHERE name = '${esc(value)}')`
     } else {
-      data[key] = value ?? null
+      data[key] = value === "" ? null : value ?? null
     }
   }
   return data
@@ -41,9 +46,14 @@ function mapBody(body: Record<string, any>) {
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const id = searchParams.get("id")
+  const studentId = searchParams.get("studentId")
   if (id) {
     const item = await getById(TABLE, parseInt(id))
     return NextResponse.json(mapResponse(item, fieldMap) || { error: "Not found" }, { status: item ? 200 : 404 })
+  }
+  if (studentId) {
+    const items = await getAll(TABLE, ORDER, "student_id = $1", [parseInt(studentId, 10)])
+    return NextResponse.json(mapResponse(items, fieldMap))
   }
   const items = await getAll(TABLE, ORDER)
   return NextResponse.json(mapResponse(items, fieldMap))
@@ -52,11 +62,14 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
+    const session = await getCurrentSession()
+    const approvedBy = session?.name || null
+    const approvedAt = new Date().toISOString()
     if (Array.isArray(body)) {
-      const items = await Promise.all(body.map((item) => create(TABLE, mapBody(item))))
+      const items = await Promise.all(body.map((item) => create(TABLE, mapBody({ ...item, approvedBy, approvedAt }))))
       return NextResponse.json(items, { status: 201 })
     }
-    const item = await create(TABLE, mapBody(body))
+    const item = await create(TABLE, mapBody({ ...body, approvedBy, approvedAt }))
     return NextResponse.json(item, { status: 201 })
   } catch (e: any) {
     return NextResponse.json({ error: getErrorMessage(e) }, { status: 400 })

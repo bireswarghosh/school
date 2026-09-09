@@ -12,14 +12,18 @@ export async function GET(req: NextRequest) {
 
   const result = await query(
     `SELECT s.sale_no, s.student_id, s.student_name, s.product_id, s.book_id,
+            s.vp_product_id, s.component_id, s.variant_id, s.uniform_name,
             s.quantity, s.unit_price, s.subtotal, s.discount_amount, s.total_amount,
             s.sale_date, s.payment_status, s.school_id,
-            COALESCE(p.name, '') AS product_name, COALESCE(b.title, '') AS book_name
-     FROM si_sales s
-     LEFT JOIN si_products p ON p.id = s.product_id
-     LEFT JOIN si_books b ON b.id = s.book_id
-     WHERE s.sale_no = $1
-     ORDER BY s.id ASC`,
+            COALESCE(p.name, '') AS product_name, COALESCE(b.title, '') AS book_name,
+            COALESCE(vc.name, '') AS component_name, COALESCE(vv.name, '') AS variant_name
+      FROM si_sales s
+      LEFT JOIN si_products p ON p.id = s.product_id
+      LEFT JOIN si_books b ON b.id = s.book_id
+      LEFT JOIN si_vp_components vc ON vc.id = s.component_id
+      LEFT JOIN si_vp_variants vv ON vv.id = s.variant_id
+      WHERE s.sale_no = $1
+      ORDER BY s.id ASC`,
     [saleNo]
   )
 
@@ -39,15 +43,21 @@ export async function GET(req: NextRequest) {
 
   const items = rows
     .map(
-      (r, i) =>
-        `<tr>
+      (r, i) => {
+        const isUniform = !!r.uniform_name
+        const label = isUniform
+          ? `${esc(r.uniform_name)} — ${esc(r.component_name)}${r.variant_name ? ` (${esc(r.variant_name)})` : ''}`
+          : esc(r.book_name || r.product_name || "-")
+        const subLabel = isUniform ? "Uniform" : (r.book_name ? "Book" : "Product")
+        return `<tr>
           <td class="c">${i + 1}</td>
-          <td>${esc(r.book_name || r.product_name || "-")}${r.book_name ? '<span class="sub">Book</span>' : '<span class="sub">Product</span>'}</td>
+          <td>${label}<span class="sub">${subLabel}</span></td>
           <td class="c">${Number(r.quantity) || 0}</td>
           <td class="r">${fmt(r.unit_price)}</td>
           <td class="r">${Number(r.discount_amount) ? fmt(r.discount_amount) : "-"}</td>
           <td class="r">${fmt(r.total_amount)}</td>
         </tr>`
+      }
     )
     .join("")
 

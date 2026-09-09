@@ -1,10 +1,11 @@
 "use client"
 
-import { useState, useMemo } from "react"
-import { Search, X, CreditCard } from "lucide-react"
+import { useState, useCallback } from "react"
+import { Search, CreditCard, Tag } from "lucide-react"
 import { useApi } from "@/lib/use-api"
 import { useClassesAndSections } from "@/lib/use-classes-sections"
 import { useCurrency } from "@/lib/currency-context"
+import CollectFeesModal from "@/components/collect-fees-modal"
 
 type FeesGroup = {
   id: number
@@ -12,36 +13,79 @@ type FeesGroup = {
   description: string
 }
 
+type FeeRecord = {
+  id: number
+  studentId: number | string
+  feesGroup: number | string
+  amount: number | string
+  discountAmount: number | string
+  paidAmount: number | string
+}
+
 type StudentDue = {
-  id?: number
+  studentId: number
   name: string
-  className: string
   admissionNo: string
+  rollNo?: string
+  className: string
+  section: string
   totalFees: number
   paidAmount: number
   dueAmount: number
+  activeDiscount?: {
+    discountCode: string
+    discountType: string
+    discountTypeKind?: string | null
+    percentage: number | null
+    amount: number | null
+    expiryDate: string | null
+    approvedBy: string | null
+    approvedAt: string | null
+  } | null
 }
 
-const ModalOverlay = ({ onClose }: { onClose: () => void }) => (
-  <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-)
+const num = (v: unknown) => {
+  const n = Number(v)
+  return isNaN(n) ? 0 : n
+}
+
+const fmtDate = (s?: string | null) => {
+  if (!s) return ""
+  const [y, m, d] = s.split("-").map(Number)
+  return y && m && d ? `${String(m).padStart(2, "0")}/${String(d).padStart(2, "0")}/${y}` : ""
+}
+
+const fmtDT = (dt?: string | null) => {
+  if (!dt) return ""
+  const d = new Date(dt)
+  if (isNaN(d.getTime())) return ""
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
 
 export default function SearchDueFeesPage() {
   const { symbol } = useCurrency()
-  const { classNames: classOptions, sectionNames: sectionOptions, classes, sectionsOf } = useClassesAndSections()
-  const { data: allStudents } = useApi<StudentDue>("/api/fees/fees-payment")
+  const { sectionNames, classes, sectionsOf } = useClassesAndSections()
   const { data: feesGroups } = useApi<FeesGroup>("/api/fees/fees-group")
   const [selectedGroups, setSelectedGroups] = useState<number[]>([])
   const [selectedClass, setSelectedClass] = useState("")
   const [selectedSection, setSelectedSection] = useState("")
   const [searched, setSearched] = useState(false)
+  const [results, setResults] = useState<StudentDue[]>([])
   const [showPayModal, setShowPayModal] = useState(false)
-  const [payStudent, setPayStudent] = useState<StudentDue | null>(null)
+  const [payStudent, setPayStudent] = useState<{
+    id: number
+    name: string
+    admissionNo: string
+    rollNo?: string
+    className: string
+    section: string
+  } | null>(null)
 
   const selectedClassItem = classes.find((c) => c.name === selectedClass)
   const availableSections = selectedClassItem
     ? sectionsOf(selectedClassItem.id).map((s) => s.name)
-    : sectionOptions
+    : sectionNames
 
   const handleClassChange = (value: string) => {
     setSelectedClass(value)
@@ -62,57 +106,83 @@ export default function SearchDueFeesPage() {
     }
   }
 
-  const results = useMemo(() => {
-    if (!searched || !allStudents) return []
-    return allStudents.filter((s) => {
-      if (selectedClass && !s.className.startsWith(selectedClass)) return false
-      if (selectedSection && !s.className.endsWith(selectedSection)) return false
-      return selectedGroups.length === 0 || true
-    })
-  }, [searched, selectedClass, selectedSection, selectedGroups, allStudents])
+  const applySearch = useCallback(async () => {
+    const params = new URLSearchParams()
+    if (selectedClass) params.set("class", selectedClass)
+    if (selectedSection) params.set("section", selectedSection)
+
+    const studentsRes = await fetch(`/api/students?${params.toString()}`)
+    const studentsList = await studentsRes.json()
+    const feesRes = await fetch("/api/fees/fees-payment")
+    const feesList = await feesRes.json()
+    let discList: any[] = []
+    try {
+      const discRes = await fetch("/api/fees/fees-discount")
+      const discJson = await discRes.json()
+      if (Array.isArray(discJson)) discList = discJson
+    } catch { /* ignore */ }
+
+    const t = new Date().toISOString().split("T")[0]
+    const activeByStudent = new Map<number, any>()
+    for (const d of discList) {
+      if (d.isActive === false || (d.expiryDate && d.expiryDate < t) || !d.studentId) continue
+      const dType = d.discountType === "Percentage" ? "Percentage" : d.discountType === "Fix" ? "Fix" : d.discountTypeKind
+      const value = dType === "Percentage" ? num(d.percentage) : num(d.amount)
+      if (!(value > 0)) continue
+      if (!activeByStudent.has(Number(d.studentId))) activeByStudent.set(Number(d.studentId), d)
+    }
+
+    const groupIds = new Set(selectedGroups.map(Number))
+    const rows: StudentDue[] = (Array.isArray(studentsList) ? studentsList : [])
+      .map((s: any) => {
+        const recs = (Array.isArray(feesList) ? feesList : []).filter(
+          (f: FeeRecord) =>
+            Number(f.studentId) === s.id && (groupIds.size === 0 || groupIds.has(Number(f.feesGroup)))
+        )
+        const totalFees = recs.reduce((sum, f) => sum + num(f.amount), 0)
+        const paidAmount = recs.reduce((sum, f) => sum + num(f.paidAmount), 0)
+        const dueAmount = recs.reduce((sum, f) => sum + Math.max(0, num(f.amount) - num(f.discountAmount) - num(f.paidAmount)), 0)
+        return {
+          studentId: s.id,
+          name: s.name,
+          admissionNo: s.admissionNo,
+          rollNo: s.rollNo,
+          className: s.class,
+          section: s.section,
+          totalFees,
+          paidAmount,
+          dueAmount,
+          activeDiscount: activeByStudent.get(Number(s.id)) ?? null,
+        }
+      })
+      .filter((r: StudentDue) => r.totalFees > 0)
+      .sort((a: StudentDue, b: StudentDue) => b.dueAmount - a.dueAmount)
+
+    setResults(rows)
+    setSearched(true)
+  }, [selectedClass, selectedSection, selectedGroups])
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
-    setSearched(true)
+    applySearch()
   }
 
   const openPayModal = (student: StudentDue) => {
-    setPayStudent(student)
+    setPayStudent({
+      id: student.studentId,
+      name: student.name,
+      admissionNo: student.admissionNo,
+      rollNo: student.rollNo,
+      className: student.className,
+      section: student.section,
+    })
     setShowPayModal(true)
   }
 
-  const pctPaid = (paid: number, total: number) => Math.round((paid / total) * 100)
-
-  const Modal = ({
-    title, show, onClose, children, footer,
-  }: {
-    title: string; show: boolean; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode
-  }) => {
-    if (!show) return null
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <ModalOverlay onClose={onClose} />
-        <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto z-10">
-          <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 sticky top-0 bg-white z-10 rounded-t-xl">
-            <h3 className="text-base font-semibold text-gray-800">{title}</h3>
-            <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-          <div className="p-5">{children}</div>
-          {footer && (
-            <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2 sticky bottom-0 bg-white rounded-b-xl">
-              {footer}
-            </div>
-          )}
-        </div>
-      </div>
-    )
-  }
+  const pctPaid = (paid: number, total: number) => (total > 0 ? Math.round((paid / total) * 100) : 0)
 
   return (
     <div className="space-y-5">
-      {/* Page Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-xl font-bold text-gray-900">Search Due Fees</h2>
@@ -120,7 +190,6 @@ export default function SearchDueFeesPage() {
         </div>
       </div>
 
-      {/* Search Section */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
         <div className="px-5 py-2.5 border-b border-gray-100">
           <h3 className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
@@ -162,8 +231,8 @@ export default function SearchDueFeesPage() {
               <label className="block text-xs font-medium text-gray-500 mb-1">Class</label>
               <select value={selectedClass} onChange={(e) => handleClassChange(e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white">
                 <option value="">Select</option>
-                {classOptions.map((c) => (
-                  <option key={c} value={c}>{c}</option>
+                {classes.map((c) => (
+                  <option key={c.id} value={c.name}>{c.name}</option>
                 ))}
               </select>
             </div>
@@ -182,14 +251,13 @@ export default function SearchDueFeesPage() {
               <Search className="h-3.5 w-3.5" />
               Search
             </button>
-            <button type="button" onClick={() => { setSelectedClass(""); setSelectedSection(""); setSelectedGroups([]); setSearched(false) }} className="h-9 px-3 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            <button type="button" onClick={() => { setSelectedClass(""); setSelectedSection(""); setSelectedGroups([]); setSearched(false); setResults([]) }} className="h-9 px-3 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
               Reset
             </button>
           </div>
         </form>
       </div>
 
-      {/* Results Table */}
       {searched && (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
@@ -225,13 +293,25 @@ export default function SearchDueFeesPage() {
                     const pct = pctPaid(s.paidAmount, s.totalFees)
                     const isPaid = pct >= 100
                     return (
-                      <tr key={s.admissionNo} className={`border-b border-gray-50 hover:bg-[var(--primary-light)] transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}>
-                        <td className="px-4 py-2.5 font-medium text-gray-800">{s.name}</td>
-                        <td className="px-4 py-2.5 text-gray-600">{s.className}</td>
+                      <tr key={s.studentId} className={`border-b border-gray-50 hover:bg-[var(--primary-light)] transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}>
+                        <td className="px-4 py-2.5 font-medium text-gray-800">
+                          {s.name}
+                          {s.activeDiscount && (
+                            <div className="mt-1 flex flex-col items-start gap-0.5">
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-[var(--primary-light)] text-[var(--secondary)]" title={`${s.activeDiscount.discountType === "Percentage" ? `${s.activeDiscount.percentage}%` : `${symbol}${num(s.activeDiscount.amount)}`} discount on ${s.activeDiscount.discountCode}`}>
+                                <Tag className="h-2.5 w-2.5" /> {s.activeDiscount.discountType === "Percentage" ? `${s.activeDiscount.percentage}%` : `${symbol}${num(s.activeDiscount.amount)}`} ({s.activeDiscount.discountCode}){s.activeDiscount.expiryDate ? ` · till ${fmtDate(s.activeDiscount.expiryDate)}` : ""}
+                              </span>
+                              {s.activeDiscount.approvedBy && (
+                                <span className="text-[9px] text-gray-500">Approved by {s.activeDiscount.approvedBy}{fmtDT(s.activeDiscount.approvedAt) ? ` on ${fmtDT(s.activeDiscount.approvedAt)}` : ""}</span>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-gray-600">{s.className} - {s.section}</td>
                         <td className="px-4 py-2.5 text-gray-600 font-mono text-xs">{s.admissionNo}</td>
-                        <td className="px-4 py-2.5 text-right font-medium text-gray-800">{`${symbol}${s.totalFees.toLocaleString()}`}</td>
-                        <td className="px-4 py-2.5 text-right text-gray-600">{`${symbol}${s.paidAmount.toLocaleString()}`}</td>
-                        <td className="px-4 py-2.5 text-right font-medium text-gray-800">{`${symbol}${s.dueAmount.toLocaleString()}`}</td>
+                        <td className="px-4 py-2.5 text-right font-medium text-gray-800">{symbol}{s.totalFees.toLocaleString()}</td>
+                        <td className="px-4 py-2.5 text-right text-gray-600">{symbol}{s.paidAmount.toLocaleString()}</td>
+                        <td className="px-4 py-2.5 text-right font-medium text-gray-800">{symbol}{s.dueAmount.toLocaleString()}</td>
                         <td className="px-4 py-2.5 text-center">
                           {isPaid ? (
                             <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full border bg-green-50 text-green-700 border-green-200">
@@ -262,61 +342,17 @@ export default function SearchDueFeesPage() {
           </div>
           <div className="px-4 py-2.5 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500 bg-gray-50/50">
             <span>Showing {results.length} of {results.length} records</span>
-            <span className="text-gray-300">Page 1 of 1</span>
           </div>
         </div>
       )}
 
-      {/* Pay Now Modal */}
-      <Modal
-        title="Collect Fees"
-        show={showPayModal}
+      <CollectFeesModal
+        open={showPayModal}
+        student={payStudent}
+        groupIds={selectedGroups}
         onClose={() => setShowPayModal(false)}
-        footer={
-          <>
-            <button onClick={() => setShowPayModal(false)} className="px-4 py-2 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
-            <button onClick={() => setShowPayModal(false)} className="px-5 py-2 text-xs font-medium text-white bg-[var(--primary)] rounded-lg hover:bg-[var(--secondary)] transition-colors shadow-sm shadow-indigo-200">Pay</button>
-          </>
-        }
-      >
-        {payStudent && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
-              {[
-                { label: "Student Name", value: payStudent.name },
-                { label: "Class", value: payStudent.className },
-                { label: "Admission No", value: payStudent.admissionNo },
-                { label: "Total Fees", value: `${symbol}${payStudent.totalFees.toLocaleString()}` },
-                { label: "Paid Amount", value: `${symbol}${payStudent.paidAmount.toLocaleString()}` },
-                { label: "Due Amount", value: `${symbol}${payStudent.dueAmount.toLocaleString()}` },
-              ].map((item) => (
-                <div key={item.label} className="border-b border-gray-50 pb-2">
-                  <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wider">{item.label}</span>
-                  <p className="text-sm text-gray-800 mt-0.5 font-medium">{item.value}</p>
-                </div>
-              ))}
-            </div>
-            <div className="border-t border-gray-100 pt-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Amount to Pay</label>
-                  <input type="number" defaultValue={payStudent.dueAmount} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Payment Mode</label>
-                  <select className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white">
-                    <option value="">Select</option>
-                    <option value="Cash">Cash</option>
-                    <option value="Cheque">Cheque</option>
-                    <option value="Online">Online</option>
-                    <option value="Card">Card</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </Modal>
+        onSuccess={applySearch}
+      />
     </div>
   )
 }

@@ -29,6 +29,7 @@ export const TENANT_TABLES = new Set<string>([
   "user_logs", "sidebar_menus", "system_fields", "system_updates", "backup_records", "online_admission_settings",
   "si_categories", "si_brands", "si_units", "si_stores", "si_vendors", "si_products", "si_books",
   "si_variations", "si_purchases", "si_stock", "si_sales", "si_ledger", "si_coupons",
+  "si_vp_products", "si_vp_groups", "si_vp_components", "si_vp_variants", "si_vp_prices", "si_vp_price_history",
   "school_settings",
   "uploaded_files",
 ])
