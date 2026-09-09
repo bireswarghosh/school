@@ -95,12 +95,14 @@ function AdminHeader({ pageTitle, toggleDarkMode, darkMode, onMenu }: { pageTitl
             </span>
           )
         )}
-        {isPosPage && (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-[var(--primary-light)] text-[var(--primary)]">
-            <Store className="h-4 w-4" />
-            POS
-          </span>
-        )}
+        <Link
+          href="/admin/students-inventory/student-sales"
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${isPosPage ? "bg-[var(--primary)] text-white" : "bg-[var(--primary-light)] text-[var(--primary)] hover:bg-[var(--primary)]/20"}`}
+          title="Go to POS"
+        >
+          <Store className="h-4 w-4" />
+          POS
+        </Link>
         <QuickLinks />
         <div className="relative hidden sm:block">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />

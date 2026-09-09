@@ -49,6 +49,9 @@ const SQL_FILES = [
    path.join(__dirname, "..", "src", "lib", "sql", "058_pos_variable_products.sql"),
    path.join(__dirname, "..", "src", "lib", "sql", "059_variable_product_variations.sql"),
    path.join(__dirname, "..", "src", "lib", "sql", "060_si_variations_uniform.sql"),
+   path.join(__dirname, "..", "src", "lib", "sql", "061_inventory_icons.sql"),
+   path.join(__dirname, "..", "src", "lib", "sql", "062_inventory_icon_image.sql"),
+   path.join(__dirname, "..", "src", "lib", "sql", "063_icsc_examination.sql"),
  ];
 
 function hashPassword(password) {
@@ -68,7 +71,10 @@ const TENANT_TABLES = [
   "cbse_exams","cbse_exam_subjects","cbse_exam_students","cbse_exam_marks","cbse_terms","cbse_assessments",
   "cbse_obs_params","cbse_exam_grades","cbse_student_attendance","cbse_exam_schedules","cbse_admit_cards",
   "cbse_templates","cbse_settings","cbse_observations","books","book_issues","library_members",
-  "pickup_points","routes","vehicles","route_vehicles","route_pickup_points","student_transport_fees",
+
+  "icsc_exams","icsc_exam_subjects","icsc_exam_students","icsc_exam_marks","icsc_terms","icsc_assessments",
+  "icsc_observation_params","icsc_exam_grades","icsc_exam_attendance","icsc_schedules","icsc_admit_cards",
+  "icsc_templates","icsc_settings","icsc_observations","icsc_reports","icsc_custom_marksheets",  "pickup_points","routes","vehicles","route_vehicles","route_pickup_points","student_transport_fees",
   "hostels","room_types","hostel_rooms","item_categories","items","item_suppliers","item_stores","item_stocks",
   "item_issues","item_sub_categories","brands","units","product_variants","purchase_orders","purchase_order_items",
   "discounts","inventory_adjustments","stock_transfers","fees_masters","fees_groups","fees_types","fees_discounts",

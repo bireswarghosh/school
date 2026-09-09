@@ -547,13 +547,15 @@ export const studentSection: RoleSection = {
     {
       method: "POST",
       path: "my/fees/pay/order",
-      summary: "Start an online (Razorpay) fee payment — returns checkout data",
-      desc: "Student and parent logins. Validates the fee type against the student's active fee masters, computes the pending balance, and — when Razorpay is configured — creates a Razorpay Order and records a Pending fees_payments row (idempotent per fee type: repeating the call reuses the same order). When Razorpay is NOT configured it records the fee as Paid immediately and returns mode=\"offline\".",
+      summary: "Start an online fee payment — returns checkout data (supports masterId)",
+      desc: "Student and parent logins. Validates the fee head against the student's active fee masters (prefers masterId to avoid duplicate fee types), computes the pending balance, and — when Razorpay is configured — creates a Razorpay Order and records a Pending fees_payments row (idempotent per head). Supports single (masterId/feesTypeId+amount), group (masterIds/feesTypeIds), or payAll. When Razorpay is NOT configured it records the fee as Paid immediately. Use gateway: razorpay/phonepe/cashfree/manual etc.",
       roles: ["student", "parent"],
       body: {
         studentId: 15,
+        masterId: 8,
         feesTypeId: 3,
         amount: 3000,
+        gateway: "razorpay",
       },
       response: {
         mode: "razorpay_order",
@@ -914,13 +916,15 @@ export const parentSection: RoleSection = {
     {
       method: "POST",
       path: "my/fees/pay/order",
-      summary: "Start an online (Razorpay) fee payment for one of my children",
-      desc: "Parent must pass studentId of one of their linked kids. When Razorpay is configured it creates a Razorpay Order + a Pending fees_payments row and returns the checkout payload (idempotent per fee type). When not configured it records the fee as paid instantly (mode=\"offline\").",
+      summary: "Start an online fee payment for one of my children (supports masterId)",
+      desc: "Parent must pass studentId of one of their linked kids. Validates by masterId (preferred) or feesTypeId, computes pending balance, creates Razorpay Order + Pending row when configured (idempotent per head), otherwise demo/manual. Supports masterId/masterIds, feesTypeId/feesTypeIds, payAll, amount (partial) and gateway code.",
       roles: ["student", "parent"],
       body: {
         studentId: 15,
+        masterId: 8,
         feesTypeId: 3,
         amount: 3000,
+        gateway: "razorpay",
       },
       response: {
         mode: "razorpay_order",
@@ -1489,6 +1493,29 @@ export const schoolAdminModules: CrudModule[] = [
     ],
   },
   {
+    label: "ICSC",
+    endpoints: [
+      { path: "icsc/admit-card", table: "icsc_admit_cards", desc: "Admit cards", params: ["exam_id"] },
+      { path: "icsc/assessments", table: "icsc_assessments", desc: "Assessments", params: ["class_id", "section_id", "subject_id", "exam_id"] },
+      { path: "icsc/exam", table: "icsc_exams", desc: "ICSC exams", params: ["class_id", "section_id"] },
+      { path: "icsc/exam-attendance", table: "icsc_exam_attendance", desc: "Exam attendance", params: ["exam_id", "class_id", "section_id"] },
+      { path: "icsc/exam-grades", table: "icsc_exam_grades", desc: "Exam grades", params: ["exam_id", "class_id"] },
+      { path: "icsc/exam-marks", table: "icsc_exam_marks", desc: "Exam marks", params: ["exam_id", "class_id", "section_id", "subject_id"] },
+      { path: "icsc/exam-students", table: "icsc_exam_students", desc: "Exam students", params: ["exam_id", "class_id", "section_id"] },
+      { path: "icsc/exam-subjects", table: "icsc_exam_subjects", desc: "Exam subjects", params: ["exam_id", "class_id"] },
+      { path: "icsc/marksheet", table: "icsc_marksheets", desc: "Marksheets", params: ["exam_id", "class_id", "section_id", "student_id"] },
+      { path: "icsc/observation", table: "icsc_observations", desc: "Observations", params: ["class_id", "section_id", "subject_id"] },
+      { path: "icsc/obs-params", table: "icsc_observation_params", desc: "Observation params", params: ["observation_id"] },
+      { path: "icsc/reports", table: "icsc_reports", desc: "ICSC reports", params: ["exam_id", "class_id", "section_id"] },
+      { path: "icsc/schedule", table: "icsc_schedules", desc: "Exam schedules", params: ["exam_id", "class_id"] },
+      { path: "icsc/settings", table: "icsc_settings", desc: "ICSC settings", params: ["academic_year"] },
+      { path: "icsc/template", table: "icsc_templates", desc: "Templates", params: ["type"] },
+      { path: "icsc/terms", table: "icsc_terms", desc: "ICSC terms", params: ["academic_year"] },
+      { path: "icsc/custom-marksheet", table: "icsc_custom_marksheets", desc: "ICSC custom marksheet (clone of CBSE custom_marksheet)", params: ["student_id", "session_id"], methods: ["GET", "POST"] },
+      { path: "icsc/custom-marksheet-entry", table: "icsc_custom_marksheets", desc: "ICSC custom marksheet entry (clone of CBSE custom_marksheet_entry)", params: ["class_id", "section_id", "session_id"], methods: ["GET", "POST"] },
+    ],
+  },
+  {
     label: "Certificate",
     endpoints: [
       { path: "certificate/staff-id-card", table: "staff_id_cards", desc: "Staff ID cards" },
@@ -1722,6 +1749,7 @@ export const schoolAdminModules: CrudModule[] = [
   {
     label: "AI Tools",
     endpoints: [
+      { path: "ai/generate-icon", table: "uploaded_files", desc: "Generate colorful icon image via AI (Pollinations) from product/category name and store as WebP", methods: ["POST"] },
       { path: "ai/settings", table: "system_settings", desc: "AI provider settings & API key fields (GET/PUT)", methods: ["GET", "PUT"] },
       { path: "ai/settings/test", table: "system_settings", desc: "Test the AI provider connection (POST)", methods: ["POST"] },
       { path: "ai/generate-questions", table: "question_bank", desc: "Generate exam questions with AI (POST)", methods: ["POST"] },
@@ -1774,6 +1802,16 @@ export const schoolAdminModules: CrudModule[] = [
       { path: "students-inventory/unit", table: "si_units", desc: "Units of measure" },
       { path: "students-inventory/variation", table: "si_variations", desc: "Product variations" },
       { path: "students-inventory/vendor", table: "si_vendors", desc: "Vendors" },
+    ],
+  },
+  {
+    label: "AI Tools",
+    endpoints: [
+      { path: "ai/generate-icon", table: "uploaded_files", desc: "Generate colorful icon image via AI (Pollinations) from product/category name and store as WebP", methods: ["POST"] },
+      { path: "ai/generate-questions", table: "question_bank", desc: "Generate exam questions with AI (POST)", methods: ["POST"] },
+      { path: "ai/settings", table: "system_settings", desc: "AI provider settings & API key fields (GET/PUT)", methods: ["GET", "PUT"] },
+      { path: "ai/settings/test", table: "system_settings", desc: "Test the AI provider connection (POST)", methods: ["POST"] },
+      { path: "ai/student-insights", table: "students", desc: "AI-generated student performance insights (POST)", params: ["student_id"], methods: ["POST"] },
     ],
   },
   {
@@ -1912,6 +1950,22 @@ export const schoolAdminCrudSamples: Record<string, { body?: unknown; response?:
       date: "2026-08-22",
     },
     response: { id: 44, name: "Rohan Mehta", phone: "9922334455", class_id: 3, status: "Pending" },
+  },
+  "students-inventory/product": {
+    body: { name: "BOYS HALF PANT BLUE", code: "HP-BLUE", category_id: 1, brand_id: 1, unit_id: 1, purchase_price: 300, selling_price: 350, min_stock: 10, icon: "Package", icon_image: "/api/files/ai-icon-123.webp", description: "School uniform half pant" },
+    response: { id: 4, name: "BOYS HALF PANT BLUE", code: "HP-BLUE", category_id: 1, selling_price: 350, icon: "Package", icon_image: "/api/files/ai-icon-123.webp" },
+  },
+  "students-inventory/category": {
+    body: { name: "Uniform", description: "School uniform category", icon: "Shirt", icon_image: "/api/files/cat-icon-456.webp" },
+    response: { id: 1, name: "Uniform", icon: "Shirt", icon_image: "/api/files/cat-icon-456.webp" },
+  },
+  "students-inventory/variation": {
+    body: { product_id: 4, component_name: "Boys Half Pant", color: "BLUE", size: "20", price: 350, sku: "BOYS-HALF-PANT-BLUE-20", quantity: 1, variant_type: "Boys Half Pant (BLUE)", variant_value: "20", additional_price: 350 },
+    response: { id: 1, product_id: 4, component_name: "Boys Half Pant", color: "BLUE", size: "20", price: 350, sku: "BOYS-HALF-PANT-BLUE-20", quantity: 1 },
+  },
+  "ai/generate-icon": {
+    body: { name: "Boys Half Pant Blue" },
+    response: { success: true, url: "/api/files/ai-icon-789.webp", prompt: "flat vector icon of Boys Half Pant Blue, school uniform product icon, colorful, minimal" },
   },
 }
 

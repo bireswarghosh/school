@@ -39,6 +39,22 @@ export const menuData: MenuCategory[] = [
     ],
   },
   {
+    label: "Students Inventory",
+    icon: "Package",
+    items: [
+      { label: "Dashboard", path: "/admin/students-inventory" },
+      { label: "Product Master", path: "/admin/students-inventory/products" },
+      { label: "Booklist", path: "/admin/students-inventory/books" },
+      { label: "Masters", path: "/admin/students-inventory/masters" },
+      { label: "Purchases", path: "/admin/students-inventory/purchases" },
+      { label: "Stock Management", path: "/admin/students-inventory/stock-management" },
+      { label: "Student Sales", path: "/admin/students-inventory/student-sales" },
+      { label: "Sales List", path: "/admin/students-inventory/sales-list" },
+      { label: "Student Ledger", path: "/admin/students-inventory/student-ledger" },
+      { label: "Reports", path: "/admin/students-inventory/reports" },
+    ],
+  },
+  {
     label: "Fees Collection",
     icon: "Wallet",
     items: [
@@ -147,6 +163,22 @@ export const menuData: MenuCategory[] = [
       { label: "Admit Card", path: "/admin/cbse-examination/admit-card" },
       { label: "Reports", path: "/admin/cbse-examination/reports" },
       { label: "Setting", path: "/admin/cbse-examination/setting" },
+    ],
+  },
+  {
+    label: "ICSC Examination",
+    icon: "Award",
+    items: [
+      { label: "Exam", path: "/admin/icsc-examination/exam" },
+      { label: "Exam Schedule", path: "/admin/icsc-examination/exam-schedule" },
+      { label: "Print Marksheet", path: "/admin/icsc-examination/print-marksheet" },
+      { label: "Template", path: "/admin/icsc-examination/template" },
+      { label: "Assign Observation", path: "/admin/icsc-examination/assign-observation" },
+      { label: "Admit Card", path: "/admin/icsc-examination/admit-card" },
+      { label: "Reports", path: "/admin/icsc-examination/reports" },
+      { label: "Setting", path: "/admin/icsc-examination/setting" },
+      { label: "Custom Marksheet Entry", path: "/admin/icsc-examination/custom-marksheet-entry" },
+      { label: "Custom Marksheet", path: "/admin/icsc-examination/custom-marksheet" },
     ],
   },
   {
@@ -284,22 +316,6 @@ export const menuData: MenuCategory[] = [
       { label: "Item Category", path: "/admin/staff-inventory/item-category" },
       { label: "Item Store", path: "/admin/staff-inventory/item-store" },
       { label: "Item Supplier", path: "/admin/staff-inventory/item-supplier" },
-    ],
-  },
-  {
-    label: "Students Inventory",
-    icon: "Package",
-    items: [
-      { label: "Dashboard", path: "/admin/students-inventory" },
-      { label: "Product Master", path: "/admin/students-inventory/products" },
-      { label: "Booklist", path: "/admin/students-inventory/books" },
-      { label: "Masters", path: "/admin/students-inventory/masters" },
-      { label: "Purchases", path: "/admin/students-inventory/purchases" },
-      { label: "Stock Management", path: "/admin/students-inventory/stock-management" },
-      { label: "Student Sales", path: "/admin/students-inventory/student-sales" },
-      { label: "Sales List", path: "/admin/students-inventory/sales-list" },
-      { label: "Student Ledger", path: "/admin/students-inventory/student-ledger" },
-      { label: "Reports", path: "/admin/students-inventory/reports" },
     ],
   },
   {

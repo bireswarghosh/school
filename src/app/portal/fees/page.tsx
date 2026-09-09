@@ -202,16 +202,20 @@ export default function PortalFees() {
 
   const pay = async (masterId: number) => {
     const due = data?.dues?.find((d: any) => d.masterId === masterId)
-    if (!due) return
-    const gateway = await chooseGateway(Number(due.balance))
-    if (gateway === null) return
+    if (!due || Number(due.balance) <= 0) return
     setPayingId(masterId)
     setError("")
     setPaidMsg("")
     try {
-      const amount = await runOrder({ feesTypeId: due.feesTypeId, amount: due.balance, gateway })
-      setPaidMsg(`Payment of ₹${amount.toLocaleString("en-IN")} completed successfully`)
-      load()
+      const freshBalance = Number(due.balance)
+      const gateway = await chooseGateway(freshBalance)
+      if (gateway === null) {
+        setPayingId(null)
+        return
+      }
+      const amount = await runOrder({ masterId: due.masterId, feesTypeId: due.feesTypeId, amount: freshBalance, gateway })
+      setPaidMsg(`Payment of ${symbol}${amount.toLocaleString("en-IN")} completed successfully`)
+      await load()
     } catch (e: any) {
       setError(e.message || "Network error")
     } finally {
@@ -222,15 +226,19 @@ export default function PortalFees() {
   const payGroup = async (group: any) => {
     const heads = group.dues.filter((d: any) => Number(d.balance) > 0)
     if (heads.length === 0) return
-    const gateway = await chooseGateway(heads.reduce((s: number, h: any) => s + Number(h.balance), 0))
-    if (gateway === null) return
+    const freshTotal = heads.reduce((s: number, h: any) => s + Number(h.balance), 0)
     setPayingGroup(group.name)
     setError("")
     setPaidMsg("")
     try {
-      const amount = await runOrder({ feesTypeIds: heads.map((h: any) => h.feesTypeId), gateway })
-      setPaidMsg(`Payment of ₹${amount.toLocaleString("en-IN")} completed successfully`)
-      load()
+      const gateway = await chooseGateway(freshTotal)
+      if (gateway === null) {
+        setPayingGroup(null)
+        return
+      }
+      const amount = await runOrder({ masterIds: heads.map((h: any) => h.masterId), feesTypeIds: heads.map((h: any) => h.feesTypeId), gateway })
+      setPaidMsg(`Payment of ${symbol}${amount.toLocaleString("en-IN")} completed successfully`)
+      await load()
     } catch (e: any) {
       setError(e.message || "Network error")
     } finally {
@@ -239,15 +247,20 @@ export default function PortalFees() {
   }
 
   const payAll = async () => {
-    const gateway = await chooseGateway(Number(summary.totalDue ?? 0))
-    if (gateway === null) return
+    const freshTotal = Number(summary.totalDue ?? 0)
+    if (freshTotal <= 0) return
     setPayingAll(true)
     setError("")
     setPaidMsg("")
     try {
+      const gateway = await chooseGateway(freshTotal)
+      if (gateway === null) {
+        setPayingAll(false)
+        return
+      }
       const amount = await runOrder({ payAll: true, gateway })
-      setPaidMsg(`Full payment of ₹${amount.toLocaleString("en-IN")} completed successfully`)
-      load()
+      setPaidMsg(`Full payment of ${symbol}${amount.toLocaleString("en-IN")} completed successfully`)
+      await load()
     } catch (e: any) {
       setError(e.message || "Network error")
     } finally {

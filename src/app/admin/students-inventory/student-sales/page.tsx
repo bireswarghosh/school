@@ -1,14 +1,16 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { UserCheck, Search, ShoppingCart, Plus, Minus, Trash2, Ticket, Save, Package, BookOpen, X, Loader2, Printer, FileDown, MessageCircle, CheckCircle2, Pencil, SlidersHorizontal } from "lucide-react"
+import { UserCheck, Search, ShoppingCart, Plus, Minus, Trash2, Ticket, Save, Package, BookOpen, X, Loader2, Printer, FileDown, MessageCircle, CheckCircle2, Pencil, SlidersHorizontal, Eye } from "lucide-react"
 import { useApi } from "@/lib/use-api"
+import { ProductIcon, getIconColors, InventoryBadge } from "@/lib/inventory-icons"
 import { useCurrency } from "@/lib/currency-context"
 import { useAuth } from "@/lib/auth-context"
 import { useSchoolInfo } from "@/lib/use-school-info"
 import { toast as notify } from "@/lib/toast"
 
-type Product = { id?: number; name: string; sellingPrice?: number | string }
+type Product = { id?: number; name: string; sellingPrice?: number | string; icon?: string; iconImage?: string; categoryId?: number | null; categoryName?: string }
+type Category = { id?: number; name: string; icon?: string; iconImage?: string }
 type Variation = { id?: number; productId: number; componentName?: string; color?: string; size?: string; price?: number | string; sku?: string; quantity?: number; variantType?: string; variantValue?: string; additionalPrice?: number | string }
 type Book = { id?: number; title: string; publisher?: string; sellingPrice?: number | string; classId?: number | null }
 type Class = { id?: number; name: string }
@@ -72,6 +74,7 @@ export default function StudentSalesPage() {
   const { data: coupons } = useApi<Coupon>("/api/students-inventory/coupon")
   const { data: sales, update: updateSale, remove: removeSale, refetch } = useApi<Sale>("/api/students-inventory/sale")
   const { data: variations } = useApi<Variation>("/api/students-inventory/variation")
+  const { data: categories } = useApi<Category>("/api/students-inventory/category")
   const { symbol } = useCurrency()
 
   const money = (v: number) => `${symbol}${v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -106,6 +109,9 @@ export default function StudentSalesPage() {
   const [bookClass, setBookClass] = useState("")
   const [bookModalOpen, setBookModalOpen] = useState(false)
   const [bookSelection, setBookSelection] = useState<Record<number, BookSelection>>({})
+  const [recentPageSize, setRecentPageSize] = useState(10)
+  const [recentPage, setRecentPage] = useState(1)
+  const [viewOrder, setViewOrder] = useState<{ saleNo: string; rows: Sale[] } | null>(null)
 
   // variation picker state - simple color/size flow
   const [varProduct, setVarProduct] = useState<Product | null>(null)
@@ -562,6 +568,33 @@ export default function StudentSalesPage() {
     return products.find((p) => p.id === sale.productId)?.name ?? `Product #${sale.productId}`
   }
 
+  const groupedOrders = useMemo(() => {
+    const map = new Map<string, Sale[]>()
+    for (const s of sales) {
+      const key = s.saleNo || `id-${s.id}`
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(s)
+    }
+    const groups = Array.from(map.entries()).map(([saleNo, rows]) => {
+      const first = rows[0]
+      const total = rows.reduce((a, r) => a + (Number(r.totalAmount) || 0), 0)
+      const qty = rows.reduce((a, r) => a + (Number(r.quantity) || 0), 0)
+      return { saleNo, rows, first, total, qty, count: rows.length, date: first.saleDate || "" }
+    })
+    // already sales is id DESC, so groups retain order of first appearance (newest first)
+    return groups
+  }, [sales])
+
+  const totalOrderPages = Math.max(1, Math.ceil(groupedOrders.length / recentPageSize))
+  const pagedOrders = useMemo(() => {
+    const start = (recentPage - 1) * recentPageSize
+    return groupedOrders.slice(start, start + recentPageSize)
+  }, [groupedOrders, recentPage, recentPageSize])
+
+  // keep page in range when size changes
+  useEffect(() => { setRecentPage(1) }, [recentPageSize])
+  useEffect(() => { if (recentPage > totalOrderPages) setRecentPage(totalOrderPages) }, [totalOrderPages, recentPage])
+
   const recentSales = sales.slice(0, 15)
 
   const buildSaleInvoiceHtml = (base: Sale, rows: Sale[]): string => {
@@ -854,20 +887,23 @@ export default function StudentSalesPage() {
                 filteredProducts.length === 0 ? (
                   <div className="text-center py-8 text-gray-400 text-sm">No products found</div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     {filteredProducts.map((p) => {
                       const vars = getProductVariations(p.id)
                       const hasVar = vars.length > 0
                       const fromPrice = hasVar ? Math.min(...vars.map((v: any) => Number(v.price ?? v.additionalPrice ?? p.sellingPrice) || 0)) : 0
                       return (
-                      <div key={p.id} className={`flex items-center justify-between rounded-lg border px-4 py-3 transition-colors ${hasVar ? "border-violet-200 bg-violet-50/30 hover:border-violet-300" : "border-gray-200 hover:border-[var(--primary)]"}`}>
-                        <div className="min-w-0">
-                          <div className="text-sm font-medium text-gray-800 flex items-center gap-2">{p.name}{hasVar && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 text-[10px] font-medium"><SlidersHorizontal className="h-3 w-3" />{vars.length} vars</span>}</div>
-                          <div className="text-xs text-gray-500">{hasVar ? `From ${money(fromPrice)} · ${vars.length} sizes` : money(Number(p.sellingPrice) || 0)}</div>
+                      <div key={p.id} className={`flex items-center justify-between rounded-lg border px-4 py-3 transition-colors ${hasVar ? "border-[var(--primary)]/20 bg-[var(--primary-light)]/30 hover:border-[var(--primary)]/30" : "border-gray-200 hover:border-[var(--primary)]"}`}>
+                        <div className="min-w-0 flex items-center gap-3">
+                          {(() => { const cat = categories.find(c=> c.id===p.categoryId); const effIcon = (p as any).icon || (cat as any)?.icon; const effImage = (p as any).iconImage || (cat as any)?.iconImage; return <InventoryBadge name={p.name} icon={effIcon} iconImage={effImage} categoryName={cat?.name} size={36} /> })()}
+                          <div>
+                            <div className="text-sm font-medium text-gray-800 flex items-center gap-2">{p.name}{hasVar && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[var(--primary-light)] text-[var(--primary)] text-[10px] font-medium"><SlidersHorizontal className="h-3 w-3" />{vars.length} vars</span>}</div>
+                            <div className="text-xs text-gray-500">{hasVar ? `From ${money(fromPrice)} · ${vars.length} sizes` : money(Number(p.sellingPrice) || 0)}</div>
+                          </div>
                         </div>
                         <button
                           onClick={() => handleProductAdd(p)}
-                          className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-white text-xs font-medium transition-colors ${hasVar ? "bg-violet-600 hover:bg-violet-700" : "bg-[var(--primary)] hover:bg-[var(--secondary)]"}`}
+                          className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-white text-xs font-medium transition-colors ${hasVar ? "bg-[var(--primary)] hover:bg-[var(--secondary)]" : "bg-[var(--primary)] hover:bg-[var(--secondary)]"}`}
                         >
                           <Plus className="h-3.5 w-3.5" /> {hasVar ? "Select" : "Add"}
                         </button>
@@ -1026,8 +1062,15 @@ export default function StudentSalesPage() {
       </div>
 
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
-        <div className="px-5 py-3 border-b border-gray-200">
-          <h3 className="text-sm font-semibold text-gray-700">Recent Sales</h3>
+        <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-700">Recent Sales (grouped by order)</h3>
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-gray-500">Show</span>
+            <select value={recentPageSize} onChange={(e)=> setRecentPageSize(Number(e.target.value))} className="rounded-lg border border-gray-300 px-2 py-1 text-xs focus:ring-1 focus:ring-[var(--primary)]">
+              {[10,20,30,50,100].map(n=> <option key={n} value={n}>{n}</option>)}
+            </select>
+            <span className="text-gray-500">· {groupedOrders.length} orders</span>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -1035,67 +1078,55 @@ export default function StudentSalesPage() {
               <tr className="bg-gray-50 border-b border-gray-200">
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Sale No</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Student</th>
-                <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Item</th>
-                <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Type</th>
-                <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Qty</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Items</th>
+                <th className="text-center px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Qty</th>
                 <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Total</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Date</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Status</th>
-                <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Actions</th>
+                <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {recentSales.length === 0 ? (
+              {groupedOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-8 text-gray-400">No sales yet</td>
+                  <td colSpan={8} className="text-center py-8 text-gray-400">No sales yet</td>
                 </tr>
+              ) : pagedOrders.length===0 ? (
+                <tr><td colSpan={8} className="text-center py-8 text-gray-400">No orders on this page</td></tr>
               ) : (
-                recentSales.map((s, idx) => (
-                  <tr key={s.id ?? idx} className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${idx % 2 === 1 ? "bg-gray-50/50" : ""}`}>
-                    <td className="px-4 py-3 font-medium text-gray-800">{s.saleNo || "-"}</td>
-                    <td className="px-4 py-3 text-gray-600">{s.studentName || "-"}</td>
-                    <td className="px-4 py-3 text-gray-600">{productName(s)}</td>
+                pagedOrders.map((g, idx) => (
+                  <tr key={g.saleNo} className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${idx % 2 === 1 ? "bg-gray-50/50" : ""}`}>
+                    <td className="px-4 py-3 font-medium text-gray-800 font-mono text-xs">{g.saleNo || "-"}</td>
+                    <td className="px-4 py-3 text-gray-600">{g.first.studentName || "-"}</td>
+                    <td className="px-4 py-3 text-gray-600">
+                      <div className="flex flex-wrap gap-1 max-w-[280px]">
+                        {g.rows.slice(0,3).map((r,i)=> (
+                          <span key={r.id ?? i} className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${r.bookId ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}`}>{productName(r)}</span>
+                        ))}
+                        {g.rows.length>3 && <span className="text-[11px] text-gray-400">+{g.rows.length-3} more</span>}
+                      </div>
+                      <div className="text-[11px] text-gray-400">{g.count} item{g.count>1?"s":""}</div>
+                    </td>
+                    <td className="px-4 py-3 text-center text-gray-600">{g.qty}</td>
+                    <td className="px-4 py-3 text-right font-medium text-gray-800">{money(g.total)}</td>
+                    <td className="px-4 py-3 text-gray-600">{g.date ? String(g.date).slice(0, 10) : "-"}</td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${s.bookId ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}`}>
-                        {s.bookId ? "Book" : "Product"}
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${g.first.paymentStatus === "Paid" ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
+                        {g.first.paymentStatus || "Unpaid"}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right text-gray-600">{s.quantity}</td>
-                    <td className="px-4 py-3 text-right font-medium text-gray-800">{money(Number(s.totalAmount) || 0)}</td>
-                    <td className="px-4 py-3 text-gray-600">{s.saleDate ? String(s.saleDate).slice(0, 10) : "-"}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${s.paymentStatus === "Paid" ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
-                        {s.paymentStatus || "Unpaid"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => printSaleReceipt(s)}
-                          title="Print"
-                          className="p-1.5 rounded-lg text-gray-500 hover:text-[var(--primary)] hover:bg-[var(--primary)]/10 transition-colors"
-                        >
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => setViewOrder({ saleNo: g.saleNo, rows: g.rows })} title="View details" className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--primary-light)] text-[var(--primary)] hover:bg-[var(--primary-light)] text-xs font-medium border border-[var(--primary)]/20">
+                          <Eye className="h-3.5 w-3.5" /> View
+                        </button>
+                        <button onClick={() => printSaleReceipt(g.first)} title="Print" className="p-1.5 rounded-lg text-gray-500 hover:text-[var(--primary)] hover:bg-[var(--primary)]/10">
                           <Printer className="h-4 w-4" />
                         </button>
-                        <button
-                          onClick={() => downloadSaleInvoice(s)}
-                          title="Download PDF"
-                          className="p-1.5 rounded-lg text-gray-500 hover:text-[var(--primary)] hover:bg-[var(--primary)]/10 transition-colors"
-                        >
+                        <button onClick={() => downloadSaleInvoice(g.first)} title="Download PDF" className="p-1.5 rounded-lg text-gray-500 hover:text-[var(--primary)] hover:bg-[var(--primary)]/10">
                           <FileDown className="h-4 w-4" />
                         </button>
-                        <button
-                          onClick={() => openEditSale(s)}
-                          title="Edit"
-                          className="p-1.5 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => setDeleteSaleTarget(s)}
-                          title="Delete"
-                          className="p-1.5 rounded-lg text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors"
-                        >
+                        <button onClick={async()=>{ if(!confirm(`Delete order ${g.saleNo} with ${g.count} item(s)?`)) return; for(const r of g.rows){ if(r.id) await removeSale(r.id) } }} title="Delete order" className="p-1.5 rounded-lg text-gray-500 hover:text-red-600 hover:bg-red-50">
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
@@ -1106,7 +1137,59 @@ export default function StudentSalesPage() {
             </tbody>
           </table>
         </div>
+        <div className="px-5 py-3 border-t border-gray-200 flex items-center justify-between text-xs text-gray-500">
+          <span>Showing {pagedOrders.length} of {groupedOrders.length} orders · Page {recentPage} of {totalOrderPages}</span>
+          <div className="flex items-center gap-1">
+            <button onClick={()=> setRecentPage(p=> Math.max(1,p-1))} disabled={recentPage===1} className="px-2 py-1 rounded border border-gray-300 disabled:opacity-40 hover:bg-gray-50">Prev</button>
+            <span className="px-2">{recentPage}/{totalOrderPages}</span>
+            <button onClick={()=> setRecentPage(p=> Math.min(totalOrderPages,p+1))} disabled={recentPage===totalOrderPages} className="px-2 py-1 rounded border border-gray-300 disabled:opacity-40 hover:bg-gray-50">Next</button>
+          </div>
+        </div>
       </div>
+
+      {viewOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={()=> setViewOrder(null)} />
+          <div className="relative bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col z-10 border dark:border-gray-700">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+              <div>
+                <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">Order {viewOrder.saleNo}</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{viewOrder.rows[0]?.studentName || "-"} · {viewOrder.rows[0]?.saleDate ? String(viewOrder.rows[0].saleDate).slice(0,10) : ""} · <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${viewOrder.rows[0]?.paymentStatus==="Paid"?"bg-emerald-100 text-emerald-700":"bg-red-100 text-red-700"}`}>{viewOrder.rows[0]?.paymentStatus || "Unpaid"}</span></p>
+              </div>
+              <button onClick={()=> setViewOrder(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                <table className="w-full text-sm">
+                  <thead><tr className="bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700"><th className="text-left px-3 py-2 text-xs uppercase font-semibold text-gray-600 dark:text-gray-300">#</th><th className="text-left px-3 py-2 text-xs uppercase font-semibold text-gray-600 dark:text-gray-300">Item</th><th className="text-center px-3 py-2 text-xs uppercase font-semibold text-gray-600 dark:text-gray-300">Qty</th><th className="text-right px-3 py-2 text-xs uppercase font-semibold text-gray-600 dark:text-gray-300">Unit</th><th className="text-right px-3 py-2 text-xs uppercase font-semibold text-gray-600 dark:text-gray-300">Total</th></tr></thead>
+                  <tbody>
+                    {viewOrder.rows.map((r, i)=> (
+                      <tr key={r.id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
+                        <td className="px-3 py-2 text-gray-500">{i+1}</td>
+                        <td className="px-3 py-2"><div className="font-medium text-gray-800 dark:text-gray-100">{productName(r)}</div><div className="text-[11px] text-gray-400">{r.bookId ? "Book" : "Product"} · ID {r.productId || r.bookId}</div></td>
+                        <td className="px-3 py-2 text-center text-gray-600 dark:text-gray-300">{r.quantity}</td>
+                        <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-300">{money(Number(r.unitPrice)||0)}</td>
+                        <td className="px-3 py-2 text-right font-medium text-gray-800 dark:text-gray-100">{money(Number(r.totalAmount)||0)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-3 flex justify-end text-sm">
+                <div className="w-56 space-y-1">
+                  <div className="flex justify-between text-gray-600 dark:text-gray-400"><span>Subtotal</span><span>{money(viewOrder.rows.reduce((a,r)=>a+(Number(r.subtotal)||0),0))}</span></div>
+                  <div className="flex justify-between text-gray-600 dark:text-gray-400"><span>Discount</span><span>-{money(viewOrder.rows.reduce((a,r)=>a+(Number(r.discountAmount)||0),0))}</span></div>
+                  <div className="flex justify-between font-bold text-gray-800 dark:text-gray-100 border-t dark:border-gray-700 pt-1"><span>Total</span><span>{money(viewOrder.rows.reduce((a,r)=>a+(Number(r.totalAmount)||0),0))}</span></div>
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2 bg-white dark:bg-gray-900">
+              <button onClick={()=> setViewOrder(null)} className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Close</button>
+              <button onClick={()=> { if(viewOrder) printSaleReceipt(viewOrder.rows[0]); }} className="px-4 py-2 bg-[var(--primary)] text-white text-sm rounded-lg hover:bg-[var(--secondary)] flex items-center gap-1"><Printer className="h-4 w-4"/> Print</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {bookModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -1217,65 +1300,65 @@ export default function StudentSalesPage() {
       {varPickerOpen && varProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50" onClick={() => setVarPickerOpen(false)} />
-          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col z-10">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0">
+          <div className="relative bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col z-10 border dark:border-gray-700">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 shrink-0">
               <div>
-                <h3 className="text-base font-semibold text-gray-800 flex items-center gap-2"><SlidersHorizontal className="h-5 w-5 text-violet-600" />{varProduct.name}</h3>
-                <p className="text-xs text-gray-500 mt-1">Choose Color → Size → Add to Cart</p>
+                <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2"><SlidersHorizontal className="h-5 w-5 text-[var(--primary)]" />{varProduct.name}</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Choose Color → Size → Add to Cart</p>
               </div>
-              <button onClick={() => setVarPickerOpen(false)} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
+              <button onClick={() => setVarPickerOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><X className="h-5 w-5" /></button>
             </div>
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
               {pickerVars.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-8">No variations found for this product.</p>
               ) : (
                 <>
-                  <div className="rounded-lg border border-violet-200 bg-violet-50/40 p-3">
-                    <div className="text-xs font-semibold text-violet-700 uppercase mb-2">Product: {varProduct.name}</div>
+                  <div className="rounded-lg border border-[var(--primary)]/20 dark:border-[var(--primary)]/30 bg-[var(--primary-light)]/40 dark:bg-primary/30 p-3">
+                    <div className="text-xs font-semibold text-[var(--primary)] dark:text-[var(--primary)] uppercase mb-2">Product: {varProduct.name}</div>
                     {pickerColors.length > 0 ? (
                       <div className="mb-3">
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Color</label>
-                        <select value={pickerColor} onChange={(e) => { setPickerColor(e.target.value); const remain = pickerVars.filter((v) => (v.color || "") === e.target.value).map((v) => v.size || v.variantValue || ""); if (remain.length && !remain.includes(pickerSize)) setPickerSize(remain[0]) }} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-violet-500">
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Color</label>
+                        <select value={pickerColor} onChange={(e) => { setPickerColor(e.target.value); const remain = pickerVars.filter((v) => (v.color || "") === e.target.value).map((v) => v.size || v.variantValue || ""); if (remain.length && !remain.includes(pickerSize)) setPickerSize(remain[0]) }} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-[var(--primary)]">
                           {pickerColors.map((c) => <option key={c} value={c}>{c}</option>)}
                         </select>
                       </div>
                     ) : (
-                      <div className="mb-2 text-xs text-gray-500">No color variants — size only</div>
+                      <div className="mb-2 text-xs text-gray-500 dark:text-gray-400">No color variants — size only</div>
                     )}
                     <div className="mb-3">
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Size *</label>
-                      <select value={pickerSize} onChange={(e) => setPickerSize(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-violet-500">
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Size *</label>
+                      <select value={pickerSize} onChange={(e) => setPickerSize(e.target.value)} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-[var(--primary)]">
                         {pickerSizesForColor.map((s) => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </div>
                     {matchedVar && (
-                      <div className="grid grid-cols-2 gap-3 pt-2 border-t border-violet-100 mt-3">
-                        <div className="rounded-lg bg-white border border-gray-200 px-3 py-2">
-                          <div className="text-[11px] text-gray-400 uppercase font-medium">Price</div>
-                          <div className="text-base font-bold text-gray-800">{money(Number(matchedVar.price ?? matchedVar.additionalPrice ?? varProduct.sellingPrice) || 0)}</div>
-                          <div className="text-[11px] text-gray-400">SKU: {matchedVar.sku || "-"}</div>
+                      <div className="grid grid-cols-2 gap-3 pt-2 border-t border-[var(--primary-light)] dark:border-[var(--primary)]/20 mt-3">
+                        <div className="rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-3 py-2">
+                          <div className="text-[11px] text-gray-400 dark:text-gray-400 uppercase font-medium">Price</div>
+                          <div className="text-base font-bold text-gray-800 dark:text-gray-100">{money(Number(matchedVar.price ?? matchedVar.additionalPrice ?? varProduct.sellingPrice) || 0)}</div>
+                          <div className="text-[11px] text-gray-400 dark:text-gray-400">SKU: {matchedVar.sku || "-"}</div>
                         </div>
-                        <div className="rounded-lg bg-white border border-gray-200 px-3 py-2">
-                          <div className="text-[11px] text-gray-400 uppercase font-medium">Stock / Qty</div>
-                          <div className="text-sm font-medium text-gray-700">{matchedVar.quantity != null ? `${matchedVar.quantity} in stock` : "—"}</div>
+                        <div className="rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-3 py-2">
+                          <div className="text-[11px] text-gray-400 dark:text-gray-400 uppercase font-medium">Stock / Qty</div>
+                          <div className="text-sm font-medium text-gray-700 dark:text-gray-200">{matchedVar.quantity != null ? `${matchedVar.quantity} in stock` : "—"}</div>
                           <div className="flex items-center gap-2 mt-1">
-                            <button onClick={() => setVarQty((q) => Math.max(1, q - 1))} className="px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50"><Minus className="h-3 w-3" /></button>
-                            <input type="number" min={1} value={varQty} onChange={(e) => setVarQty(Math.max(1, Number(e.target.value) || 1))} className="w-12 text-center text-sm rounded border border-gray-300 px-1 py-1" />
-                            <button onClick={() => setVarQty((q) => q + 1)} className="px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50"><Plus className="h-3 w-3" /></button>
+                            <button onClick={() => setVarQty((q) => Math.max(1, q - 1))} className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"><Minus className="h-3 w-3" /></button>
+                            <input type="number" min={1} value={varQty} onChange={(e) => setVarQty(Math.max(1, Number(e.target.value) || 1))} className="w-12 text-center text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 px-1 py-1" />
+                            <button onClick={() => setVarQty((q) => q + 1)} className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"><Plus className="h-3 w-3" /></button>
                           </div>
                         </div>
                       </div>
                     )}
                     {matchedVar && (
-                      <div className="text-[11px] text-gray-500 mt-2">{matchedVar.componentName || matchedVar.variantType || varProduct.name} {matchedVar.color ? `· ${matchedVar.color}` : ""} · Size {matchedVar.size || matchedVar.variantValue}</div>
+                      <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-2">{matchedVar.componentName || matchedVar.variantType || varProduct.name} {matchedVar.color ? `· ${matchedVar.color}` : ""} · Size {matchedVar.size || matchedVar.variantValue}</div>
                     )}
                   </div>
                 </>
               )}
             </div>
-            <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-2 shrink-0 bg-white">
-              <button onClick={() => setVarPickerOpen(false)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
-              <button onClick={confirmVarAdd} disabled={!matchedVar} className="px-5 py-2 bg-violet-600 text-white text-sm font-medium rounded-lg hover:bg-violet-700 disabled:opacity-50 flex items-center gap-2"><ShoppingCart className="h-4 w-4" />Add to Cart</button>
+            <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2 shrink-0 bg-white dark:bg-gray-900">
+              <button onClick={() => setVarPickerOpen(false)} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">Cancel</button>
+              <button onClick={confirmVarAdd} disabled={!matchedVar} className="px-5 py-2 bg-[var(--primary)] text-white text-sm font-medium rounded-lg hover:bg-[var(--secondary)] disabled:opacity-50 flex items-center gap-2"><ShoppingCart className="h-4 w-4" />Add to Cart</button>
             </div>
           </div>
         </div>

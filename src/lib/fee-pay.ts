@@ -90,20 +90,34 @@ export async function getFeeLedger(student: any) {
     byType.set(key, cur)
   }
 
-  const dues = (mastersRes.rows as any[]).map((m) => {
+  // Deduplicate masters by feesTypeId — if same fee type appears multiple times for a class (duplicate master), keep one entry with its amount (don't sum duplicates)
+  const byFeesType = new Map<number, { masters: any[]; first: any }>()
+  for (const m of mastersRes.rows as any[]) {
+    const key = Number(m.feesTypeId)
+    const cur = byFeesType.get(key)
+    if (cur) {
+      cur.masters.push(m)
+    } else {
+      byFeesType.set(key, { masters: [m], first: m })
+    }
+  }
+  const dues = Array.from(byFeesType.values()).map(({ masters, first }) => {
+    const m = first
     const paid = byType.get(Number(m.feesTypeId))
     const paidAmount = paid ? paid.paid : 0
+    const amount = Number(m.amount)
     return {
       masterId: Number(m.id),
       feesTypeId: Number(m.feesTypeId),
       feesGroupId: Number(m.feesGroupId) || null,
       feesType: m.feesType,
       feesGroup: m.feesGroup,
-      amount: Number(m.amount),
+      amount,
       paidAmount,
-      balance: Math.max(0, Number(m.amount) - paidAmount),
+      balance: Math.max(0, amount - paidAmount),
       dueDate: m.dueDate,
       paidOn: paid?.paidAt || null,
+      masterIds: masters.map((x: any) => Number(x.id)),
     }
   })
 

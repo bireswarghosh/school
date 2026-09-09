@@ -1,29 +1,34 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getAll, getById, create, update, remove } from "@/lib/db"
+import { query, getAll, getById, create, update, remove } from "@/lib/db"
 import { camelToSnake, mapResponse } from "@/lib/field-mapping"
 
-const TABLE = "si_products"
-const ORDER = "id DESC"
-
 const fieldMap: Record<string, string> = {
-  categoryId: "category_id",
-  brandId: "brand_id",
-  unitId: "unit_id",
-  purchasePrice: "purchase_price",
-  sellingPrice: "selling_price",
-  minStock: "min_stock",
+  theoryMax: "theory_max",
+  practicalMax: "practical_max",
+  theoryPass: "theory_pass",
+  practicalPass: "practical_pass",
+  examId: "exam_id",
+  createdAt: "created_at",
 }
+
+function getErrorMessage(e: unknown) {
+  return e instanceof Error ? e.message : String(e)
+}
+
+const TABLE = "icsc_exam_subjects"
+const ORDER = "id ASC"
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const id = searchParams.get("id")
-  const categoryId = searchParams.get("category_id")
+  const examId = searchParams.get("exam_id")
   if (id) {
     const item = await getById(TABLE, parseInt(id))
-    return NextResponse.json(mapResponse(item, fieldMap) || { error: "Not found" }, { status: item ? 200 : 404 })
+    const result = item ? mapResponse(item, fieldMap) : { error: "Not found" }
+    return NextResponse.json(result, { status: item ? 200 : 404 })
   }
-  if (categoryId) {
-    const items = await getAll(TABLE, ORDER, "category_id = $1", [categoryId])
+  if (examId) {
+    const items = await getAll(TABLE, ORDER, "exam_id = $1", [parseInt(examId)])
     return NextResponse.json(mapResponse(items, fieldMap))
   }
   const items = await getAll(TABLE, ORDER)
@@ -33,10 +38,11 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const item = await create(TABLE, camelToSnake(body, fieldMap))
+    const data = camelToSnake(body, fieldMap)
+    const item = await create(TABLE, data)
     return NextResponse.json(mapResponse(item, fieldMap), { status: 201 })
   } catch (e: any) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 })
+    return NextResponse.json({ error: getErrorMessage(e) }, { status: 400 })
   }
 }
 
@@ -45,10 +51,12 @@ export async function PUT(req: NextRequest) {
     const body = await req.json()
     const { id, ...rest } = body
     if (!id) return NextResponse.json({ error: "id required" }, { status: 400 })
-    const item = await update(TABLE, id, camelToSnake(rest, fieldMap))
-    return NextResponse.json(mapResponse(item, fieldMap) || { error: "Not found" }, { status: item ? 200 : 404 })
+    const data = camelToSnake(rest, fieldMap)
+    const item = await update(TABLE, id, data)
+    const result = item ? mapResponse(item, fieldMap) : { error: "Not found" }
+    return NextResponse.json(result, { status: item ? 200 : 404 })
   } catch (e: any) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 })
+    return NextResponse.json({ error: getErrorMessage(e) }, { status: 400 })
   }
 }
 
