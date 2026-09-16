@@ -1,6 +1,18 @@
 // Edge-safe session module (Web Crypto only — safe for proxy.ts/middleware runtime)
 export const AUTH_SECRET = process.env.AUTH_SECRET || "smart-school-dev-secret-change-me"
 export const SESSION_COOKIE = "smart_school_session"
+export const MAX_IMPERSONATION_DEPTH = 6
+
+// One level of the "login as" trail. Each step records the account that
+// started an impersonation (the actor) and where it should be returned to
+// when it stops acting as the current user.
+export type ImpersonationStep = {
+  uid: number
+  role: string
+  sid: number | null
+  name?: string
+  ret?: string
+}
 
 export type SessionPayload = {
   uid: number
@@ -8,14 +20,46 @@ export type SessionPayload = {
   role: string
   name: string
   exp: number
-  // Impersonation ("login as") claims: present when an admin is viewing as a
-  // student/parent. The original account is restored by /api/auth/impersonate/back.
+  // Impersonation ("login as") trail — present when the current account was
+  // reached via /api/auth/impersonate. Stack[0] is the outermost original
+  // account; the last entry is the account that impersonated the current one.
+  // Each hop back pops one level via /api/auth/impersonate/back.
+  stack?: ImpersonationStep[]
+  // Legacy single-level impersonation claims (older sessions). Kept for
+  // compatibility — new sessions always use `stack`.
   origUid?: number
   origRole?: string
   origSid?: number | null
   origName?: string
   // Where the admin should be returned after impersonation (e.g. a student profile page).
   ret?: string
+}
+
+export function pushImpersonationStep(
+  stack: ImpersonationStep[] | undefined,
+  step: ImpersonationStep
+): ImpersonationStep[] {
+  const next = [...(stack || [])]
+  if (next.length >= MAX_IMPERSONATION_DEPTH) next.shift()
+  if (!next.some((s) => s.uid === step.uid)) next.push(step)
+  return next
+}
+
+/** Normalises an older single-level impersonation token into a stack. */
+export function stackFromSession(payload: SessionPayload): ImpersonationStep[] {
+  if (payload.stack && payload.stack.length > 0) return payload.stack
+  if (payload.origUid) {
+    return [
+      {
+        uid: payload.origUid,
+        role: payload.origRole || "admin",
+        sid: payload.origSid ?? null,
+        name: payload.origName,
+        ret: payload.ret,
+      },
+    ]
+  }
+  return []
 }
 
 function b64encode(value: string): string {

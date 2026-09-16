@@ -5,31 +5,32 @@ import { Plus, Pencil, Trash2, X } from "lucide-react";
 import { useApi } from "@/lib/use-api";
 import { useClassesAndSections } from "@/lib/use-classes-sections";
 
-const initialTeachers = [
-  "Ms. Sunita Sharma",
-  "Mr. Rajesh Verma",
-  "Ms. Pooja Singh",
-  "Mr. Vikram Joshi",
-  "Mr. Amit Kumar",
-  "Ms. Neha Patel",
-  "Mr. Suresh Gupta",
-];
+type StaffLite = { id: number; name: string; surname?: string; role: string }
 
 type Assignment = { id: number; class: number; section: string; teacher: string }
 
 export default function AssignClassTeacherPage() {
   const { data: assignments, add, update, remove } = useApi<Assignment>("/api/academics/class-teacher");
+  const { data: staffData } = useApi<StaffLite>("/api/human-resource/staff");
   const { classes, sectionsOf } = useClassesAndSections();
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Assignment | null>(null);
-  const [form, setForm] = useState({ class: 0, section: "", teacher: initialTeachers[0] });
+  // teachers from staff-directory (role Teacher)
+  const teachers = ((): string[] => {
+    const all = (staffData || []) as any[];
+    const filtered = all.filter((s: any) => String(s.role || "").trim().toLowerCase() === "teacher");
+    const names = filtered.map((s: any) => `${s.name || ""}${s.surname ? " " + s.surname : ""}`.trim()).filter(Boolean);
+    return Array.from(new Set(names)).sort((a,b)=>a.localeCompare(b));
+  })();
+  const [form, setForm] = useState({ class: 0, section: "", teacher: "" });
 
   const className = (id: number) => classes.find((c) => c.id === id)?.name ?? `Class ${id}`;
   const defaultForm = () => {
     const first = classes[0];
+    const t = teachers[0] || "";
     return first
-      ? { class: first.id, section: sectionsOf(first.id)[0]?.name ?? "", teacher: initialTeachers[0] }
-      : { class: 0, section: "", teacher: initialTeachers[0] };
+      ? { class: first.id, section: sectionsOf(first.id)[0]?.name ?? "", teacher: t }
+      : { class: 0, section: "", teacher: t };
   };
 
   const handleSave = async () => {
@@ -170,10 +171,12 @@ export default function AssignClassTeacherPage() {
                   onChange={(e) => setForm({ ...form, teacher: e.target.value })}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
                 >
-                  {initialTeachers.map((t) => (
+                  <option value="">Select Teacher</option>
+                  {teachers.map((t) => (
                     <option key={t} value={t}>{t}</option>
                   ))}
                 </select>
+                {teachers.length === 0 && <p className="text-xs text-amber-600 mt-1">No teachers in staff directory — add staff with role Teacher first</p>}
               </div>
             </div>
             <div className="mt-6 flex justify-end gap-3">

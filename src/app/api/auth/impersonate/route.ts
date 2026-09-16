@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { query } from "@/lib/db"
 import { verifySession, signSession, SESSION_COOKIE } from "@/lib/auth"
+import { pushImpersonationStep } from "@/lib/session"
 
 export async function POST(req: NextRequest) {
   try {
@@ -51,16 +52,22 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Record the account that is acting right now so we can step back to it
+    // (and further back through nested logins) one level at a time.
+    const stack = pushImpersonationStep(session.stack, {
+      uid: Number(actor.id),
+      role: actor.role,
+      sid: actor.school_id ? Number(actor.school_id) : null,
+      name: actor.name || session.name || "",
+      ...(returnPath ? { ret: returnPath } : {}),
+    })
+
     const token = await signSession({
       uid: Number(target.id),
       sid: target.school_id ? Number(target.school_id) : null,
       role: target.role,
       name: target.name || target.username || target.email,
-      origUid: Number(actor.id),
-      origRole: actor.role,
-      origSid: actor.school_id ? Number(actor.school_id) : null,
-      origName: actor.name || session.name || "",
-      ...(returnPath ? { ret: returnPath } : {}),
+      stack,
     })
 
     let redirect = "/admin"

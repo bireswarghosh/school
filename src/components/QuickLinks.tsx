@@ -85,7 +85,7 @@ export default function QuickLinks() {
   const totalLinks = menuData.reduce((sum, cat) => sum + cat.items.filter((i) => itemVisible(cat, i.label)).length, 0)
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative">
       <button
         onClick={() => {
           setOpen(!open)
@@ -103,7 +103,9 @@ export default function QuickLinks() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-[min(92vw,940px)] max-h-[calc(100vh-7rem)] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-xl z-50">
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden="true" />
+          <div ref={ref} className="fixed left-1/2 top-16 z-50 w-[min(92vw,940px)] -translate-x-1/2 max-h-[calc(100vh-7rem)] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-xl">
           <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-[var(--border)] bg-[var(--card)] px-4 py-3">
             <Search className="h-4 w-4 text-gray-400 shrink-0" />
             <input
@@ -155,7 +157,8 @@ export default function QuickLinks() {
               </div>
             )}
           </div>
-        </div>
+          </div>
+        </>
       )}
     </div>
   )

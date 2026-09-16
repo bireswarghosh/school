@@ -4,7 +4,7 @@ import { toast as notify } from "@/lib/toast"
 import { useState, useRef, useEffect } from "react"
 import { useApi } from "@/lib/use-api"
 import { useClassesAndSections } from "@/lib/use-classes-sections"
-import { Search, Plus, Phone, Pencil, Trash2, X, Download, Upload, Printer, ChevronDown } from "lucide-react"
+import { Search, Plus, Phone, Pencil, Trash2, X, Download, Upload, Printer, ChevronDown, Users, TrendingUp, Award, Calendar, UserCheck, Clock } from "lucide-react"
 
 type EnquiryRecord = {
   id: number
@@ -108,6 +108,14 @@ export default function AdmissionEnquiryPage() {
     if (filterToDate && e.enquiryDate > filterToDate) return false
     return true
   })
+
+  const stats = (() => {
+    const total = enquiries.length
+    const active = enquiries.filter((e) => e.status.toLowerCase() === "active").length
+    const won = enquiries.filter((e) => e.status.toLowerCase() === "won").length
+    const lost = enquiries.filter((e) => e.status.toLowerCase() === "lost").length
+    return { total, active, won, lost }
+  })()
 
   useEffect(() => { setPage(1) }, [filterClass, filterSource, filterFromDate, filterToDate, filterStatus, enquiries.length])
 
@@ -507,22 +515,48 @@ export default function AdmissionEnquiryPage() {
   )
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-800">Admission Enquiry</h2>
-          <p className="text-sm text-gray-500 mt-1">Front Office / Admission Enquiry</p>
+    <div className="space-y-5">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 px-6 py-6 shadow-lg">
+        <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/15 blur-2xl" />
+        <div className="absolute -right-6 -bottom-12 h-32 w-32 rounded-full bg-white/10 blur-xl" />
+        <div className="absolute left-1/3 top-1/2 -translate-y-1/2 opacity-10 hidden lg:block"><Users className="h-28 w-28 text-white" /></div>
+        <div className="relative z-10">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/20 backdrop-blur"><Phone className="h-4 w-4 text-white" /></span>
+            Admission Enquiry
+          </h2>
+          <p className="text-sm text-white/80 mt-1">Front Office / Manage prospective admissions • {enquiries.length} enquiries</p>
         </div>
       </div>
 
-      {/* Filter Section */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-        <div className="px-5 py-3 border-b border-gray-200">
-          <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-            <Search className="h-4 w-4" />
-            Select Criteria
-          </h3>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 p-4 shadow-sm">
+          <div className="flex items-center justify-between"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white shadow-sm border text-blue-600"><Users className="h-4 w-4" /></span><TrendingUp className="h-4 w-4 text-blue-400" /></div>
+          <p className="text-2xl font-black text-blue-700 mt-2">{stats.total}</p>
+          <p className="text-[11px] font-bold tracking-widest uppercase text-blue-600/70">Total Enquiries</p>
+        </div>
+        <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 p-4 shadow-sm">
+          <div className="flex items-center justify-between"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white shadow-sm border text-emerald-600"><UserCheck className="h-4 w-4" /></span><span className="h-2 w-2 rounded-full bg-emerald-500" /></div>
+          <p className="text-2xl font-black text-emerald-700 mt-2">{stats.active}</p>
+          <p className="text-[11px] font-bold tracking-widest uppercase text-emerald-600/70">Active</p>
+        </div>
+        <div className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-purple-50 p-4 shadow-sm">
+          <div className="flex items-center justify-between"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white shadow-sm border text-violet-600"><Award className="h-4 w-4" /></span><span className="h-2 w-2 rounded-full bg-violet-500" /></div>
+          <p className="text-2xl font-black text-violet-700 mt-2">{stats.won}</p>
+          <p className="text-[11px] font-bold tracking-widest uppercase text-violet-600/70">Won</p>
+        </div>
+        <div className="rounded-2xl border border-red-200 bg-gradient-to-br from-red-50 to-rose-50 p-4 shadow-sm">
+          <div className="flex items-center justify-between"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white shadow-sm border text-red-600"><Clock className="h-4 w-4" /></span><span className="h-2 w-2 rounded-full bg-red-500" /></div>
+          <p className="text-2xl font-black text-red-700 mt-2">{stats.lost}</p>
+          <p className="text-[11px] font-bold tracking-widest uppercase text-red-600/70">Lost</p>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-indigo-50 flex items-center gap-2">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600 text-white"><Search className="h-4 w-4" /></span>
+          <h3 className="text-sm font-bold text-gray-800">Select Criteria</h3>
+          <span className="ml-auto text-xs text-gray-400 hidden sm:inline">{filtered.length} filtered of {enquiries.length}</span>
         </div>
         <form onSubmit={(e) => { e.preventDefault() }} className="p-5">
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -596,10 +630,9 @@ export default function AdmissionEnquiryPage() {
         </form>
       </div>
 
-      {/* Table Section */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-        <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between flex-wrap gap-2">
-          <h3 className="text-sm font-semibold text-gray-700">Admission Enquiry</h3>
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between flex-wrap gap-2">
+          <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2"><Users className="h-4 w-4 text-blue-600" /> Admission Enquiry</h3>
           <div className="flex items-center gap-2">
             <input ref={fileRef} type="file" accept=".csv" onChange={handleImport} className="hidden" />
             <button

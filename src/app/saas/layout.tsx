@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { ShieldCheck, LayoutDashboard, School, Menu, LogOut, Users, Crown, Loader2, Receipt, CreditCard, Code2 } from "lucide-react"
+import { ShieldCheck, LayoutDashboard, School, Menu, LogOut, Users, Crown, Loader2, Receipt, CreditCard, Code2, Moon, Sun, UserCog } from "lucide-react"
 import { AuthProvider, useAuth } from "@/lib/auth-context"
 
 function SaasShell({ children }: { children: React.ReactNode }) {
@@ -11,6 +11,18 @@ function SaasShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [darkMode, setDarkMode] = useState(false)
+
+  useEffect(() => {
+    const saved = typeof window !== "undefined" ? window.localStorage.getItem("saas-dark") === "1" : false
+    setDarkMode(saved)
+  }, [])
+
+  useEffect(() => {
+    const root = typeof window !== "undefined" ? document.documentElement : null
+    if (root) root.classList.toggle("dark", darkMode)
+    if (typeof window !== "undefined") window.localStorage.setItem("saas-dark", darkMode ? "1" : "0")
+  }, [darkMode])
 
   useEffect(() => {
     if (!loading && (!user || user.role !== "super_admin")) {
@@ -34,6 +46,7 @@ function SaasShell({ children }: { children: React.ReactNode }) {
     { label: "Payment Settings", path: "/saas/payment-settings", icon: CreditCard },
     { label: "Users", path: "/saas/users", icon: Users },
     { label: "REST API", path: "/saas/rest-api", icon: Code2 },
+    { label: "My Account", path: "/saas/account", icon: UserCog },
   ]
 
   const isActive = (path: string) => (path === "/saas" ? pathname === "/saas" : pathname.startsWith(path))
@@ -121,6 +134,13 @@ function SaasShell({ children }: { children: React.ReactNode }) {
           </div>
           <div className="flex items-center gap-3">
             <span className="text-xs font-medium text-[var(--subtitle-color)] hidden sm:block">Super Admin</span>
+            <button
+              onClick={() => setDarkMode((v) => !v)}
+              className="p-2 text-[var(--subtitle-color)] hover:text-[var(--primary)] hover:bg-[var(--muted)] rounded-lg transition-colors"
+              title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            </button>
             <div className="h-8 w-8 rounded-full bg-[var(--secondary)] flex items-center justify-center text-white text-sm font-medium">
               {(user.name || "S").charAt(0).toUpperCase()}
             </div>

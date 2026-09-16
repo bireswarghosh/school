@@ -9,6 +9,10 @@ import {
   Upload,
   Filter,
   Search,
+  Sparkles,
+  Layers,
+  ArrowRight,
+  Settings2,
 } from "lucide-react"
 import Link from "next/link"
 import ExecutiveDashboard from "@/components/executive-dashboard"
@@ -37,78 +41,86 @@ export default function AdminPage() {
   const category = info?.category || ""
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-800">{title}</h2>
-          <p className="text-sm text-gray-500 mt-1">
-            {category} / {title}
-          </p>
+    <div className="space-y-5">
+      {/* breadcrumb + actions */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="inline-flex items-center gap-2 text-[11px] font-bold tracking-wider text-orange-600 bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/20 px-3 py-1 rounded-full uppercase">
+            <Layers className="h-3 w-3" /> {category || "Admin"} <span className="opacity-40">/</span> <span className="text-[var(--title-color)]">{title}</span>
+          </div>
+          <h2 className="mt-2 text-[22px] font-extrabold tracking-tight text-[var(--title-color)] flex items-center gap-2.5">
+            {title}
+            <span className="hidden sm:inline-flex h-7 w-7 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 items-center justify-center text-white shadow"><Sparkles className="h-3.5 w-3.5" /></span>
+          </h2>
+          <p className="text-sm text-[var(--subtitle-color)] mt-1">Manage <b className="text-[var(--title-color)]">{title}</b> — create, search, filter and export records.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <Link
             href="/admin"
-            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-[var(--subtitle-color)] hover:text-[var(--title-color)] px-3.5 py-2 rounded-full border border-[var(--border)] bg-white dark:bg-slate-800 hover:shadow-sm transition-all"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back
+            Dashboard
           </Link>
-          <button className="flex items-center gap-1.5 text-sm text-white bg-[var(--primary)] hover:bg-[var(--secondary)] px-4 py-1.5 rounded-lg transition-colors">
+          <button className="inline-flex items-center gap-1.5 text-sm font-black text-white bg-gradient-to-br from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 px-5 py-2 rounded-full shadow-md hover:shadow-lg hover:-translate-y-px transition-all">
             <Plus className="h-4 w-4" />
             Add New
           </button>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-        <div className="p-4 border-b border-gray-200 flex flex-wrap items-center justify-between gap-3">
+      <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-sm overflow-hidden">
+        <div className="p-3.5 border-b border-[var(--border)] bg-[var(--accent)]/40 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search..."
-                className="pl-9 pr-4 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent w-52"
+                placeholder={`Search in ${title}…`}
+                className="pl-9 pr-4 py-2 text-sm border border-[var(--border)] rounded-full focus:outline-none focus:ring-2 focus:ring-orange-400/30 focus:border-orange-300 w-64 bg-white dark:bg-slate-900 text-[var(--title-color)] placeholder:text-slate-400"
               />
             </div>
-            <button className="flex items-center gap-1.5 text-sm text-gray-600 px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-              <Filter className="h-4 w-4" />
+            <button className="inline-flex items-center gap-1.5 text-sm font-semibold text-[var(--title-color)] px-3.5 py-2 rounded-full border border-[var(--border)] bg-white dark:bg-slate-800 hover:bg-[var(--accent)] transition-colors">
+              <Filter className="h-4 w-4 text-slate-500" />
               Filter
+            </button>
+            <button className="hidden sm:inline-flex items-center gap-1.5 text-sm font-semibold text-[var(--title-color)] px-3 py-2 rounded-full border border-[var(--border)] bg-white dark:bg-slate-800 hover:bg-[var(--accent)] transition-colors">
+              <Settings2 className="h-4 w-4 text-slate-500" /> Columns
             </button>
           </div>
           <div className="flex items-center gap-2">
-            <button className="flex items-center gap-1.5 text-sm text-gray-600 px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            <button className="inline-flex items-center gap-1.5 text-sm font-semibold text-[var(--subtitle-color)] hover:text-[var(--title-color)] px-3.5 py-2 rounded-full border border-[var(--border)] bg-white dark:bg-slate-800 hover:shadow-sm transition-all">
               <Upload className="h-4 w-4" />
               Import
             </button>
-            <button className="flex items-center gap-1.5 text-sm text-gray-600 px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            <button className="inline-flex items-center gap-1.5 text-sm font-bold text-orange-600 px-3.5 py-2 rounded-full border border-orange-200 bg-orange-50 dark:bg-orange-500/10 dark:border-orange-500/20 hover:bg-orange-100 transition-colors">
               <Download className="h-4 w-4" />
               Export
             </button>
           </div>
         </div>
 
-        <div className="p-12 flex flex-col items-center justify-center text-center">
-          <div className="h-16 w-16 rounded-full bg-[var(--primary-light)] flex items-center justify-center mb-4">
-            <svg
-              className="h-8 w-8 text-[var(--primary)]"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={1.5}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776"
-              />
-            </svg>
+        <div className="p-10 lg:p-14 flex flex-col items-center justify-center text-center relative overflow-hidden">
+          {/* soft gradient behind */}
+          <div className="absolute inset-0 bg-gradient-to-b from-orange-500/[0.06] via-transparent to-transparent pointer-events-none" />
+          <div className="absolute -top-12 left-1/2 -translate-x-1/2 h-40 w-64 bg-orange-400/10 blur-3xl rounded-full pointer-events-none" />
+          <div className="relative h-20 w-20 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center mb-5 shadow-lg shadow-orange-200 dark:shadow-none">
+            <Layers className="h-9 w-9 text-white" />
           </div>
-          <h3 className="text-lg font-semibold text-gray-700 mb-1">{title}</h3>
-          <p className="text-sm text-gray-500 max-w-md">
-            This is the {title} section under {category}. Use the &quot;Add New&quot; button to create
-            records, or import data from a file.
+          <h3 className="relative text-[18px] font-extrabold text-[var(--title-color)]">{title}</h3>
+          <p className="relative text-sm text-[var(--subtitle-color)] max-w-lg mt-2 leading-relaxed">
+            This is the <b className="text-[var(--title-color)]">{title}</b> section under <b className="text-[var(--title-color)]">{category}</b>. Start by adding your first record or import data from a file. Your table and filters will appear here.
           </p>
+          <div className="relative mt-6 flex flex-wrap items-center justify-center gap-2">
+            <button className="inline-flex items-center gap-2 text-sm font-black text-white bg-gradient-to-br from-orange-500 to-amber-500 px-6 py-2.5 rounded-full shadow-md hover:shadow-lg hover:-translate-y-px transition-all">
+              <Plus className="h-4 w-4" /> Create {title} <ArrowRight className="h-4 w-4" />
+            </button>
+            <span className="text-xs text-[var(--subtitle-color)] px-2">or</span>
+            <button className="inline-flex items-center gap-2 text-sm font-bold text-[var(--title-color)] bg-white dark:bg-slate-800 border border-[var(--border)] px-5 py-2.5 rounded-full hover:shadow-sm transition-all">
+              <Upload className="h-4 w-4" /> Import CSV
+            </button>
+          </div>
+          <p className="relative mt-4 text-[11px] font-medium text-[var(--subtitle-color)]">Tip: use the search and filters above to quickly find records once you add data.</p>
         </div>
       </div>
     </div>

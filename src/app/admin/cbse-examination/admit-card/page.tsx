@@ -471,7 +471,7 @@ export default function CbseAdmitCardPage() {
                 <select value={filterSection} onChange={(e) => setFilterSection(e.target.value)}
                   className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white">
                   <option value="All">All Sections</option>
-                  {["A", "B", "C", "D"].map((s) => <option key={s} value={s}>{s}</option>)}
+                  {sectionNames.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
             </div>

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { query, getAll, getById } from "@/lib/db"
 import { getSessionRole, hashPassword } from "@/lib/auth"
-import { schoolUsernamePrefix, generateUniqueUsername, createSchoolRoles } from "@/lib/school-setup"
+import { schoolUsernamePrefix, generateUniqueUsername, createSchoolRoles, ensureDemoUsersForSchool, syncSchoolGeneralSettings, type DemoUserRow } from "@/lib/school-setup"
 
 function getErrorMessage(e: unknown) {
   return e instanceof Error ? e.message : String(e)
@@ -88,14 +88,10 @@ export async function POST(req: NextRequest) {
     )
     const school = schoolResult.rows[0]
 
-    const roles = await createSchoolRoles(school.id)
-    const adminRoleId = roles["admin"] ?? null
-    const teacherRoleId = roles["teacher"] ?? null
-    const staffRoleId = roles["staff"] ?? null
-    const studentRoleId = roles["student"] ?? null
-    const parentRoleId = roles["parent"] ?? null
+    await createSchoolRoles(school.id)
 
     const prefix = schoolUsernamePrefix(name)
+    const createdUsers: DemoUserRow[] = []
 
     const admin = adminEmail || email
     if (admin) {
@@ -104,36 +100,26 @@ export async function POST(req: NextRequest) {
       const adminUserResult = await query(
         `INSERT INTO users (username, name, email, password_hash, role, role_id, school_id, status)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-        [adminUsername, `Admin - ${name}`, admin, hashed, "admin", adminRoleId, school.id, "Active"]
+        [adminUsername, `Admin - ${name}`, admin, hashed, "admin", (await query(`SELECT id FROM roles WHERE school_id = $1 AND name = 'admin'`, [school.id])).rows[0]?.id ?? null, school.id, "Active"]
       )
       school.adminUser = { email: admin, password: adminPassword || "Admin@123", username: adminUsername, id: adminUserResult.rows[0].id }
+      createdUsers.push({ id: adminUserResult.rows[0].id, role: "admin", username: adminUsername, email: admin, password: adminPassword || "Admin@123", name: `Admin - ${name}` })
     }
 
-    const defaultUsers = [
-      { role: "teacher", roleId: teacherRoleId, name: "Teacher", password: "Teacher@123" },
-      { role: "staff", roleId: staffRoleId, name: "Staff", password: "Staff@123" },
-      { role: "student", roleId: studentRoleId, name: "Student", password: "Student@123" },
-      { role: "parent", roleId: parentRoleId, name: "Parent", password: "Parent@123" },
-    ]
-
-    const createdUsers: { role: string; username: string; email: string; password: string }[] = []
-    for (const du of defaultUsers) {
-      if (!du.roleId) continue
-      const username = await generateUniqueUsername(`${prefix}_${du.role}`)
-      const userEmail = `${prefix}_${du.role}@${slugify(name)}.school`
-      const hashed = hashPassword(du.password)
-      try {
-        await query(
-          `INSERT INTO users (username, name, email, password_hash, role, role_id, school_id, status)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-          [username, `${du.name} - ${name}`, userEmail, hashed, du.role, du.roleId, school.id, "Active"]
-        )
-        createdUsers.push({ role: du.role, username, email: userEmail, password: du.password })
-      } catch {
-        // skip if unique constraint fails
-      }
-    }
+    const demo = await ensureDemoUsersForSchool(school)
+    createdUsers.push(...demo)
     school.defaultUsers = createdUsers
+    school.demoUsers = demo
+
+    await syncSchoolGeneralSettings(school.id, {
+      name: school.name,
+      code: school.code,
+      email: school.email,
+      phone: school.phone,
+      address: school.address,
+      currency: school.currency,
+      timezone: school.timezone,
+    })
 
     return NextResponse.json(await enrichSchool(school), { status: 201 })
   } catch (e) {
@@ -182,6 +168,17 @@ export async function PUT(req: NextRequest) {
       params
     )
     const updated = result.rows[0] ? await enrichSchool(result.rows[0]) : null
+
+    await syncSchoolGeneralSettings(id, {
+      name: data.name,
+      code: data.code,
+      email: data.email,
+      phone: data.phone,
+      address: data.address,
+      currency: data.currency,
+      timezone: data.timezone,
+    })
+
     return NextResponse.json(updated || { error: "Not found" }, { status: updated ? 200 : 404 })
   } catch (e) {
     return NextResponse.json({ error: getErrorMessage(e) }, { status: 400 })

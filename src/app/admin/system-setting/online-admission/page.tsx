@@ -36,7 +36,7 @@ export default function OnlineAdmissionPage() {
       .catch(() => {})
       .finally(() => setLoading(false))
 
-    fetch("/api/classes")
+    fetch("/api/academics/class")
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) {

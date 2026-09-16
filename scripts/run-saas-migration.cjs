@@ -51,7 +51,9 @@ const SQL_FILES = [
    path.join(__dirname, "..", "src", "lib", "sql", "060_si_variations_uniform.sql"),
    path.join(__dirname, "..", "src", "lib", "sql", "061_inventory_icons.sql"),
    path.join(__dirname, "..", "src", "lib", "sql", "062_inventory_icon_image.sql"),
-   path.join(__dirname, "..", "src", "lib", "sql", "063_icsc_examination.sql"),
+   path.join(__dirname, "..", "src", "lib", "sql", "063_icse_examination.sql"),
+   path.join(__dirname, "..", "src", "lib", "sql", "064_sidebar_menu_locked.sql"),
+   path.join(__dirname, "..", "src", "lib", "sql", "065_result_card.sql"),
  ];
 
 function hashPassword(password) {
@@ -72,9 +74,9 @@ const TENANT_TABLES = [
   "cbse_obs_params","cbse_exam_grades","cbse_student_attendance","cbse_exam_schedules","cbse_admit_cards",
   "cbse_templates","cbse_settings","cbse_observations","books","book_issues","library_members",
 
-  "icsc_exams","icsc_exam_subjects","icsc_exam_students","icsc_exam_marks","icsc_terms","icsc_assessments",
-  "icsc_observation_params","icsc_exam_grades","icsc_exam_attendance","icsc_schedules","icsc_admit_cards",
-  "icsc_templates","icsc_settings","icsc_observations","icsc_reports","icsc_custom_marksheets",  "pickup_points","routes","vehicles","route_vehicles","route_pickup_points","student_transport_fees",
+  "icse_exams","icse_exam_subjects","icse_exam_students","icse_exam_marks","icse_terms","icse_assessments",
+  "icse_observation_params","icse_exam_grades","icse_exam_attendance","icse_schedules","icse_admit_cards",
+  "icse_templates","icse_settings","icse_observations","icse_reports","icse_custom_marksheets",  "pickup_points","routes","vehicles","route_vehicles","route_pickup_points","student_transport_fees",
   "hostels","room_types","hostel_rooms","item_categories","items","item_suppliers","item_stores","item_stocks",
   "item_issues","item_sub_categories","brands","units","product_variants","purchase_orders","purchase_order_items",
   "discounts","inventory_adjustments","stock_transfers","fees_masters","fees_groups","fees_types","fees_discounts",
@@ -94,7 +96,7 @@ const TENANT_TABLES = [
   "si_vp_products","si_vp_groups","si_vp_components","si_vp_variants","si_vp_prices","si_vp_price_history",
   "si_vp_attributes","si_vp_attribute_values","si_vp_component_attributes","si_vp_component_attribute_values",
   "si_vp_product_variations","si_vp_product_variation_values","si_vp_product_variation_prices","si_vp_product_variation_stock",
-  "student_guardians",
+  "networks", "student_guardians", "result_card_templates", "result_card_records",
 ];
 
 async function main() {

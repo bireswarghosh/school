@@ -77,8 +77,8 @@ export const POST = handle(async (req: NextRequest, ctx) => {
   const days = daysBetween(String(fromDate), String(to))
 
   const res = await query(
-    `INSERT INTO leave_requests (user_id, name, role, leave_type_id, from_date, to_date, days, reason, status)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'Pending') RETURNING id`,
+    `INSERT INTO leave_requests (user_id, name, role, leave_type_id, from_date, to_date, days, reason, status, school_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'Pending',$9) RETURNING id`,
     [
       userId,
       name || null,
@@ -88,6 +88,7 @@ export const POST = handle(async (req: NextRequest, ctx) => {
       String(to),
       days,
       String(reason),
+      ctx.schoolId,
     ]
   )
 

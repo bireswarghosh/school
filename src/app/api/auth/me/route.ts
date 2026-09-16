@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { cookies } from "next/headers"
 import { query } from "@/lib/db"
 import { verifySession, SESSION_COOKIE } from "@/lib/auth"
+import { stackFromSession } from "@/lib/session"
 
 export async function GET(req: NextRequest) {
   const store = await cookies()
@@ -39,6 +40,9 @@ export async function GET(req: NextRequest) {
     permissions = user.permissions
   }
 
+  const stack = stackFromSession(session)
+  const last = stack.length > 0 ? stack[stack.length - 1] : null
+
   return NextResponse.json({
     authenticated: true,
     user: {
@@ -48,7 +52,7 @@ export async function GET(req: NextRequest) {
       role,
       permissions,
       schoolId: user.school_id ?? null,
-      ...(session.origUid ? { origUid: session.origUid, origRole: session.origRole, origName: session.origName } : {}),
+      ...(last ? { origUid: last.uid, origRole: last.role, origName: last.name, impersonationDepth: stack.length } : {}),
     },
     school,
   })

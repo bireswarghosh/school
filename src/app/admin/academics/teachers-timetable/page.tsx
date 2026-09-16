@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { Search } from "lucide-react"
+import { Search, Clock } from "lucide-react"
 import { useApi } from "@/lib/use-api"
 
 type TimetableEntry = {
@@ -14,21 +14,12 @@ type TimetableEntry = {
   endTime: string
 }
 
+type StaffLite = { id: number; name: string; surname?: string; role: string; designation?: string; department?: string; department_name?: string }
+
 type TeacherInfo = {
   name: string
   department: string
 }
-
-const teachers: TeacherInfo[] = [
-  { name: "Ms. Sunita Sharma", department: "Science" },
-  { name: "Mr. Rajesh Verma", department: "Math" },
-  { name: "Mr. Amit Kumar", department: "Computer" },
-  { name: "Ms. Pooja Singh", department: "English" },
-  { name: "Mr. Vikram Joshi", department: "Social Studies" },
-  { name: "Ms. Neha Patel", department: "Hindi" },
-  { name: "Mr. Suresh Gupta", department: "Physics" },
-  { name: "Ms. Kavita Joshi", department: "Chemistry" },
-]
 
 const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 
@@ -36,9 +27,31 @@ const periods = [1, 2, 3, 4, 5, 6, 7, 8]
 
 export default function TeachersTimetablePage() {
   const { data: entries } = useApi<TimetableEntry>("/api/academics/timetable")
+  const { data: staffData } = useApi<StaffLite>("/api/human-resource/staff")
+  const { data: classesData } = useApi<{ id: number; name: string }>("/api/academics/class")
+  const { data: sectionsData } = useApi<{ id: number; name: string; class_id: number }>("/api/academics/section")
   const [selectedTeacher, setSelectedTeacher] = useState("")
   const [selectedDay, setSelectedDay] = useState("All")
   const [searched, setSearched] = useState(false)
+
+  const teachers: TeacherInfo[] = useMemo(() => {
+    const staff = (staffData || []) as any[]
+    // use staff-directory teachers (role === Teacher)
+    const teacherStaff = staff.filter((s: any) => String(s.role || "").trim().toLowerCase() === "teacher")
+    const staffMap = new Map<string, string>()
+    for (const s of teacherStaff) {
+      const full = `${s.name || ""}${s.surname ? " " + s.surname : ""}`.trim()
+      if (!full) continue
+      const dept = s.department || s.department_name || ""
+      if (!staffMap.has(full)) staffMap.set(full, dept)
+    }
+    // include any teacher assigned in class-timetable (so match is guaranteed even if staff name slightly differs)
+    for (const e of (entries as any[]) || []) {
+      const t = (e.teacher ?? e.teacher_name ?? "").toString().trim()
+      if (t && !staffMap.has(t)) staffMap.set(t, "")
+    }
+    return Array.from(staffMap.entries()).map(([name, department]) => ({ name, department })).sort((a, b) => a.name.localeCompare(b.name))
+  }, [staffData, entries])
 
   const handleSearch = () => {
     if (!selectedTeacher) return
@@ -48,12 +61,17 @@ export default function TeachersTimetablePage() {
   const selectedTeacherInfo = teachers.find((t) => t.name === selectedTeacher)
 
   const filteredEntries = useMemo(() => {
-    let result = (entries || []).filter((e) => e.teacher === selectedTeacher)
+    if (!selectedTeacher) return []
+    let result = (entries || []).filter((e: any) => {
+      const t = (e.teacher ?? e.teacher_name ?? "").toString().trim().toLowerCase()
+      const sel = selectedTeacher.trim().toLowerCase()
+      return t === sel
+    })
     if (selectedDay !== "All") {
       result = result.filter((e) => e.day === selectedDay)
     }
     return result
-  }, [selectedTeacher, selectedDay, searched])
+  }, [selectedTeacher, selectedDay, entries])
 
   const gridData = useMemo(() => {
     const map: Record<string, Record<number, TimetableEntry>> = {}
@@ -67,14 +85,33 @@ export default function TeachersTimetablePage() {
     return map
   }, [filteredEntries])
 
+  const classMap = useMemo(() => new Map((classesData as any[] || []).map((c: any) => [String(c.id), c.name])), [classesData])
+  const sectionMap = useMemo(() => new Map((sectionsData as any[] || []).map((s: any) => [String(s.id), s])), [sectionsData])
+
+  const getClassLabel = (e: any) => {
+    const cid = e.classId ?? e.class_id ?? e.classId
+    const sid = e.sectionId ?? e.section_id
+    const cname = cid ? classMap.get(String(cid)) || `Class ${cid}` : ""
+    const sec = sid ? sectionMap.get(String(sid)) : null
+    const sname = sec?.name || ""
+    if (cname && sname) return `${cname} - ${sname}`
+    return cname || sname || "—"
+  }
+
   const getCellContent = (day: string, period: number) => {
-    const entry = gridData[day]?.[period]
+    const entry: any = gridData[day]?.[period]
     if (!entry) return null
+    const subj = entry.subject ?? entry.subject_name ?? ""
+    const teach = entry.teacher ?? entry.teacher_name ?? ""
+    const st = entry.startTime ?? entry.start_time ?? ""
+    const et = entry.endTime ?? entry.end_time ?? ""
+    const clsLabel = getClassLabel(entry)
     return (
-      <div className="w-full p-1.5 min-h-[60px]">
-        <span className="text-xs font-semibold text-[var(--title-color)] block leading-tight">{entry.subject}</span>
-        <span className="text-[10px] text-[var(--subtitle-color)] block leading-tight mt-0.5">{entry.teacher}</span>
-        <span className="text-[9px] text-[var(--subtitle-color)]/70 block leading-tight mt-0.5">{entry.startTime} - {entry.endTime}</span>
+      <div className="w-full p-1.5 min-h-[78px] flex flex-col justify-center gap-1">
+        <span className="inline-flex text-[10px] font-black tracking-widest uppercase text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full w-fit truncate max-w-full">{clsLabel}</span>
+        <span className="inline-flex text-[10px] font-black tracking-widest uppercase text-orange-700 bg-orange-100 border border-orange-200 px-2 py-0.5 rounded-full w-fit truncate max-w-full">{subj || "—"}</span>
+        <span className="text-[11px] font-bold text-violet-700 bg-violet-50 border border-violet-200 px-2 py-0.5 rounded-full w-fit inline-flex items-center gap-1 truncate max-w-full">{teach || "—"}</span>
+        <span className="text-[10px] text-gray-500 inline-flex items-center gap-1"><Clock className="h-3 w-3" />{(st || et) ? `${st} - ${et}` : "—"}</span>
       </div>
     )
   }
@@ -107,7 +144,7 @@ export default function TeachersTimetablePage() {
               >
                 <option value="">Select</option>
                 {teachers.map((t) => (
-                  <option key={t.name} value={t.name}>{t.name} ({t.department})</option>
+                  <option key={t.name} value={t.name}>{t.department ? `${t.name} (${t.department})` : t.name}</option>
                 ))}
               </select>
             </div>
@@ -139,14 +176,15 @@ export default function TeachersTimetablePage() {
         </div>
       </div>
 
-      {searched && selectedTeacherInfo && (
+      {selectedTeacherInfo && (
         <>
           <div className="glass-panel">
-            <div className="px-5 py-3 border-b border-[var(--border)]">
+            <div className="px-5 py-3 border-b border-[var(--border)] flex items-center justify-between">
               <h3 className="text-sm font-semibold text-[var(--title-color)]">
                 {selectedTeacherInfo.name}
-                <span className="text-xs font-normal text-[var(--subtitle-color)] ml-2">({selectedTeacherInfo.department})</span>
+                {selectedTeacherInfo.department ? <span className="text-xs font-normal text-[var(--subtitle-color)] ml-2">({selectedTeacherInfo.department})</span> : null}
               </h3>
+              <span className="text-xs bg-white border px-2.5 py-1 rounded-full font-medium">{filteredEntries.length} periods assigned — matches Class Timetable</span>
             </div>
             <div className="overflow-x-auto p-3">
               <table className="w-full text-sm border-collapse">
@@ -186,7 +224,7 @@ export default function TeachersTimetablePage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 dark:bg-gray-800/50 border-b border-[var(--border)]">
-                    {["#", "Day", "Period", "Subject", "Time"].map((h) => (
+                    {["#", "Day", "Period", "Class", "Subject", "Teacher", "Time"].map((h) => (
                       <th key={h} className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-400 text-xs uppercase">{h}</th>
                     ))}
                   </tr>
@@ -194,7 +232,7 @@ export default function TeachersTimetablePage() {
                 <tbody>
                   {filteredEntries.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="text-center py-12 text-gray-400 text-sm">No timetable entries found</td>
+                      <td colSpan={7} className="text-center py-12 text-gray-400 text-sm">No timetable entries found — this teacher has no periods assigned in Class Timetable. Assign via Class Timetable first.</td>
                     </tr>
                   ) : (
                     (() => {
@@ -206,7 +244,12 @@ export default function TeachersTimetablePage() {
                         if (dayDiff !== 0) return dayDiff
                         return a.period - b.period
                       })
-                      return sorted.map((entry, idx) => (
+                      return sorted.map((entry: any, idx) => {
+                        const subj = entry.subject ?? entry.subject_name ?? ""
+                        const teach = entry.teacher ?? entry.teacher_name ?? ""
+                        const st = entry.startTime ?? entry.start_time ?? ""
+                        const et = entry.endTime ?? entry.end_time ?? ""
+                        return (
                         <tr
                           key={entry.id}
                           className={`border-b border-[var(--border)] hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors ${idx % 2 === 1 ? "bg-gray-50/30 dark:bg-gray-800/10" : ""}`}
@@ -214,10 +257,13 @@ export default function TeachersTimetablePage() {
                           <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{idx + 1}</td>
                           <td className="px-4 py-3 font-medium text-[var(--title-color)]">{entry.day}</td>
                           <td className="px-4 py-3 text-gray-600 dark:text-gray-400">Period {entry.period}</td>
-                          <td className="px-4 py-3 text-gray-800 dark:text-gray-200">{entry.subject}</td>
-                          <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{entry.startTime} - {entry.endTime}</td>
+                          <td className="px-4 py-3"><span className="inline-flex px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700">{getClassLabel(entry)}</span></td>
+                          <td className="px-4 py-3"><span className="inline-flex text-xs font-black text-orange-700 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full">{subj || "—"}</span></td>
+                          <td className="px-4 py-3"><span className="inline-flex text-xs font-bold text-violet-700 bg-violet-50 border border-violet-200 px-2 py-0.5 rounded-full">{teach || "—"}</span></td>
+                          <td className="px-4 py-3 text-gray-600 dark:text-gray-400"><span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{(st || et) ? `${st} - ${et}` : "—"}</span></td>
                         </tr>
-                      ))
+                        )
+                      })
                     })()
                   )}
                 </tbody>

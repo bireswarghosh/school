@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { Pencil, Trash2 } from "lucide-react"
+import { useState, useMemo } from "react"
+import { Pencil, Trash2, Upload, X } from "lucide-react"
 import { useApi } from "@/lib/use-api"
 
 type Designation = {
@@ -13,10 +13,31 @@ type Designation = {
 const departments = ["Science", "Mathematics", "English", "Social Studies", "Languages", "Computer Science", "Physical Education", "Administration", "Transport", "Library"]
 
 export default function DesignationPage() {
-  const { data: designations, add, update, remove, loading } = useApi<Designation>("/api/human-resource/designation")
+  const { data: designations, add, update, remove, loading, refetch } = useApi<Designation>("/api/human-resource/designation")
   const [desigName, setDesigName] = useState("")
   const [desigDept, setDesigDept] = useState(departments[0])
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [showBulk, setShowBulk] = useState(false)
+  const [bulkText, setBulkText] = useState("")
+  const [bulkSaving, setBulkSaving] = useState(false)
+  const [bulkError, setBulkError] = useState("")
+
+  const bulkPreview = useMemo(() => {
+    const rawLines = bulkText.split("\n").map((s) => s.trim()).filter(Boolean)
+    const seen = new Set<string>()
+    const unique: string[] = []
+    for (const n of rawLines) {
+      const key = n.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      unique.push(n)
+    }
+    const existingSet = new Set(designations.map((d) => d.name.trim().toLowerCase()))
+    const willCreate = unique.filter((n) => !existingSet.has(n.toLowerCase())).length
+    const willSkipExisting = unique.length - willCreate
+    const dupInInput = rawLines.length - unique.length
+    return { total: rawLines.length, unique: unique.length, willCreate, willSkipExisting, dupInInput, uniqueList: unique }
+  }, [bulkText, designations])
 
   const handleSave = async () => {
     if (!desigName.trim()) return
@@ -44,6 +65,32 @@ export default function DesignationPage() {
         setDesigName("")
         setDesigDept(departments[0])
       }
+    }
+  }
+
+  const handleBulkImport = async () => {
+    const names = bulkPreview.uniqueList
+    if (names.length === 0) {
+      setBulkError("Enter at least one designation")
+      return
+    }
+    setBulkSaving(true)
+    setBulkError("")
+    try {
+      const res = await fetch("/api/human-resource/designation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ names }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to import")
+      await refetch()
+      setShowBulk(false)
+      setBulkText("")
+    } catch (e: any) {
+      setBulkError(e.message || "Failed to import")
+    } finally {
+      setBulkSaving(false)
     }
   }
 
@@ -91,8 +138,15 @@ export default function DesignationPage() {
       </div>
 
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
-        <div className="px-5 py-3 border-b border-gray-200">
+        <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-800">Designation List</h3>
+          <button
+            onClick={() => { setBulkText(""); setBulkError(""); setShowBulk(true) }}
+            className="inline-flex items-center gap-2 rounded-lg bg-[var(--primary)] px-3.5 py-1.5 text-xs font-medium text-white hover:opacity-90"
+          >
+            <Upload className="h-3.5 w-3.5" />
+            Bulk Upload
+          </button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -128,6 +182,65 @@ export default function DesignationPage() {
           <span className="text-sm text-gray-500">Showing {designations.length} records</span>
         </div>
       </div>
+
+      {showBulk && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-lg">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-gray-800">Bulk Upload Designations</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Each line is a Designation — empty lines & duplicates are ignored</p>
+              </div>
+              <button onClick={() => setShowBulk(false)} className="rounded-lg p-1.5 hover:bg-gray-100">
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+
+            {bulkError && (
+              <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{bulkError}</div>
+            )}
+
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Designation Names (one per line) <span className="text-red-500">*</span></label>
+              <textarea
+                value={bulkText}
+                onChange={(e) => { setBulkText(e.target.value); if (bulkError) setBulkError("") }}
+                rows={10}
+                placeholder={"Principal\nVice Principal\nSenior Teacher\nLibrarian"}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
+              />
+              <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                <span className="rounded-full bg-gray-100 px-2.5 py-1 text-gray-600">{bulkPreview.total} lines</span>
+                <span className="rounded-full bg-[var(--primary-light)] px-2.5 py-1 text-[var(--primary)]">{bulkPreview.unique} unique</span>
+                <span className="rounded-full bg-green-50 px-2.5 py-1 text-green-700">{bulkPreview.willCreate} will be created</span>
+                {bulkPreview.willSkipExisting > 0 && (
+                  <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">{bulkPreview.willSkipExisting} already exists</span>
+                )}
+                {bulkPreview.dupInInput > 0 && (
+                  <span className="rounded-full bg-red-50 px-2.5 py-1 text-red-600">{bulkPreview.dupInInput} duplicates in input</span>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setShowBulk(false)}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBulkImport}
+                disabled={bulkSaving || bulkPreview.unique === 0}
+                className="inline-flex items-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+              >
+                <Upload className="h-4 w-4" />
+                {bulkSaving ? "Importing..." : `Import ${bulkPreview.willCreate > 0 ? `${bulkPreview.willCreate} ` : ""}Designations`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

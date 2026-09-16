@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { query } from "@/lib/db"
+import { getSessionSchoolId } from "@/lib/auth"
 
 type Table = { title?: string; headers: string[]; rows: (string | number)[][]; note?: string }
 type Answer = { reply: string; tables?: Table[] }
@@ -316,8 +317,9 @@ export async function POST(req: NextRequest) {
     }
 
     if (/parent/.test(q)) {
-      const r = await query(`SELECT COUNT(*)::int AS n FROM users WHERE role = 'parent'`)
-      reply = `${r.rows[0]?.n ?? 0} registered parent accounts. Ask “class strength”, “pending fees” or “today's absentees” for details.`
+      const schoolId = getSessionSchoolId(req) ?? -1
+      const r = await query(`SELECT COUNT(*)::int AS n FROM users WHERE role = 'parent' AND school_id = $1`, [schoolId])
+      reply = `${r.rows[0]?.n ?? 0} registered parent accounts in your school. Ask “class strength”, “pending fees” or “today's absentees” for details.`
       return NextResponse.json({ reply, tables } as Answer)
     }
 

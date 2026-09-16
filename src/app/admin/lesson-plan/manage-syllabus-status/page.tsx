@@ -5,7 +5,6 @@ import { Search, ArrowUpDown, X, Save } from "lucide-react";
 import { useApi } from "@/lib/use-api";
 import { useClassesAndSections } from "@/lib/use-classes-sections";
 
-const classOptions = Array.from({ length: 12 }, (_, i) => String(i + 1));
 const subjectOptions = ["Mathematics", "Science", "English", "Hindi", "Social Studies", "Sanskrit"];
 
 type SyllabusEntry = {
@@ -25,14 +24,16 @@ const statusPercent: Record<string, number> = {
 };
 
 export default function ManageSyllabusStatusPage() {
-  const { sectionNames: sectionOptions } = useClassesAndSections();
+  const { classes, sectionsOf } = useClassesAndSections();
   const { data: entries, update, loading } = useApi<SyllabusEntry>("/api/lesson-plan/syllabus-status");
-  const [filterClass, setFilterClass] = useState("1");
-  const [filterSection, setFilterSection] = useState("A");
+  const [filterClass, setFilterClass] = useState("");
+  const [filterSection, setFilterSection] = useState("");
   const [filterSubject, setFilterSubject] = useState("Mathematics");
   const [showModal, setShowModal] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<SyllabusEntry | null>(null);
   const [newStatus, setNewStatus] = useState("");
+
+  const sectionOptions = filterClass ? sectionsOf(parseInt(filterClass)) : [];
 
   const handleSearch = () => {};
 
@@ -75,11 +76,12 @@ export default function ManageSyllabusStatusPage() {
             <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">Class</label>
             <select
               value={filterClass}
-              onChange={(e) => setFilterClass(e.target.value)}
+              onChange={(e) => { setFilterClass(e.target.value); setFilterSection(""); }}
               className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
             >
-              {classOptions.map((c) => (
-                <option key={c} value={c}>Class {c}</option>
+              <option value="">Select</option>
+              {classes.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
           </div>
@@ -88,10 +90,12 @@ export default function ManageSyllabusStatusPage() {
             <select
               value={filterSection}
               onChange={(e) => setFilterSection(e.target.value)}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
+              disabled={!filterClass}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)] disabled:opacity-50"
             >
+              <option value="">Select</option>
               {sectionOptions.map((s) => (
-                <option key={s} value={s}>Section {s}</option>
+                <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
           </div>

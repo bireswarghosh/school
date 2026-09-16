@@ -5,7 +5,6 @@ import { Copy, CheckCircle } from "lucide-react";
 import { useApi } from "@/lib/use-api";
 import { useClassesAndSections } from "@/lib/use-classes-sections";
 
-const classOptions = Array.from({ length: 12 }, (_, i) => String(i + 1));
 const subjectOptions = ["Mathematics", "Science", "English", "Hindi", "Social Studies", "Sanskrit"];
 
 type CopyForm = {
@@ -21,21 +20,28 @@ type SuccessMessage = {
 };
 
 export default function CopyOldLessonsPage() {
-  const { sectionNames: sectionOptions } = useClassesAndSections();
+  const { classes, sectionsOf } = useClassesAndSections();
   const { add, loading } = useApi("/api/lesson-plan/copy-old-lessons");
   const [form, setForm] = useState<CopyForm>({
-    fromClass: "1",
-    fromSection: "A",
-    toClass: "1",
-    toSection: "A",
+    fromClass: "",
+    fromSection: "",
+    toClass: "",
+    toSection: "",
     subject: "Mathematics",
   });
   const [success, setSuccess] = useState<SuccessMessage | null>(null);
   const [copying, setCopying] = useState(false);
 
   const handleChange = (field: keyof CopyForm, value: string) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
+    setForm((prev) => {
+      if (field === "fromClass") return { ...prev, fromClass: value, fromSection: "" };
+      if (field === "toClass") return { ...prev, toClass: value, toSection: "" };
+      return { ...prev, [field]: value };
+    });
   };
+
+  const fromSections = form.fromClass ? sectionsOf(parseInt(form.fromClass)) : [];
+  const toSections = form.toClass ? sectionsOf(parseInt(form.toClass)) : [];
 
   const handleCopy = async () => {
     setCopying(true);
@@ -62,8 +68,9 @@ export default function CopyOldLessonsPage() {
                 onChange={(e) => handleChange("fromClass", e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
               >
-                {classOptions.map((c) => (
-                  <option key={c} value={c}>Class {c}</option>
+                <option value="">Select</option>
+                {classes.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
             </div>
@@ -72,10 +79,12 @@ export default function CopyOldLessonsPage() {
               <select
                 value={form.fromSection}
                 onChange={(e) => handleChange("fromSection", e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
+                disabled={!form.fromClass}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)] disabled:opacity-50"
               >
-                {sectionOptions.map((s) => (
-                  <option key={s} value={s}>Section {s}</option>
+                <option value="">Select</option>
+                {fromSections.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
               </select>
             </div>
@@ -88,8 +97,9 @@ export default function CopyOldLessonsPage() {
                 onChange={(e) => handleChange("toClass", e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
               >
-                {classOptions.map((c) => (
-                  <option key={c} value={c}>Class {c}</option>
+                <option value="">Select</option>
+                {classes.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
             </div>
@@ -98,10 +108,12 @@ export default function CopyOldLessonsPage() {
               <select
                 value={form.toSection}
                 onChange={(e) => handleChange("toSection", e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
+                disabled={!form.toClass}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)] disabled:opacity-50"
               >
-                {sectionOptions.map((s) => (
-                  <option key={s} value={s}>Section {s}</option>
+                <option value="">Select</option>
+                {toSections.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
               </select>
             </div>

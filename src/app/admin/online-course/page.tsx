@@ -1200,10 +1200,20 @@ export default function OnlineCoursePage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-[var(--primary)] to-[var(--primary)]/80 rounded-xl p-6 text-white">
-        <h1 className="text-2xl font-bold">Online Course</h1>
-        <p className="text-indigo-200 text-sm mt-1">Online Course / Online Course</p>
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 via-violet-600 to-purple-700 px-6 py-6 shadow-lg">
+        <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/15 blur-2xl" />
+        <div className="absolute -right-6 -bottom-12 h-32 w-32 rounded-full bg-white/10 blur-xl" />
+        <div className="absolute left-1/3 top-1/2 -translate-y-1/2 opacity-10 hidden lg:block"><BookOpen className="h-28 w-28 text-white" /></div>
+        <div className="relative z-10 flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-white flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/20 backdrop-blur"><BookOpen className="h-4 w-4 text-white" /></span>
+              Online Courses
+            </h1>
+            <p className="text-sm text-white/80 mt-1">Manage online courses, lessons, quizzes, exams & assignments • {(courses || []).length} courses</p>
+          </div>
+          <span className="hidden md:inline-flex items-center gap-1.5 text-white/90 text-xs bg-white/15 backdrop-blur rounded-full px-3 py-1.5 border border-white/20"><BookOpen className="h-3.5 w-3.5" /> Courses</span>
+        </div>
       </div>
 
       {/* Toolbar */}

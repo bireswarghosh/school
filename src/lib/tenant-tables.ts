@@ -12,9 +12,9 @@ export const TENANT_TABLES = new Set<string>([
   "cbse_exams", "cbse_exam_subjects", "cbse_exam_students", "cbse_exam_marks", "cbse_terms", "cbse_assessments",
   "cbse_obs_params", "cbse_exam_grades", "cbse_student_attendance", "cbse_exam_schedules", "cbse_admit_cards",
   "cbse_templates", "cbse_settings", "cbse_observations",
-  "icsc_exams", "icsc_exam_subjects", "icsc_exam_students", "icsc_exam_marks", "icsc_terms", "icsc_assessments",
-  "icsc_observation_params", "icsc_exam_grades", "icsc_exam_attendance", "icsc_schedules", "icsc_admit_cards",
-  "icsc_templates", "icsc_settings", "icsc_observations", "icsc_reports", "icsc_custom_marksheets", "books", "book_issues", "library_members",
+  "icse_exams", "icse_exam_subjects", "icse_exam_students", "icse_exam_marks", "icse_terms", "icse_assessments",
+  "icse_observation_params", "icse_exam_grades", "icse_exam_attendance", "icse_schedules", "icse_admit_cards",
+  "icse_templates", "icse_settings", "icse_observations", "icse_reports", "icse_custom_marksheets", "books", "book_issues", "library_members",
   "pickup_points", "routes", "vehicles", "route_vehicles", "route_pickup_points", "student_transport_fees",
   "hostels", "room_types", "hostel_rooms", "item_categories", "items", "item_suppliers", "item_stores", "item_stocks",
   "item_issues", "item_sub_categories", "brands", "units", "product_variants", "purchase_orders", "purchase_order_items",
@@ -35,6 +35,7 @@ export const TENANT_TABLES = new Set<string>([
   "si_vp_products", "si_vp_groups", "si_vp_components", "si_vp_variants", "si_vp_prices", "si_vp_price_history",
   "school_settings",
   "uploaded_files",
+  "result_card_templates", "result_card_records",
 ])
 
 export function isTenantTable(table: string): boolean {

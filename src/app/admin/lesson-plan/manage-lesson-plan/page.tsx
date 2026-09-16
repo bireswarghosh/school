@@ -5,7 +5,6 @@ import { Search, Plus, Pencil, Trash2, X, Save } from "lucide-react";
 import { useApi } from "@/lib/use-api";
 import { useClassesAndSections } from "@/lib/use-classes-sections";
 
-const classOptions = Array.from({ length: 12 }, (_, i) => String(i + 1));
 const subjectOptions = ["Mathematics", "Science", "English", "Hindi", "Social Studies", "Sanskrit"];
 const lessonOptions = ["Algebra", "Geometry", "Motions & Forces", "Grammar Basics", "World History"];
 const statusOptions = ["Started", "Completed", "Pending"];
@@ -38,14 +37,16 @@ const emptyForm: LessonForm = {
 };
 
 export default function ManageLessonPlanPage() {
-  const { sectionNames: sectionOptions } = useClassesAndSections();
+  const { classes, sectionsOf } = useClassesAndSections();
   const { data: plans, add, update, remove, loading } = useApi<LessonPlan>("/api/lesson-plan/lesson-plan");
-  const [filterClass, setFilterClass] = useState("1");
-  const [filterSection, setFilterSection] = useState("A");
+  const [filterClass, setFilterClass] = useState("");
+  const [filterSection, setFilterSection] = useState("");
   const [filterSubject, setFilterSubject] = useState("Mathematics");
   const [form, setForm] = useState<LessonForm>(emptyForm);
   const [editing, setEditing] = useState<LessonPlan | null>(null);
   const [showModal, setShowModal] = useState(false);
+
+  const sectionOptions = filterClass ? sectionsOf(parseInt(filterClass)) : [];
 
   const handleSearch = () => {};
 
@@ -99,11 +100,12 @@ export default function ManageLessonPlanPage() {
             <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">Class</label>
             <select
               value={filterClass}
-              onChange={(e) => setFilterClass(e.target.value)}
+              onChange={(e) => { setFilterClass(e.target.value); setFilterSection(""); }}
               className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
             >
-              {classOptions.map((c) => (
-                <option key={c} value={c}>Class {c}</option>
+              <option value="">Select</option>
+              {classes.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
           </div>
@@ -112,10 +114,12 @@ export default function ManageLessonPlanPage() {
             <select
               value={filterSection}
               onChange={(e) => setFilterSection(e.target.value)}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
+              disabled={!filterClass}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)] disabled:opacity-50"
             >
+              <option value="">Select</option>
               {sectionOptions.map((s) => (
-                <option key={s} value={s}>Section {s}</option>
+                <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
           </div>

@@ -45,15 +45,22 @@ function toDb(body: any) {
   const data: Record<string, any> = {}
   if (body.name !== undefined) data.name = body.name
   if (body.role !== undefined) data.role = body.role
-  if (body.leaveType !== undefined) data.leave_type_id = leaveTypeNames[body.leaveType] || null
+  if (body.leaveTypeId !== undefined) data.leave_type_id = body.leaveTypeId ? Number(body.leaveTypeId) : null
+  else if (body.leave_type_id !== undefined) data.leave_type_id = body.leave_type_id ? Number(body.leave_type_id) : null
+  else if (body.leaveType !== undefined) data.leave_type_id = leaveTypeNames[body.leaveType] || null
   if (body.fromDate !== undefined) data.from_date = body.fromDate
   if (body.toDate !== undefined) data.to_date = body.toDate
-  if (body.days !== undefined) data.days = body.days
+  if (body.from_date !== undefined) data.from_date = body.from_date
+  if (body.to_date !== undefined) data.to_date = body.to_date
+  if (body.days !== undefined) data.days = Number(body.days)
   if (body.reason !== undefined) data.reason = body.reason
   if (body.status !== undefined) data.status = body.status
   if (body.document !== undefined) data.document = body.document || null
   if (body.remarks !== undefined) data.remarks = body.remarks || null
   if (body.userId !== undefined) data.user_id = body.userId
+  if (body.user_id !== undefined) data.user_id = body.user_id
+  if (body.school_id !== undefined) data.school_id = body.school_id
+  if (body.schoolId !== undefined) data.school_id = body.schoolId
   return data
 }
 

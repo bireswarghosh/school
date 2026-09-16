@@ -66,6 +66,7 @@ function submenuIcon(label: string): React.ElementType {
   if (l.includes("student") || l.includes("admission") || l.includes("user") || l.includes("member") || l.includes("staff")) return Users
   if (l.includes("fee") || l.includes("payment") || l.includes("collect") || l.includes("bank")) return Wallet
   if (l.includes("exam") || l.includes("mark") || l.includes("grade") || l.includes("question")) return FileText
+  if (l.includes("result")) return FileText
   if (l.includes("attendance") || l.includes("leave")) return ClipboardList
   if (l.includes("class") || l.includes("section") || l.includes("subject") || l.includes("teacher") || l.includes("promote")) return GraduationCap
   if (l.includes("lesson") || l.includes("syllabus") || l.includes("topic") || l.includes("plan")) return BookOpen

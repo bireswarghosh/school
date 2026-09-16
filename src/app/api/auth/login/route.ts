@@ -59,6 +59,32 @@ export async function POST(req: NextRequest) {
     if (user.status && String(user.status).toLowerCase() !== "active") {
       return NextResponse.json({ error: "Account is disabled" }, { status: 403 })
     }
+    // Block login if staff is in disabled_staff list or staff.status is Disabled
+    try {
+      const staffDisabled = await query(`SELECT id FROM staff WHERE user_id = $1 AND lower(status) = 'disabled' LIMIT 1`, [user.id])
+      if (staffDisabled.rows.length > 0) {
+        return NextResponse.json({ error: "Your staff account has been disabled. Please contact admin." }, { status: 403 })
+      }
+      if (user.email) {
+        // check by email across disabled list (scoped to user's school when known)
+        const dsCheck = user.school_id
+          ? await query(`SELECT id FROM disabled_staff WHERE lower(email) = lower($1) AND school_id = $2 LIMIT 1`, [user.email, user.school_id])
+          : await query(`SELECT id FROM disabled_staff WHERE lower(email) = lower($1) LIMIT 1`, [user.email])
+        if (dsCheck.rows.length > 0) {
+          return NextResponse.json({ error: "Your staff account has been disabled. Please contact admin." }, { status: 403 })
+        }
+        // also check by staff_id link
+        const dsByStaff = await query(
+          `SELECT ds.id FROM disabled_staff ds JOIN staff s ON s.staff_id = ds.staff_id AND s.school_id = ds.school_id WHERE s.user_id = $1 LIMIT 1`,
+          [user.id]
+        )
+        if (dsByStaff.rows.length > 0) {
+          return NextResponse.json({ error: "Your staff account has been disabled. Please contact admin." }, { status: 403 })
+        }
+      }
+    } catch {
+      // ignore check errors and continue
+    }
 
     const isSuperAdmin = user.role === "super_admin"
     const isPortalRole = user.role === "student" || user.role === "parent"

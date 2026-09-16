@@ -431,10 +431,18 @@ export default function CertificateTemplatePage() {
     <>
       {/* ---- Main List View ---- */}
       <div className="space-y-6">
-        <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-[var(--primary)] to-[var(--primary)]/80 px-6 py-4 shadow-sm">
-          <div className="relative z-10">
-            <h2 className="text-xl font-bold text-white">Certificate Template</h2>
-            <p className="text-sm text-white/70 mt-0.5">Online Course / Certificate Template</p>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500 via-orange-500 to-[var(--primary)] px-6 py-6 shadow-lg">
+          <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/15 blur-2xl" />
+          <div className="absolute -right-6 -bottom-12 h-32 w-32 rounded-full bg-white/10 blur-xl" />
+          <div className="relative z-10 flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/20 backdrop-blur"><Layout className="h-4 w-4 text-white" /></span>
+                Certificate Template
+              </h2>
+              <p className="text-sm text-white/80 mt-1">Online Course / Design certificates for course completion • {(templates || []).length} templates</p>
+            </div>
+            <span className="hidden md:inline-flex items-center gap-1.5 text-white/90 text-xs bg-white/15 backdrop-blur rounded-full px-3 py-1.5 border border-white/20"><Layout className="h-3.5 w-3.5" /> Templates</span>
           </div>
         </div>
 

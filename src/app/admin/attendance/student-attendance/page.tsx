@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { Search, Save, Check, ArrowUpDown } from "lucide-react"
+import { useClassesAndSections } from "@/lib/use-classes-sections"
 
 type AttendanceStatus = string
 
@@ -30,9 +31,6 @@ type AttendanceRecord = {
 
 type AttendanceType = { id: number; type: string }
 
-const classes = Array.from({ length: 12 }, (_, i) => ({ id: i + 1, name: `Class ${i + 1}` }))
-const sectionNames = ["A", "B", "C"]
-
 const statusBadge: Record<string, string> = {
   present: "bg-green-100 text-green-700",
   late: "bg-yellow-100 text-yellow-700",
@@ -58,6 +56,7 @@ type DateRangeRecord = {
 }
 
 export default function StudentAttendancePage() {
+  const { classes, sectionsOf } = useClassesAndSections()
   const today = new Date().toISOString().split("T")[0]
   const [selectedClass, setSelectedClass] = useState("")
   const [selectedSection, setSelectedSection] = useState("")
@@ -81,7 +80,7 @@ export default function StudentAttendancePage() {
       .catch(() => {})
   }, [])
 
-  const availableSections = selectedClass ? sectionNames : []
+  const availableSections = selectedClass ? sectionsOf(parseInt(selectedClass)) : []
 
   const defaultStatus = () => {
     const present = types.find((t) => t.type.toLowerCase() === "present")
@@ -107,7 +106,7 @@ export default function StudentAttendancePage() {
     setLoading(true)
     setSearched(false)
     try {
-      const studentsData = await fetchJson(`/api/students?class_id=${selectedClass}&section=${selectedSection}`)
+      const studentsData = await fetchJson(`/api/students?class_id=${selectedClass}&section_id=${selectedSection}`)
       setStudents(studentsData)
 
       const dates = generateDateRange(fromDate, toDate)
@@ -169,13 +168,15 @@ export default function StudentAttendancePage() {
   const handleSave = async () => {
     setSaving(true)
     try {
+      const classIdNum = parseInt(selectedClass) || 0
+      const sectionIdNum = parseInt(selectedSection) || 0
       const records = Object.entries(attendanceMap).map(([key, rec]) => {
         const studentId = parseInt(key.split("_")[0])
         const matched = types.find((t) => t.type.toLowerCase() === rec.status.toLowerCase())
         return {
           studentId,
-          classId: students.find((s) => s.id === studentId)?.classId || 0,
-          sectionId: students.find((s) => s.id === studentId)?.sectionId || 0,
+          classId: students.find((s) => s.id === studentId)?.classId || classIdNum,
+          sectionId: students.find((s) => s.id === studentId)?.sectionId || sectionIdNum,
           date: rec.date,
           status: rec.status,
           attendanceTypeId: matched?.id,
@@ -276,7 +277,7 @@ export default function StudentAttendancePage() {
               <select value={selectedSection} onChange={(e) => { setSelectedSection(e.target.value); setSearched(false) }} disabled={!selectedClass}
                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent disabled:opacity-50">
                 <option value="">Select</option>
-                {availableSections.map((sec) => <option key={sec} value={sec}>{sec}</option>)}
+                {availableSections.map((sec) => <option key={sec.id} value={sec.id}>{sec.name}</option>)}
               </select>
             </div>
             <div className="space-y-1">

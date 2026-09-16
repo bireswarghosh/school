@@ -3,6 +3,7 @@ import { toast as notify } from "@/lib/toast"
 
 import { useEffect, useState, useCallback } from "react"
 import { Plus, Pencil, Trash2, X, Search, School as SchoolIcon, Loader2, Eye, Crown, Copy, KeyRound, UserCog, Check, ShieldCheck, Mail, Phone, MapPin, Calendar } from "lucide-react"
+import { useRouter } from "next/navigation"
 import { CURRENCIES, currencySymbol } from "@/lib/currencies"
 
 type PlanRow = {
@@ -80,6 +81,7 @@ const emptyForm: FormState = {
 const formatPrice = (price: number) => (price ? price.toLocaleString("en-IN") : "0")
 
 export default function SaasSchools() {
+  const router = useRouter()
   const [schools, setSchools] = useState<SchoolRow[]>([])
   const [plans, setPlans] = useState<PlanRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -218,7 +220,11 @@ export default function SaasSchools() {
     }
   }
 
-  const openProfile = async (s: SchoolRow) => {
+  const openProfile = (s: SchoolRow) => {
+    router.push(`/saas/schools/${s.id}`)
+  }
+
+  const openProfileModal = async (s: SchoolRow) => {
     setProfileSchool(s)
     setSchoolUsers([])
     setResetFor(null)
@@ -226,7 +232,10 @@ export default function SaasSchools() {
     try {
       const res = await fetch(`/api/saas/users?schoolId=${s.id}`)
       const data = await res.json()
-      if (Array.isArray(data)) setSchoolUsers(data)
+      if (Array.isArray(data)) {
+        const filtered = (data as SchoolUser[]).filter((u) => ["admin", "staff", "teacher"].includes(u.role))
+        setSchoolUsers(filtered)
+      }
     } catch {
       setSchoolUsers([])
     } finally {
@@ -500,13 +509,18 @@ export default function SaasSchools() {
                 <div className="rounded-2xl border border-[var(--border)] p-5 space-y-3">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-semibold text-[var(--foreground)]">School details</p>
-                    <span
-                      className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                        profileSchool.status === "Active" ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40" : "bg-red-50 text-red-600 dark:bg-red-950/40"
-                      }`}
-                    >
-                      {profileSchool.status || "Active"}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => { if(profileSchool) { openEdit(profileSchool); closeProfile(); } }} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-[var(--primary)] hover:bg-[var(--primary-light)] border border-[var(--primary)]/20">
+                        <Pencil className="h-3 w-3" /> Edit
+                      </button>
+                      <span
+                        className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+                          profileSchool.status === "Active" ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40" : "bg-red-50 text-red-600 dark:bg-red-950/40"
+                        }`}
+                      >
+                        {profileSchool.status || "Active"}
+                      </span>
+                    </div>
                   </div>
 
                   <div>

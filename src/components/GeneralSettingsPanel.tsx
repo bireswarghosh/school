@@ -46,7 +46,11 @@ export default function GeneralSettingsPanel() {
   const handleSave = async () => {
     const next: Record<string, string> = { ...form }
     const dflt = defaults as Record<string, string>
+    // Profile-linked fields are always sent so clears/edits stay in sync with
+    // the super admin panel's school profile.
+    const PROFILE_LINKED = ["schoolName", "schoolCode", "email", "phone", "address", "currencyFormat", "timezone"]
     for (const k of Object.keys(next)) {
+      if (PROFILE_LINKED.includes(k)) continue
       if (next[k] === dflt[k]) delete next[k]
     }
     const ok = await saveScoped(next)
@@ -106,7 +110,18 @@ export default function GeneralSettingsPanel() {
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {field("School Name", "schoolName")}
-              {field("School Code", "schoolCode")}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">School Code</label>
+                <input
+                  type="text"
+                  value={form.schoolCode || ""}
+                  disabled
+                  readOnly
+                  title="School code is set on the super admin panel"
+                  className="w-full rounded-lg border border-gray-300 bg-gray-100 px-3 py-2 text-sm text-gray-500 cursor-not-allowed"
+                />
+                <p className="text-xs text-gray-400 mt-1">Login code — managed on the super admin panel</p>
+              </div>
               {field("Phone", "phone")}
               {field("Email", "email", "email")}
               {field("Website", "website", "url")}

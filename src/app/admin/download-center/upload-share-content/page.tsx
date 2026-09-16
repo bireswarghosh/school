@@ -6,7 +6,6 @@ import { useApi } from "@/lib/use-api";
 import { useClassesAndSections } from "@/lib/use-classes-sections";
 
 const contentTypeOptions = ["Assignment", "Study Material", "Syllabus", "Other"];
-const classOptions = Array.from({ length: 12 }, (_, i) => String(i + 1));
 const subjectOptions = ["Mathematics", "Science", "English", "Hindi", "Social Studies", "Sanskrit"];
 
 type ContentItem = {
@@ -44,7 +43,7 @@ const emptyForm: ContentForm = {
 };
 
 export default function UploadShareContentPage() {
-  const { sectionNames: sectionOptions } = useClassesAndSections();
+  const { classes, sectionsOf, sectionNames } = useClassesAndSections();
   const { data: items, add, update, remove, loading } = useApi<ContentItem>("/api/download-center/content");
   const [form, setForm] = useState<ContentForm>(emptyForm);
   const [editing, setEditing] = useState<ContentItem | null>(null);
@@ -101,6 +100,16 @@ export default function UploadShareContentPage() {
     await remove(id);
   };
 
+  const resolveClassId = (value: string): number | null => {
+    const n = parseInt(value);
+    if (Number.isFinite(n)) {
+      if (classes.some((c) => c.id === n)) return n;
+    }
+    return classes.find((c) => c.name === value)?.id ?? null;
+  };
+  const formClassId = resolveClassId(form.className);
+  const formSectionNames = formClassId ? sectionsOf(formClassId).map((s) => s.name) : sectionNames;
+
   return (
     <div className="space-y-6 p-6">
       <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-[var(--primary)] to-[var(--primary)]/80 px-6 py-4 shadow-sm">
@@ -139,11 +148,12 @@ export default function UploadShareContentPage() {
                 <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">Class</label>
                 <select
                   value={form.className}
-                  onChange={(e) => setForm({ ...form, className: e.target.value })}
+                  onChange={(e) => setForm({ ...form, className: e.target.value, section: "" })}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
                 >
-                  {classOptions.map((c) => (
-                    <option key={c} value={c}>Class {c}</option>
+                  <option value="">Select</option>
+                  {classes.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
               </div>
@@ -152,10 +162,12 @@ export default function UploadShareContentPage() {
                 <select
                   value={form.section}
                   onChange={(e) => setForm({ ...form, section: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
+                  disabled={!formClassId}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)] disabled:opacity-50"
                 >
-                  {sectionOptions.map((s) => (
-                    <option key={s} value={s}>Section {s}</option>
+                  <option value="">Select</option>
+                  {formSectionNames.map((s) => (
+                    <option key={s} value={s}>{s}</option>
                   ))}
                 </select>
               </div>
@@ -300,11 +312,12 @@ export default function UploadShareContentPage() {
                   <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">Class</label>
                   <select
                     value={form.className}
-                    onChange={(e) => setForm({ ...form, className: e.target.value })}
+                    onChange={(e) => setForm({ ...form, className: e.target.value, section: "" })}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
                   >
-                    {classOptions.map((c) => (
-                      <option key={c} value={c}>Class {c}</option>
+                    <option value="">Select</option>
+                    {classes.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
                 </div>
@@ -313,10 +326,12 @@ export default function UploadShareContentPage() {
                   <select
                     value={form.section}
                     onChange={(e) => setForm({ ...form, section: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
+                    disabled={!formClassId}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)] disabled:opacity-50"
                   >
-                    {sectionOptions.map((s) => (
-                      <option key={s} value={s}>Section {s}</option>
+                    <option value="">Select</option>
+                    {formSectionNames.map((s) => (
+                      <option key={s} value={s}>{s}</option>
                     ))}
                   </select>
                 </div>

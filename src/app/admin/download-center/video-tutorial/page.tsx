@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { Save, Pencil, Trash2, X } from "lucide-react";
 import { useApi } from "@/lib/use-api";
+import { useClassesAndSections } from "@/lib/use-classes-sections";
 
-const classOptions = Array.from({ length: 12 }, (_, i) => String(i + 1));
 const subjectOptions = ["Mathematics", "Science", "English", "Hindi", "Social Studies", "Sanskrit"];
 
 type VideoTutorial = {
@@ -27,12 +27,13 @@ type VideoForm = {
 const emptyForm: VideoForm = {
   title: "",
   videoUrl: "",
-  className: "1",
+  className: "",
   subject: subjectOptions[0],
   description: "",
 };
 
 export default function VideoTutorialPage() {
+  const { classNames } = useClassesAndSections();
   const { data: videos, add, update, remove, loading } = useApi<VideoTutorial>("/api/download-center/video-tutorial");
   const [form, setForm] = useState<VideoForm>(emptyForm);
   const [editing, setEditing] = useState<VideoTutorial | null>(null);
@@ -105,8 +106,9 @@ export default function VideoTutorialPage() {
                   onChange={(e) => setForm({ ...form, className: e.target.value })}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
                 >
-                  {classOptions.map((c) => (
-                    <option key={c} value={c}>Class {c}</option>
+                  <option value="">Select</option>
+                  {classNames.map((c) => (
+                    <option key={c} value={c}>{c}</option>
                   ))}
                 </select>
               </div>
@@ -228,8 +230,9 @@ export default function VideoTutorialPage() {
                     onChange={(e) => setForm({ ...form, className: e.target.value })}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
                   >
-                    {classOptions.map((c) => (
-                      <option key={c} value={c}>Class {c}</option>
+                    <option value="">Select</option>
+                    {classNames.map((c) => (
+                      <option key={c} value={c}>{c}</option>
                     ))}
                   </select>
                 </div>

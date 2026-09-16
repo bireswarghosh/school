@@ -1,8 +1,16 @@
 "use client"
 
-import { useState } from "react"
-import { Save, Check, Loader2 } from "lucide-react"
+import { useState, useEffect } from "react"
+import { Save, Check, Loader2, Zap, Camera, Video, LogIn, Maximize, QrCode, Settings2, Smartphone, ScanLine } from "lucide-react"
 import { useSchoolSettings } from "@/lib/use-school-settings"
+
+const cardIcon: Record<string, any> = {
+  auto: Zap,
+  scanner: Camera,
+  camera: Video,
+  inout: LogIn,
+  fullscreen: Maximize,
+}
 
 export default function QRSettingPage() {
   const { settings, loading, save, saving } = useSchoolSettings("qrattendance.")
@@ -12,17 +20,18 @@ export default function QRSettingPage() {
   const [inOutAttendance, setInOutAttendance] = useState("disabled")
   const [fullScreen, setFullScreen] = useState("disabled")
   const [savedOk, setSavedOk] = useState(false)
-
-  // Hydrate form from server once settings arrive (render-phase init, runs once)
   const [hydrated, setHydrated] = useState(false)
-  if (!loading && !hydrated) {
-    setHydrated(true)
-    setAutoAttendance(settings["autoAttendance"] || "enabled")
-    setScannerDevice(settings["scannerDevice"] || "camera")
-    setCameraType(settings["cameraType"] || "back")
-    setInOutAttendance(settings["inOutAttendance"] || "disabled")
-    setFullScreen(settings["fullScreen"] || "disabled")
-  }
+
+  useEffect(() => {
+    if (!loading && !hydrated) {
+      setAutoAttendance(settings["autoAttendance"] || "enabled")
+      setScannerDevice(settings["scannerDevice"] || "camera")
+      setCameraType(settings["cameraType"] || "back")
+      setInOutAttendance(settings["inOutAttendance"] || "disabled")
+      setFullScreen(settings["fullScreen"] || "disabled")
+      setHydrated(true)
+    }
+  }, [loading, hydrated, settings])
 
   const handleSave = async () => {
     const ok = await save({
@@ -34,176 +43,170 @@ export default function QRSettingPage() {
     })
     if (!ok) return
     setSavedOk(true)
-    setTimeout(() => setSavedOk(false), 3000)
+    setTimeout(() => setSavedOk(false), 2800)
+  }
+
+  const ToggleRow = ({ label, desc, value, onChange, options }: { label: string; desc: string; value: string; onChange: (v: string) => void; options: { value: string; title: string; sub: string }[] }) => (
+    <div className="flex flex-col md:flex-row md:items-center gap-3">
+      {options.map((opt) => {
+        const active = value === opt.value
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange(opt.value)}
+            className={`flex-1 flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-left transition-all ${active ? "bg-[var(--primary)] border-[var(--primary)] text-white shadow-md" : "bg-white border-gray-200 hover:border-gray-300 text-gray-700"}`}
+          >
+            <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${active ? "bg-white/20" : "bg-gray-100"}`}>
+              <span className={`h-2.5 w-2.5 rounded-full ${active ? "bg-white" : "bg-gray-300"} ${active ? "shadow" : ""}`} />
+            </span>
+            <div className="min-w-0">
+              <p className={`text-sm font-semibold leading-none ${active ? "text-white" : "text-gray-800"}`}>{opt.title}</p>
+              <p className={`text-xs mt-0.5 ${active ? "text-white/80" : "text-gray-500"}`}>{opt.sub}</p>
+            </div>
+            {active && <Check className="ml-auto h-4 w-4 text-white" />}
+          </button>
+        )
+      })}
+    </div>
+  )
+
+  if (loading && !hydrated) {
+    return (
+      <div className="space-y-6">
+        <div className="h-24 rounded-2xl bg-gradient-to-br from-violet-600 via-indigo-600 to-purple-700 animate-pulse" />
+        <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-[var(--primary)]" /></div>
+      </div>
+    )
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-8">
       {savedOk && (
-        <div className="fixed top-4 right-4 z-[100] bg-green-600 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 text-sm">
-          <Check className="h-4 w-4" />
+        <div className="fixed top-4 right-4 z-[100] bg-emerald-600 text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 text-sm font-medium animate-in slide-in-from-top-2">
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20"><Check className="h-4 w-4" /></span>
           Settings saved successfully!
         </div>
       )}
 
-      <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-[var(--primary)] to-[var(--primary)]/80 px-6 py-4 shadow-sm">
-        <div className="relative z-10">
-          <h2 className="text-xl font-bold text-white">QR Code Attendance Setting</h2>
-          <p className="text-sm text-[var(--primary)]/80 mt-0.5">QR Code Attendance / Setting</p>
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-violet-600 via-indigo-600 to-purple-700 px-6 py-6 shadow-lg">
+        <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/15 blur-2xl" />
+        <div className="absolute -right-6 -bottom-12 h-32 w-32 rounded-full bg-white/10 blur-xl" />
+        <div className="absolute left-1/3 top-1/2 -translate-y-1/2 opacity-10"><QrCode className="h-28 w-28 text-white" /></div>
+        <div className="relative z-10 flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/20 backdrop-blur"><Settings2 className="h-4 w-4 text-white" /></span>
+              QR Code Attendance Setting
+            </h2>
+            <p className="text-sm text-white/80 mt-1">Configure scanner, camera and attendance behaviour • Applies to QR attendance page</p>
+          </div>
+          <div className="hidden md:flex items-center gap-2 text-white/90 text-xs bg-white/15 backdrop-blur rounded-full px-3 py-1.5 border border-white/20">
+            <ScanLine className="h-3.5 w-3.5" /> Auto: {autoAttendance} • {scannerDevice}
+          </div>
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex justify-center py-16 text-gray-400">
-          <Loader2 className="h-6 w-6 animate-spin" />
-        </div>
-      ) : (
-      <form onSubmit={(e) => { e.preventDefault(); handleSave() }} className="space-y-5">
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-          <div className="px-5 py-4 border-b border-gray-200">
-            <h3 className="text-base font-semibold text-gray-800">Auto Attendance</h3>
-            <p className="text-xs text-gray-500 mt-0.5">
-              When enabled, attendance is marked automatically on scan. When disabled, you manually select Present/Late/Half Day.
-            </p>
+      <form onSubmit={(e) => { e.preventDefault(); handleSave() }} className="space-y-4">
+        {/* Auto Attendance */}
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-amber-50 to-orange-50 flex items-center gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500 text-white shadow-sm"><Zap className="h-4 w-4" /></span>
+            <div>
+              <h3 className="text-sm font-bold text-gray-800">Auto Attendance</h3>
+              <p className="text-xs text-gray-500">When enabled, attendance is marked automatically on scan. When disabled, you manually select Present/Late/Half Day.</p>
+            </div>
           </div>
-          <div className="p-5 flex items-center gap-8">
-            <label className="flex items-center gap-2.5 cursor-pointer">
-              <input type="radio" name="autoAttendance" value="enabled" checked={autoAttendance === "enabled"}
-                onChange={(e) => setAutoAttendance(e.target.value)}
-                className="w-4 h-4 text-[var(--primary)] focus:ring-[var(--primary)]" />
-              <div>
-                <span className="text-sm font-medium text-gray-700">Enabled</span>
-                <p className="text-xs text-gray-400 mt-0.5">Attendance marked automatically</p>
-              </div>
-            </label>
-            <label className="flex items-center gap-2.5 cursor-pointer">
-              <input type="radio" name="autoAttendance" value="disabled" checked={autoAttendance === "disabled"}
-                onChange={(e) => setAutoAttendance(e.target.value)}
-                className="w-4 h-4 text-[var(--primary)] focus:ring-[var(--primary)]" />
-              <div>
-                <span className="text-sm font-medium text-gray-700">Disabled</span>
-                <p className="text-xs text-gray-400 mt-0.5">Manual selection of attendance</p>
-              </div>
-            </label>
+          <div className="p-5">
+            <ToggleRow value={autoAttendance} onChange={setAutoAttendance} label="Auto" desc="" options={[
+              { value: "enabled", title: "Enabled", sub: "Attendance marked automatically" },
+              { value: "disabled", title: "Disabled", sub: "Manual selection of attendance" },
+            ]} />
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-          <div className="px-5 py-4 border-b border-gray-200">
-            <h3 className="text-base font-semibold text-gray-800">Scanner Device Type</h3>
-            <p className="text-xs text-gray-500 mt-0.5">Choose the device type used for scanning QR codes / Barcodes</p>
+        {/* Scanner Device */}
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-sky-50 to-blue-50 flex items-center gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-500 text-white shadow-sm"><Camera className="h-4 w-4" /></span>
+            <div>
+              <h3 className="text-sm font-bold text-gray-800">Scanner Device Type</h3>
+              <p className="text-xs text-gray-500">Choose the device type used for scanning QR codes / Barcodes</p>
+            </div>
           </div>
-          <div className="p-5 flex items-center gap-8">
-            <label className="flex items-center gap-2.5 cursor-pointer">
-              <input type="radio" name="scannerDevice" value="camera" checked={scannerDevice === "camera"}
-                onChange={(e) => setScannerDevice(e.target.value)}
-                className="w-4 h-4 text-[var(--primary)] focus:ring-[var(--primary)]" />
-              <div>
-                <span className="text-sm font-medium text-gray-700">Camera</span>
-                <p className="text-xs text-gray-400 mt-0.5">Use device camera / webcam</p>
-              </div>
-            </label>
-            <label className="flex items-center gap-2.5 cursor-pointer">
-              <input type="radio" name="scannerDevice" value="sensor" checked={scannerDevice === "sensor"}
-                onChange={(e) => setScannerDevice(e.target.value)}
-                className="w-4 h-4 text-[var(--primary)] focus:ring-[var(--primary)]" />
-              <div>
-                <span className="text-sm font-medium text-gray-700">Sensor</span>
-                <p className="text-xs text-gray-400 mt-0.5">Use external QR scanner / sensor</p>
-              </div>
-            </label>
+          <div className="p-5">
+            <ToggleRow value={scannerDevice} onChange={setScannerDevice} label="Scanner" desc="" options={[
+              { value: "camera", title: "Camera", sub: "Use device camera / webcam" },
+              { value: "sensor", title: "Sensor", sub: "Use external QR scanner / sensor" },
+            ]} />
+            <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
+              <Smartphone className="h-3.5 w-3.5" /> Tip: Camera works on mobile, tablet and laptop. Sensor is for USB barcode scanners.
+            </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-          <div className="px-5 py-4 border-b border-gray-200">
-            <h3 className="text-base font-semibold text-gray-800">Camera Type</h3>
-            <p className="text-xs text-gray-500 mt-0.5">Select front or back camera for scanning (only applicable for Camera device)</p>
+        {/* Camera Type */}
+        <div className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-opacity ${scannerDevice !== "camera" ? "opacity-60" : "border-gray-200"}`}>
+          <div className="px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-violet-50 to-purple-50 flex items-center gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500 text-white shadow-sm"><Video className="h-4 w-4" /></span>
+            <div className="flex-1">
+              <h3 className="text-sm font-bold text-gray-800">Camera Type</h3>
+              <p className="text-xs text-gray-500">Select front or back camera for scanning (only applicable for Camera device)</p>
+            </div>
+            {scannerDevice !== "camera" && <span className="text-xs font-medium bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full">Requires Camera</span>}
           </div>
-          <div className="p-5 flex items-center gap-8">
-            <label className="flex items-center gap-2.5 cursor-pointer">
-              <input type="radio" name="cameraType" value="front" checked={cameraType === "front"}
-                onChange={(e) => setCameraType(e.target.value)}
-                className="w-4 h-4 text-[var(--primary)] focus:ring-[var(--primary)]" />
-              <div>
-                <span className="text-sm font-medium text-gray-700">Front Camera</span>
-                <p className="text-xs text-gray-400 mt-0.5">Selfie / front-facing camera</p>
-              </div>
-            </label>
-            <label className="flex items-center gap-2.5 cursor-pointer">
-              <input type="radio" name="cameraType" value="back" checked={cameraType === "back"}
-                onChange={(e) => setCameraType(e.target.value)}
-                className="w-4 h-4 text-[var(--primary)] focus:ring-[var(--primary)]" />
-              <div>
-                <span className="text-sm font-medium text-gray-700">Back Camera</span>
-                <p className="text-xs text-gray-400 mt-0.5">Rear / environment-facing camera</p>
-              </div>
-            </label>
+          <div className="p-5">
+            <ToggleRow value={cameraType} onChange={setCameraType} label="Camera" desc="" options={[
+              { value: "front", title: "Front Camera", sub: "Selfie / front-facing camera" },
+              { value: "back", title: "Back Camera", sub: "Rear / environment-facing camera" },
+            ]} />
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-          <div className="px-5 py-4 border-b border-gray-200">
-            <h3 className="text-base font-semibold text-gray-800">In and Out Attendance</h3>
-            <p className="text-xs text-gray-500 mt-0.5">Enable In/Out attendance marking. Students scan once on entry and once on exit.</p>
+        {/* In and Out */}
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-emerald-50 to-teal-50 flex items-center gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500 text-white shadow-sm"><LogIn className="h-4 w-4" /></span>
+            <div>
+              <h3 className="text-sm font-bold text-gray-800">In and Out Attendance</h3>
+              <p className="text-xs text-gray-500">Enable In/Out attendance marking. Students scan once on entry and once on exit.</p>
+            </div>
           </div>
-          <div className="p-5 flex items-center gap-8">
-            <label className="flex items-center gap-2.5 cursor-pointer">
-              <input type="radio" name="inOutAttendance" value="enabled" checked={inOutAttendance === "enabled"}
-                onChange={(e) => setInOutAttendance(e.target.value)}
-                className="w-4 h-4 text-[var(--primary)] focus:ring-[var(--primary)]" />
-              <div>
-                <span className="text-sm font-medium text-gray-700">Enabled</span>
-                <p className="text-xs text-gray-400 mt-0.5">In and Out attendance marking</p>
-              </div>
-            </label>
-            <label className="flex items-center gap-2.5 cursor-pointer">
-              <input type="radio" name="inOutAttendance" value="disabled" checked={inOutAttendance === "disabled"}
-                onChange={(e) => setInOutAttendance(e.target.value)}
-                className="w-4 h-4 text-[var(--primary)] focus:ring-[var(--primary)]" />
-              <div>
-                <span className="text-sm font-medium text-gray-700">Disabled</span>
-                <p className="text-xs text-gray-400 mt-0.5">Standard single-scan attendance</p>
-              </div>
-            </label>
+          <div className="p-5">
+            <ToggleRow value={inOutAttendance} onChange={setInOutAttendance} label="InOut" desc="" options={[
+              { value: "enabled", title: "Enabled", sub: "In and Out attendance marking" },
+              { value: "disabled", title: "Disabled", sub: "Standard single-scan attendance" },
+            ]} />
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-          <div className="px-5 py-4 border-b border-gray-200">
-            <h3 className="text-base font-semibold text-gray-800">Full Screen Mode</h3>
-            <p className="text-xs text-gray-500 mt-0.5">Enable full screen mode for seamless scanning on mobile/tablet devices</p>
+        {/* Full Screen */}
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-indigo-50 to-violet-50 flex items-center gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-500 text-white shadow-sm"><Maximize className="h-4 w-4" /></span>
+            <div>
+              <h3 className="text-sm font-bold text-gray-800">Full Screen Mode</h3>
+              <p className="text-xs text-gray-500">Enable full screen mode for seamless scanning on mobile/tablet devices</p>
+            </div>
           </div>
-          <div className="p-5 flex items-center gap-8">
-            <label className="flex items-center gap-2.5 cursor-pointer">
-              <input type="radio" name="fullScreen" value="enabled" checked={fullScreen === "enabled"}
-                onChange={(e) => setFullScreen(e.target.value)}
-                className="w-4 h-4 text-[var(--primary)] focus:ring-[var(--primary)]" />
-              <div>
-                <span className="text-sm font-medium text-gray-700">Enabled</span>
-                <p className="text-xs text-gray-400 mt-0.5">Full screen scanner view</p>
-              </div>
-            </label>
-            <label className="flex items-center gap-2.5 cursor-pointer">
-              <input type="radio" name="fullScreen" value="disabled" checked={fullScreen === "disabled"}
-                onChange={(e) => setFullScreen(e.target.value)}
-                className="w-4 h-4 text-[var(--primary)] focus:ring-[var(--primary)]" />
-              <div>
-                <span className="text-sm font-medium text-gray-700">Disabled</span>
-                <p className="text-xs text-gray-400 mt-0.5">Standard page view</p>
-              </div>
-            </label>
+          <div className="p-5">
+            <ToggleRow value={fullScreen} onChange={setFullScreen} label="FS" desc="" options={[
+              { value: "enabled", title: "Enabled", sub: "Full screen scanner view" },
+              { value: "disabled", title: "Disabled", sub: "Standard page view" },
+            ]} />
           </div>
         </div>
 
-        <div className="flex justify-end">
-          <button type="submit" disabled={saving}
-            className="px-6 py-2 bg-[var(--primary)] text-white text-sm font-medium rounded-lg hover:bg-[var(--secondary)] transition-colors flex items-center gap-2 disabled:opacity-60">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save
-          </button>
+        <div className="flex justify-end sticky bottom-4 z-10">
+          <div className="bg-white border border-gray-200 shadow-xl rounded-2xl p-2 flex items-center gap-2">
+            <span className="text-xs text-gray-500 px-2 hidden sm:inline">Changes apply to QR attendance scanner instantly</span>
+            <button type="submit" disabled={saving}
+              className="px-6 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-sm font-bold rounded-xl hover:opacity-95 transition-opacity flex items-center gap-2 disabled:opacity-60 shadow-md">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save Settings
+            </button>
+          </div>
         </div>
       </form>
-      )}
     </div>
   )
 }

@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
 import { query, getById, create, update } from "@/lib/db"
-import { hashPassword, verifyPassword, getSessionRole } from "@/lib/auth"
+import { hashPassword, verifyPassword, getSessionRole, getSessionSchoolId } from "@/lib/auth"
 
 function getErrorMessage(e: unknown) {
   return e instanceof Error ? e.message : String(e)
+}
+
+function noSchool() {
+  return NextResponse.json({ error: "Unauthorized. Please log out and log back in with your school code." }, { status: 401 })
 }
 
 async function loadStaff(id: number) {
@@ -21,35 +25,38 @@ async function findStaffByEmail(email: string) {
   return loadStaff(Number(res.rows[0].id))
 }
 
-async function findUserByEmail(email: string) {
+async function findUserByEmail(email: string, schoolId: number) {
   if (!email) return null
   const res = await query(
     `SELECT id, username, name, email, role, role_id, status, school_id, last_login
-     FROM users WHERE lower(email) = lower($1)`,
-    [email]
+     FROM users WHERE lower(email) = lower($1) AND school_id = $2`,
+    [email, schoolId]
   )
   return res.rows[0] || null
 }
 
-async function findUserById(id: number) {
+async function findUserById(id: number, schoolId: number) {
   const res = await query(
     `SELECT u.id, u.username, u.name, u.email, u.role, u.role_id, u.status, u.school_id, u.last_login,
             s.name AS school_name
      FROM users u
      LEFT JOIN schools s ON s.id = u.school_id
-     WHERE u.id = $1`,
-    [id]
+     WHERE u.id = $1 AND u.school_id = $2`,
+    [id, schoolId]
   )
   return res.rows[0] || null
 }
 
 export async function GET(req: NextRequest) {
   try {
+    const schoolId = getSessionSchoolId(req)
+    if (!schoolId) return noSchool()
+
     const { searchParams } = new URL(req.url)
     const id = parseInt(searchParams.get("id") || "0")
     if (!id) return NextResponse.json({ error: "id required" }, { status: 400 })
 
-    const user = await findUserById(id)
+    const user = await findUserById(id, schoolId)
     if (user) {
       const staff = user.email ? await findStaffByEmail(user.email) : null
       return NextResponse.json({ user, staff, mode: "user" })
@@ -57,7 +64,7 @@ export async function GET(req: NextRequest) {
 
     const staff = await loadStaff(id)
     if (staff) {
-      const linked = await findUserByEmail(staff.email)
+      const linked = await findUserByEmail(staff.email, schoolId)
       return NextResponse.json({ user: linked, staff, mode: "staff" })
     }
 
@@ -69,6 +76,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const schoolId = getSessionSchoolId(req)
+    if (!schoolId) return noSchool()
+
     const body = await req.json()
     const staffId = parseInt(body.id || "0")
     if (!staffId) return NextResponse.json({ error: "id required" }, { status: 400 })
@@ -77,7 +87,7 @@ export async function POST(req: NextRequest) {
     if (!staff.email) {
       return NextResponse.json({ error: "Staff email is required to create a login account" }, { status: 400 })
     }
-    const existing = await findUserByEmail(staff.email)
+    const existing = await findUserByEmail(staff.email, schoolId)
     if (existing) {
       return NextResponse.json({ error: "A login account already exists for this staff member" }, { status: 409 })
     }
@@ -115,11 +125,14 @@ export async function POST(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
+    const schoolId = getSessionSchoolId(req)
+    if (!schoolId) return noSchool()
+
     const body = await req.json()
     const id = parseInt(body.id || "0")
     if (!id) return NextResponse.json({ error: "id required" }, { status: 400 })
 
-    const res = await query(`SELECT * FROM users WHERE id = $1`, [id])
+    const res = await query(`SELECT * FROM users WHERE id = $1 AND school_id = $2`, [id, schoolId])
     const user = res.rows[0]
     if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 })
 

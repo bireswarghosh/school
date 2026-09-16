@@ -4,6 +4,7 @@ import { toast as notify } from "@/lib/toast"
 import { useState } from "react"
 import { Search, Plus, Trash2, Save, X } from "lucide-react"
 import { useApi } from "@/lib/use-api"
+import { useClassesAndSections } from "@/lib/use-classes-sections"
 
 type MultiClassRow = {
   id: string
@@ -36,6 +37,7 @@ const newRow = (): MultiClassRow => ({
 })
 
 export default function MultiClassStudentPage() {
+  const { classes, sectionsOf, sectionNames } = useClassesAndSections()
   const { data: assignments, add, remove } = useApi<Assignment>("/api/student-information/multi-class")
   const [showResults, setShowResults] = useState(false)
   const [classVal, setClassVal] = useState("")
@@ -117,11 +119,9 @@ export default function MultiClassStudentPage() {
                 className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent"
               >
                 <option value="">Select</option>
-                <option value="Class 1">Class 1</option>
-                <option value="Class 2">Class 2</option>
-                <option value="Class 3">Class 3</option>
-                <option value="Class 4">Class 4</option>
-                <option value="Class 5">Class 5</option>
+                {classes.map((c) => (
+                  <option key={c.id} value={c.name}>{c.name}</option>
+                ))}
               </select>
             </div>
             <div>
@@ -132,9 +132,9 @@ export default function MultiClassStudentPage() {
                 className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent"
               >
                 <option value="">Select</option>
-                <option value="A">A</option>
-                <option value="B">B</option>
-                <option value="C">C</option>
+                {sectionNames.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
               </select>
             </div>
             <button
@@ -194,11 +194,9 @@ export default function MultiClassStudentPage() {
                       className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent"
                     >
                       <option value="">Select Class</option>
-                      <option value="Class 1">Class 1</option>
-                      <option value="Class 2">Class 2</option>
-                      <option value="Class 3">Class 3</option>
-                      <option value="Class 4">Class 4</option>
-                      <option value="Class 5">Class 5</option>
+                      {classes.map((c) => (
+                        <option key={c.id} value={c.name}>{c.name}</option>
+                      ))}
                     </select>
                     <select
                       value={row.section}
@@ -206,9 +204,9 @@ export default function MultiClassStudentPage() {
                       className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent"
                     >
                       <option value="">Select Section</option>
-                      <option value="A">A</option>
-                      <option value="B">B</option>
-                      <option value="C">C</option>
+                      {sectionNames.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
                     </select>
                     <button
                       onClick={() => handleRemoveRow(row.id)}

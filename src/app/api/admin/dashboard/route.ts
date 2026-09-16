@@ -1,10 +1,12 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { query } from "@/lib/db"
+import { getSessionSchoolId } from "@/lib/auth"
 
 const num = (v: unknown) => Number(v ?? 0)
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const schoolId = getSessionSchoolId(req) ?? -1
     const sessionRes = await query(
       `SELECT id, name, start_date, end_date FROM sessions WHERE is_active = true ORDER BY id LIMIT 1`
     )
@@ -32,7 +34,8 @@ export async function GET() {
     const sectionsRes = await query(`SELECT COUNT(*)::int AS count FROM sections`)
 
     const parentsRes = await query(
-      `SELECT COUNT(*)::int AS count FROM users WHERE role = 'parent' AND status = 'Active'`
+      `SELECT COUNT(*)::int AS count FROM users WHERE role = 'parent' AND status = 'Active' AND school_id = $1`,
+      [schoolId]
     )
 
     const todayAttRes = await query(

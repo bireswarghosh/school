@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { UserCheck, Search, ShoppingCart, Plus, Minus, Trash2, Ticket, Save, Package, BookOpen, X, Loader2, Printer, FileDown, MessageCircle, CheckCircle2, Pencil, SlidersHorizontal, Eye } from "lucide-react"
+import { UserCheck, Search, ShoppingCart, Plus, Minus, Trash2, Ticket, Save, Package, BookOpen, X, Loader2, Printer, FileDown, MessageCircle, CheckCircle2, Pencil, SlidersHorizontal, Eye, Layers } from "lucide-react"
 import { useApi } from "@/lib/use-api"
 import { ProductIcon, getIconColors, InventoryBadge } from "@/lib/inventory-icons"
 import { useCurrency } from "@/lib/currency-context"
@@ -63,7 +63,7 @@ type Receipt = {
   student: { id: number; name: string; className?: string; sectionName?: string; phone?: string } | null
 }
 
-const inputCls = "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
+const inputCls = "w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:border-orange-300 focus:ring-2 focus:ring-orange-200 dark:focus:ring-orange-500/20 outline-none transition-all"
 
 const round2 = (n: number) => Math.round(n * 100) / 100
 
@@ -758,44 +758,65 @@ export default function StudentSalesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-[var(--primary)] to-[var(--primary)]/80 px-6 py-4 shadow-sm">
-        <div className="relative z-10">
-          <h2 className="text-xl font-bold text-white">Student Sales (POS)</h2>
-          <p className="text-sm text-white/80 mt-1">Students Inventory / Student Sales</p>
+    <div className="space-y-5">
+      {/* POS hero — matches admin premium style */}
+      <div className="relative overflow-hidden rounded-[24px] border border-orange-200 dark:border-white/10 bg-white dark:bg-slate-900 shadow-[0_8px_32px_rgba(255,119,50,0.12)]">
+        <div className="absolute inset-0 bg-gradient-to-br from-orange-50 via-amber-50/60 to-white dark:from-orange-950/15 dark:via-amber-950/10 dark:to-slate-900" />
+        <div className="absolute -right-16 -top-16 h-64 w-64 rounded-full bg-gradient-to-br from-orange-200/40 to-amber-200/30 blur-3xl opacity-60 dark:opacity-20" />
+        <div className="absolute top-0 inset-x-0 h-[3px] bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600" />
+        <div className="relative px-6 py-5 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="inline-flex items-center gap-2 rounded-full bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/20 px-3 py-1 text-[11px] font-black tracking-widest text-orange-700 dark:text-orange-300 uppercase">
+              <ShoppingCart className="h-3.5 w-3.5" /> Students Inventory <span className="opacity-30">·</span> POS
+            </p>
+            <h2 className="mt-2 text-[22px] font-extrabold tracking-tight text-slate-900 dark:text-white">Student Sales <span className="bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">POS</span></h2>
+            <p className="text-[13px] font-medium text-slate-600 dark:text-slate-400 mt-1">Scan student, add items, checkout — fast and accurate billing</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-3.5 py-1.5 text-xs font-bold shadow">
+              <Package className="h-3.5 w-3.5" /> {products.length} products
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3.5 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200">
+              <BookOpen className="h-3.5 w-3.5 text-violet-600" /> {books.length} books
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3.5 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200">
+              <Ticket className="h-3.5 w-3.5 text-emerald-600" /> {activeCoupons.length} coupons
+            </span>
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
-            <div className="px-5 py-3 border-b border-gray-200">
-              <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                <UserCheck className="h-4 w-4 text-[var(--primary)]" />
-                Find Student
-              </h3>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="lg:col-span-2 space-y-5">
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 flex items-center gap-2">
+              <span className="h-8 w-8 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center text-white shadow-sm"><UserCheck className="h-4 w-4" /></span>
+              <div>
+                <h3 className="text-[13px] font-extrabold tracking-wide text-slate-900 dark:text-white uppercase">Find Student</h3>
+                <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Search by name, admission/roll or class</p>
+              </div>
             </div>
             <div className="p-5">
               <div className="relative">
-                <div className="flex gap-2">
+                <div className="flex gap-2.5">
                   <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                     <input
                       type="text"
                       value={searchQuery}
                       onChange={(e) => handleSearchInput(e.target.value)}
                       onFocus={() => { if (searchResults.length > 0) setSearchOpen(true) }}
-                      className={inputCls + " pl-9 pr-9"}
-                      placeholder="Search by name, roll no, admission no or class"
+                      className={inputCls + " pl-10 pr-10 !rounded-full bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700"}
+                      placeholder="Search by name, roll, admission no…"
                     />
-                    {searching && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-[var(--primary)]" />}
+                    {searching && <Loader2 className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-orange-500" />}
                   </div>
                   <button
                     onClick={() => searchStudents()}
                     disabled={searching || searchQuery.trim().length < 2}
-                    className="px-4 py-2 bg-[var(--primary)] text-white text-sm font-medium rounded-lg hover:bg-[var(--secondary)] transition-colors flex items-center gap-2 whitespace-nowrap disabled:opacity-50"
+                    className="px-5 py-2.5 bg-gradient-to-br from-orange-500 to-amber-500 text-white text-sm font-black rounded-full hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center gap-1.5 whitespace-nowrap disabled:opacity-50 shadow-sm"
                   >
-                    <UserCheck className="h-4 w-4" />
+                    <Search className="h-4 w-4" />
                     Search
                   </button>
                 </div>
@@ -803,107 +824,116 @@ export default function StudentSalesPage() {
                 {searchOpen && (
                   <>
                     <div className="fixed inset-0 z-10" onClick={() => setSearchOpen(false)} />
-                    <div className="absolute z-20 mt-1.5 w-full rounded-lg border border-gray-200 bg-white shadow-xl overflow-hidden">
+                    <div className="absolute z-20 mt-2 w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-2xl overflow-hidden">
                       {searchResults.length === 0 ? (
-                        <div className="px-4 py-3 text-sm text-gray-400">No matching students</div>
+                        <div className="px-4 py-8 text-center text-sm text-slate-400">No matching students</div>
                       ) : (
                         <div className="max-h-64 overflow-y-auto">
                           {searchResults.map((r) => (
                             <button
                               key={r.id}
                               onClick={() => selectStudent(r)}
-                              className="w-full text-left px-4 py-2.5 hover:bg-[var(--primary-light)]/40 border-b border-gray-50 last:border-0 transition-colors"
+                              className="w-full text-left px-4 py-3 hover:bg-orange-50 dark:hover:bg-orange-500/10 border-b border-slate-50 dark:border-slate-800 last:border-0 transition-colors flex items-center gap-3"
                             >
-                              <div className="text-sm font-medium text-gray-800">{r.name}</div>
-                              <div className="text-xs text-gray-500">
-                                Class {r.class || "-"}{r.section ? ` - ${r.section}` : ""} · Roll {r.rollNo || "-"} · {r.admissionNo || ""}
+                              <span className="h-8 w-8 rounded-full bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center text-white text-xs font-black shrink-0">{r.name.charAt(0)}</span>
+                              <div className="min-w-0">
+                                <div className="text-sm font-bold text-slate-800 dark:text-white truncate">{r.name}</div>
+                                <div className="text-xs text-slate-500 dark:text-slate-400">
+                                  {r.class || "-"} {r.section ? `· ${r.section}` : ""} · Roll {r.rollNo || "-"} · {r.admissionNo || ""}
+                                </div>
                               </div>
                             </button>
                           ))}
                         </div>
                       )}
-                      <div className="px-4 py-2 bg-gray-50 border-t border-gray-100 text-[11px] text-gray-400">
-                        {searchResults.length} match{searchResults.length === 1 ? "" : "es"} · click a row to select
+                      <div className="px-4 py-2 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 text-[11px] font-medium text-slate-500">
+                        {searchResults.length} match{searchResults.length === 1 ? "" : "es"} · click to select
                       </div>
                     </div>
                   </>
                 )}
               </div>
 
-              {formErrors.student && <p className="text-red-500 text-xs mt-1">{formErrors.student}</p>}
+              {formErrors.student && <p className="text-red-500 text-xs mt-2 font-medium">{formErrors.student}</p>}
               {findState === "found" && student && (
-                <div className="mt-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2.5 text-sm text-emerald-700 flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <span className="font-medium">{student.name}</span>
-                    {student.className && <span> - {student.className}</span>}
-                    {student.sectionName && <span> / {student.sectionName}</span>}
+                <div className="mt-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 px-4 py-3 text-sm text-emerald-800 dark:text-emerald-300 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="h-8 w-8 rounded-full bg-emerald-600 flex items-center justify-center text-white text-xs font-black shrink-0">{student.name.charAt(0)}</span>
+                    <div className="min-w-0">
+                      <div className="font-extrabold truncate">{student.name}</div>
+                      <div className="text-xs text-emerald-700 dark:text-emerald-300">{student.className || "-"} {student.sectionName ? `· ${student.sectionName}` : ""}</div>
+                    </div>
                   </div>
                   <button
                     onClick={() => { setStudent(null); setFindState("idle"); setSearchQuery(""); setSearchResults([]); setSearchOpen(false) }}
-                    className="shrink-0 p-1 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-colors"
+                    className="shrink-0 h-8 w-8 rounded-full bg-white dark:bg-slate-800 border border-emerald-200 dark:border-emerald-500/20 flex items-center justify-center text-emerald-700 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-colors"
                     title="Clear selection"
                   >
                     <X className="h-4 w-4" />
                   </button>
                 </div>
               )}
-              {findState === "notfound" && <p className="mt-2 text-red-600 text-sm">Student not found</p>}
+              {findState === "notfound" && <p className="mt-2 text-red-600 text-sm font-medium">Student not found</p>}
             </div>
           </div>
 
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
-            <div className="px-5 py-3 border-b border-gray-200">
-              <h3 className="text-sm font-semibold text-gray-700">Catalog</h3>
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 flex items-center justify-between">
+              <h3 className="text-[13px] font-extrabold tracking-wide text-slate-900 dark:text-white uppercase flex items-center gap-2"><span className="h-7 w-7 rounded-lg bg-violet-600 flex items-center justify-center text-white"><Layers className="h-3.5 w-3.5" /></span> Catalog</h3>
+              <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-1 text-xs font-bold text-slate-600 dark:text-slate-300">{catalogTab === "products" ? `${filteredProducts.length} products` : `${bookClassBooks.length} books`}</span>
             </div>
-            <div className="border-b border-gray-200 px-5">
-              <div className="flex gap-4">
+            <div className="px-5 pt-3 flex items-center gap-2">
+              <div className="flex rounded-full bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700">
                 <button
                   onClick={() => setCatalogTab("products")}
-                  className={`flex items-center gap-2 px-2 py-3 text-sm font-medium border-b-2 transition-colors ${catalogTab === "products" ? "border-[var(--primary)] text-[var(--primary)]" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+                  className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-black rounded-full transition-colors ${catalogTab === "products" ? "bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow" : "text-slate-600 dark:text-slate-400 hover:text-slate-900"}`}
                 >
-                  <Package className="h-4 w-4" /> Products
+                  <Package className="h-3.5 w-3.5" /> Products
                 </button>
                 <button
                   onClick={() => setCatalogTab("books")}
-                  className={`flex items-center gap-2 px-2 py-3 text-sm font-medium border-b-2 transition-colors ${catalogTab === "books" ? "border-[var(--primary)] text-[var(--primary)]" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+                  className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-black rounded-full transition-colors ${catalogTab === "books" ? "bg-gradient-to-br from-violet-600 to-indigo-600 text-white shadow" : "text-slate-600 dark:text-slate-400 hover:text-slate-900"}`}
                 >
-                  <BookOpen className="h-4 w-4" /> Books
+                  <BookOpen className="h-3.5 w-3.5" /> Books
                 </button>
-                <div className="flex-1 flex items-center justify-end pb-2">
-                  {catalogTab === "products" && (
+              </div>
+              <div className="flex-1 flex items-center justify-end">
+                {catalogTab === "products" && (
+                  <div className="relative w-56 hidden sm:block">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
                     <input
                       type="text"
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
-                      className="w-56 rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
-                      placeholder="Search products..."
+                      className="w-full pl-9 pr-3 py-2 rounded-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-200"
+                      placeholder="Search products…"
                     />
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             </div>
             <div className="p-5">
               {catalogTab === "products" ? (
                 filteredProducts.length === 0 ? (
-                  <div className="text-center py-8 text-gray-400 text-sm">No products found</div>
+                  <div className="text-center py-12 text-slate-400 text-sm rounded-xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40">No products found</div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
                     {filteredProducts.map((p) => {
                       const vars = getProductVariations(p.id)
                       const hasVar = vars.length > 0
                       const fromPrice = hasVar ? Math.min(...vars.map((v: any) => Number(v.price ?? v.additionalPrice ?? p.sellingPrice) || 0)) : 0
                       return (
-                      <div key={p.id} className={`flex items-center justify-between rounded-lg border px-4 py-3 transition-colors ${hasVar ? "border-[var(--primary)]/20 bg-[var(--primary-light)]/30 hover:border-[var(--primary)]/30" : "border-gray-200 hover:border-[var(--primary)]"}`}>
+                      <div key={p.id} className={`group flex items-center justify-between rounded-2xl border px-4 py-3.5 transition-all hover:-translate-y-0.5 hover:shadow-md ${hasVar ? "border-orange-200 dark:border-orange-500/20 bg-orange-50/40 dark:bg-orange-500/5" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-orange-200 hover:bg-orange-50/30"}`}>
                         <div className="min-w-0 flex items-center gap-3">
-                          {(() => { const cat = categories.find(c=> c.id===p.categoryId); const effIcon = (p as any).icon || (cat as any)?.icon; const effImage = (p as any).iconImage || (cat as any)?.iconImage; return <InventoryBadge name={p.name} icon={effIcon} iconImage={effImage} categoryName={cat?.name} size={36} /> })()}
-                          <div>
-                            <div className="text-sm font-medium text-gray-800 flex items-center gap-2">{p.name}{hasVar && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[var(--primary-light)] text-[var(--primary)] text-[10px] font-medium"><SlidersHorizontal className="h-3 w-3" />{vars.length} vars</span>}</div>
-                            <div className="text-xs text-gray-500">{hasVar ? `From ${money(fromPrice)} · ${vars.length} sizes` : money(Number(p.sellingPrice) || 0)}</div>
+                          {(() => { const cat = categories.find(c=> c.id===p.categoryId); const effIcon = (p as any).icon || (cat as any)?.icon; const effImage = (p as any).iconImage || (cat as any)?.iconImage; return <InventoryBadge name={p.name} icon={effIcon} iconImage={effImage} categoryName={cat?.name} size={40} /> })()}
+                          <div className="min-w-0">
+                            <div className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2 truncate">{p.name}{hasVar && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-orange-500 text-white text-[10px] font-black"><SlidersHorizontal className="h-3 w-3" />{vars.length}</span>}</div>
+                            <div className="text-xs font-medium text-slate-500 dark:text-slate-400">{hasVar ? `From ${money(fromPrice)} · ${vars.length} sizes` : money(Number(p.sellingPrice) || 0)}</div>
                           </div>
                         </div>
                         <button
                           onClick={() => handleProductAdd(p)}
-                          className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-white text-xs font-medium transition-colors ${hasVar ? "bg-[var(--primary)] hover:bg-[var(--secondary)]" : "bg-[var(--primary)] hover:bg-[var(--secondary)]"}`}
+                          className="ml-2 shrink-0 flex items-center gap-1 px-3.5 py-1.5 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-black hover:scale-105 transition-transform shadow-sm"
                         >
                           <Plus className="h-3.5 w-3.5" /> {hasVar ? "Select" : "Add"}
                         </button>
@@ -913,13 +943,13 @@ export default function StudentSalesPage() {
                   </div>
                 )
               ) : (
-                <div className="flex flex-col items-center gap-4 py-8">
+                <div className="flex flex-col items-center gap-4 py-6">
                   <div className="w-full max-w-md">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Select Class</label>
+                    <label className="block text-xs font-black tracking-widest text-slate-500 dark:text-slate-400 uppercase mb-2">Select Class</label>
                     <select
                       value={bookClass}
                       onChange={(e) => { setBookClass(e.target.value); setBookSelection({}); setBookModalOpen(false) }}
-                      className={inputCls}
+                      className={inputCls + " !rounded-full"}
                     >
                       <option value="">-- Select Class --</option>
                       {classes.map((c) => (
@@ -930,15 +960,15 @@ export default function StudentSalesPage() {
                   <button
                     onClick={openBookModal}
                     disabled={!bookClass}
-                    className="flex items-center gap-2 px-5 py-2 bg-[var(--primary)] text-white text-sm font-medium rounded-lg hover:bg-[var(--secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-br from-violet-600 to-indigo-600 text-white text-sm font-black rounded-full hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed shadow"
                   >
                     <BookOpen className="h-4 w-4" />
                     Select Books
                   </button>
-                  <p className="text-xs text-gray-400">
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full px-3 py-1">
                     {bookClass
-                      ? `${bookClassBooks.length} book(s) in ${bookClassName} · ${cart.filter((i) => i.type === "book").reduce((s, i) => s + i.quantity, 0)} book(s) in cart`
-                      : "Select a class to pick books for the student"}
+                      ? `${bookClassBooks.length} books in ${bookClassName} · ${cart.filter((i) => i.type === "book").reduce((s, i) => s + i.quantity, 0)} in cart`
+                      : "Select a class to pick books"}
                   </p>
                 </div>
               )}
@@ -946,62 +976,66 @@ export default function StudentSalesPage() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-gray-200 bg-white shadow-sm self-start lg:sticky lg:top-4">
-          <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-              <ShoppingCart className="h-4 w-4 text-[var(--primary)]" />
-              Cart
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm self-start lg:sticky lg:top-4 overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 flex items-center justify-between">
+            <h3 className="text-[13px] font-extrabold tracking-wide text-slate-900 dark:text-white uppercase flex items-center gap-2">
+              <span className="h-7 w-7 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center text-white"><ShoppingCart className="h-3.5 w-3.5" /></span>
+              Cart <span className="ml-1 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-2 py-0.5 text-[11px] font-black">{cart.length}</span>
             </h3>
             {cart.length > 0 && (
-              <button onClick={() => setCart([])} className="text-xs text-red-500 hover:text-red-600 font-medium">Clear</button>
+              <button onClick={() => setCart([])} className="text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 dark:bg-red-500/10 px-2.5 py-1 rounded-full border border-red-200 dark:border-red-500/20">Clear</button>
             )}
           </div>
           <div className="p-5 space-y-4">
-            {formErrors.cart && <p className="text-red-500 text-xs">{formErrors.cart}</p>}
+            {formErrors.cart && <p className="text-red-600 text-xs font-medium bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl px-3 py-2">{formErrors.cart}</p>}
             {cart.length === 0 ? (
-              <div className="text-center py-10 text-gray-400">
-                <ShoppingCart className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                <p className="text-sm">Cart is empty. Add items from the catalog.</p>
+              <div className="text-center py-12 text-slate-400 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40">
+                <div className="h-12 w-12 rounded-2xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center mx-auto mb-3 shadow-sm">
+                  <ShoppingCart className="h-6 w-6 opacity-60" />
+                </div>
+                <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">Cart is empty</p>
+                <p className="text-xs mt-1">Add products or books from the catalog</p>
               </div>
             ) : (
-              <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+              <div className="space-y-2.5 max-h-[320px] overflow-y-auto pr-1 portal-scroll">
                 {cart.map((item) => {
                   const subtotal = round2(item.quantity * item.unitPrice)
                   return (
-                    <div key={item.key} className="rounded-lg border border-gray-200 p-3 space-y-2">
-                      <div className="flex items-center justify-between gap-2">
+                    <div key={item.key} className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3.5 space-y-2.5 hover:border-slate-300 dark:hover:border-slate-600 transition-colors">
+                      <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <div className="text-sm font-medium text-gray-800 truncate">{item.name}</div>
-                          <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium mt-1 ${item.type === "book" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}`}>
+                          <div className="text-sm font-bold text-slate-900 dark:text-white leading-tight line-clamp-2">{item.name}</div>
+                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-black mt-1.5 border ${item.type === "book" ? "bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-500/30" : "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/30"}`}>
                             {item.type === "book" ? "Book" : "Product"}
                           </span>
                         </div>
-                        <button onClick={() => removeFromCart(item.key)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
-                          <Trash2 className="h-4 w-4" />
+                        <button onClick={() => removeFromCart(item.key)} className="h-7 w-7 rounded-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-400 hover:text-red-600 hover:border-red-200 hover:bg-red-50 shrink-0 transition-colors">
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className="flex items-center rounded-lg border border-gray-300">
-                          <button onClick={() => updateQty(item.key, item.quantity - 1)} className="px-2 py-1.5 text-gray-500 hover:text-[var(--primary)]"><Minus className="h-3.5 w-3.5" /></button>
+                        <div className="flex items-center rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
+                          <button onClick={() => updateQty(item.key, item.quantity - 1)} className="h-8 w-8 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"><Minus className="h-3.5 w-3.5" /></button>
                           <input
                             type="number"
                             min={1}
                             value={item.quantity}
                             onChange={(e) => updateQty(item.key, Number(e.target.value))}
-                            className="w-10 text-center text-sm border-0 focus:ring-0"
+                            className="w-11 text-center text-sm font-bold border-0 focus:ring-0 bg-transparent text-slate-900 dark:text-white"
                           />
-                          <button onClick={() => updateQty(item.key, item.quantity + 1)} className="px-2 py-1.5 text-gray-500 hover:text-[var(--primary)]"><Plus className="h-3.5 w-3.5" /></button>
+                          <button onClick={() => updateQty(item.key, item.quantity + 1)} className="h-8 w-8 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"><Plus className="h-3.5 w-3.5" /></button>
                         </div>
-                        <div className="flex-1">
+                        <div className="flex-1 relative">
+                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">{symbol}</span>
                           <input
                             type="number"
                             min={0}
                             value={item.unitPrice}
                             onChange={(e) => updatePrice(item.key, Number(e.target.value))}
-                            className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-right focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
+                            className="w-full rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 pl-7 pr-2 py-1.5 text-sm font-bold text-right text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-200"
                           />
                         </div>
-                        <div className="text-sm font-semibold text-gray-800 w-20 text-right">{money(subtotal)}</div>
+                        <div className="text-sm font-black text-slate-900 dark:text-white w-20 text-right">{money(subtotal)}</div>
                       </div>
                     </div>
                   )
@@ -1009,125 +1043,130 @@ export default function StudentSalesPage() {
               </div>
             )}
 
-            <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 space-y-2">
+            <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 p-4 space-y-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
-                  <Ticket className="h-3.5 w-3.5 text-[var(--primary)]" /> Coupon
+                <label className="block text-[11px] font-black tracking-widest text-slate-500 dark:text-slate-400 uppercase mb-1.5 flex items-center gap-1">
+                  <Ticket className="h-3.5 w-3.5 text-orange-500" /> Coupon
                 </label>
-                <select value={couponId} onChange={(e) => setCouponId(e.target.value)} className={inputCls}>
+                <select value={couponId} onChange={(e) => setCouponId(e.target.value)} className={inputCls + " !py-2"}>
                   <option value="">No Coupon</option>
                   {activeCoupons.map((c) => (
                     <option key={c.id} value={c.id}>{c.code}</option>
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Payment Status</label>
-                <select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)} className={inputCls}>
-                  <option>Paid</option>
-                  <option>Unpaid</option>
-                </select>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-black tracking-widest text-slate-500 dark:text-slate-400 uppercase mb-1.5">Payment</label>
+                  <select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)} className={inputCls + " !py-2"}>
+                    <option>Paid</option>
+                    <option>Unpaid</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-black tracking-widest text-slate-500 dark:text-slate-400 uppercase mb-1.5">Sale Date</label>
+                  <input type="date" value={saleDate} onChange={(e) => setSaleDate(e.target.value)} className={inputCls + " !py-2"} />
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Sale Date</label>
-                <input type="date" value={saleDate} onChange={(e) => setSaleDate(e.target.value)} className={inputCls} />
-              </div>
-              <div className="pt-1 space-y-1.5 text-sm border-t border-gray-200">
-                <div className="flex justify-between text-gray-600">
+              <div className="pt-2 space-y-1.5 text-sm border-t border-slate-200 dark:border-slate-700">
+                <div className="flex justify-between font-medium text-slate-600 dark:text-slate-300">
                   <span>Subtotal</span>
-                  <span>{money(subtotalSum)}</span>
+                  <span className="font-bold text-slate-900 dark:text-white">{money(subtotalSum)}</span>
                 </div>
-                <div className="flex justify-between text-gray-600">
+                <div className="flex justify-between font-medium text-slate-600 dark:text-slate-300">
                   <span>Discount</span>
-                  <span className="text-red-600">- {money(couponDiscount)}</span>
+                  <span className="font-black text-red-600">- {money(couponDiscount)}</span>
                 </div>
-                <div className="flex justify-between font-semibold text-gray-800 text-base">
+                <div className="flex justify-between font-black text-slate-900 dark:text-white text-[16px] pt-1">
                   <span>Total</span>
                   <span>{money(total)}</span>
                 </div>
               </div>
             </div>
 
-            {formErrors.form && <p className="text-red-500 text-xs">{formErrors.form}</p>}
+            {formErrors.form && <p className="text-red-600 text-xs font-medium bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl px-3 py-2">{formErrors.form}</p>}
             <button
               onClick={handleCheckout}
               disabled={saving}
-              className="w-full px-4 py-2.5 bg-[var(--primary)] text-white text-sm font-semibold rounded-lg hover:bg-[var(--secondary)] transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+              className="w-full px-4 py-3 bg-gradient-to-br from-orange-500 to-amber-500 text-white text-sm font-black rounded-full hover:shadow-lg hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-md"
             >
               <Save className="h-4 w-4" />
-              {saving ? "Recording..." : `Checkout · ${money(total)}`}
+              {saving ? "Recording…" : `Checkout · ${money(total)}`}
             </button>
           </div>
         </div>
       </div>
 
-      <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
-        <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-700">Recent Sales (grouped by order)</h3>
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 flex items-center justify-between">
+          <h3 className="text-[13px] font-extrabold tracking-wide text-slate-900 dark:text-white uppercase flex items-center gap-2"><span className="h-7 w-7 rounded-lg bg-slate-900 dark:bg-white flex items-center justify-center text-white dark:text-slate-900"><FileDown className="h-3.5 w-3.5" /></span> Recent Orders</h3>
           <div className="flex items-center gap-2 text-xs">
-            <span className="text-gray-500">Show</span>
-            <select value={recentPageSize} onChange={(e)=> setRecentPageSize(Number(e.target.value))} className="rounded-lg border border-gray-300 px-2 py-1 text-xs focus:ring-1 focus:ring-[var(--primary)]">
-              {[10,20,30,50,100].map(n=> <option key={n} value={n}>{n}</option>)}
+            <span className="text-slate-500 hidden sm:inline font-medium">Show</span>
+            <select value={recentPageSize} onChange={(e)=> setRecentPageSize(Number(e.target.value))} className="rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-orange-200">
+              {[10,20,30,50,100].map(n=> <option key={n} value={n}>{n} / page</option>)}
             </select>
-            <span className="text-gray-500">· {groupedOrders.length} orders</span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-2.5 py-1 text-[11px] font-black">{groupedOrders.length} orders</span>
           </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Sale No</th>
-                <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Student</th>
-                <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Items</th>
-                <th className="text-center px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Qty</th>
-                <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Total</th>
-                <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Date</th>
-                <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Status</th>
-                <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Actions</th>
+              <tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+                <th className="text-left px-4 py-3 font-black text-slate-500 dark:text-slate-400 text-[11px] uppercase tracking-widest">Sale No</th>
+                <th className="text-left px-4 py-3 font-black text-slate-500 dark:text-slate-400 text-[11px] uppercase tracking-widest">Student</th>
+                <th className="text-left px-4 py-3 font-black text-slate-500 dark:text-slate-400 text-[11px] uppercase tracking-widest">Items</th>
+                <th className="text-center px-4 py-3 font-black text-slate-500 dark:text-slate-400 text-[11px] uppercase tracking-widest">Qty</th>
+                <th className="text-right px-4 py-3 font-black text-slate-500 dark:text-slate-400 text-[11px] uppercase tracking-widest">Total</th>
+                <th className="text-left px-4 py-3 font-black text-slate-500 dark:text-slate-400 text-[11px] uppercase tracking-widest">Date</th>
+                <th className="text-left px-4 py-3 font-black text-slate-500 dark:text-slate-400 text-[11px] uppercase tracking-widest">Status</th>
+                <th className="text-right px-4 py-3 font-black text-slate-500 dark:text-slate-400 text-[11px] uppercase tracking-widest">Actions</th>
               </tr>
             </thead>
             <tbody>
               {groupedOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-8 text-gray-400">No sales yet</td>
+                  <td colSpan={8} className="text-center py-12 text-slate-400">
+                    <div className="h-10 w-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto mb-2"><ShoppingCart className="h-5 w-5" /></div>
+                    <p className="text-sm font-semibold">No sales yet</p><p className="text-xs">Orders will appear here after checkout</p>
+                  </td>
                 </tr>
               ) : pagedOrders.length===0 ? (
-                <tr><td colSpan={8} className="text-center py-8 text-gray-400">No orders on this page</td></tr>
+                <tr><td colSpan={8} className="text-center py-12 text-slate-400">No orders on this page</td></tr>
               ) : (
                 pagedOrders.map((g, idx) => (
-                  <tr key={g.saleNo} className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${idx % 2 === 1 ? "bg-gray-50/50" : ""}`}>
-                    <td className="px-4 py-3 font-medium text-gray-800 font-mono text-xs">{g.saleNo || "-"}</td>
-                    <td className="px-4 py-3 text-gray-600">{g.first.studentName || "-"}</td>
-                    <td className="px-4 py-3 text-gray-600">
+                  <tr key={g.saleNo} className={`border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors ${idx % 2 === 0 ? "bg-white dark:bg-slate-900" : "bg-slate-50/40 dark:bg-slate-800/20"}`}>
+                    <td className="px-4 py-3 font-mono text-xs font-bold text-slate-800 dark:text-slate-200">{g.saleNo || "-"}</td>
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-300 font-medium">{g.first.studentName || "-"}</td>
+                    <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1 max-w-[280px]">
                         {g.rows.slice(0,3).map((r,i)=> (
-                          <span key={r.id ?? i} className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${r.bookId ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}`}>{productName(r)}</span>
+                          <span key={r.id ?? i} className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-black border ${r.bookId ? "bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-500/30" : "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/30"}`}>{productName(r)}</span>
                         ))}
-                        {g.rows.length>3 && <span className="text-[11px] text-gray-400">+{g.rows.length-3} more</span>}
+                        {g.rows.length>3 && <span className="text-[11px] font-medium text-slate-400">+{g.rows.length-3} more</span>}
                       </div>
-                      <div className="text-[11px] text-gray-400">{g.count} item{g.count>1?"s":""}</div>
+                      <div className="text-[11px] font-medium text-slate-400">{g.count} item{g.count>1?"s":""}</div>
                     </td>
-                    <td className="px-4 py-3 text-center text-gray-600">{g.qty}</td>
-                    <td className="px-4 py-3 text-right font-medium text-gray-800">{money(g.total)}</td>
-                    <td className="px-4 py-3 text-gray-600">{g.date ? String(g.date).slice(0, 10) : "-"}</td>
+                    <td className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-300">{g.qty}</td>
+                    <td className="px-4 py-3 text-right font-black text-slate-900 dark:text-white">{money(g.total)}</td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-slate-400 text-xs">{g.date ? String(g.date).slice(0, 10) : "-"}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${g.first.paymentStatus === "Paid" ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
-                        {g.first.paymentStatus || "Unpaid"}
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black border ${g.first.paymentStatus === "Paid" ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30" : "bg-red-50 text-red-700 border-red-200 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/30"}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${g.first.paymentStatus === "Paid" ? "bg-emerald-500" : "bg-red-500"}`} />{g.first.paymentStatus || "Unpaid"}
                       </span>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => setViewOrder({ saleNo: g.saleNo, rows: g.rows })} title="View details" className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--primary-light)] text-[var(--primary)] hover:bg-[var(--primary-light)] text-xs font-medium border border-[var(--primary)]/20">
+                        <button onClick={() => setViewOrder({ saleNo: g.saleNo, rows: g.rows })} title="View details" className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:border-orange-200 hover:text-orange-600">
                           <Eye className="h-3.5 w-3.5" /> View
                         </button>
-                        <button onClick={() => printSaleReceipt(g.first)} title="Print" className="p-1.5 rounded-lg text-gray-500 hover:text-[var(--primary)] hover:bg-[var(--primary)]/10">
-                          <Printer className="h-4 w-4" />
+                        <button onClick={() => printSaleReceipt(g.first)} title="Print" className="h-7 w-7 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:text-orange-600 hover:border-orange-200">
+                          <Printer className="h-3.5 w-3.5" />
                         </button>
-                        <button onClick={() => downloadSaleInvoice(g.first)} title="Download PDF" className="p-1.5 rounded-lg text-gray-500 hover:text-[var(--primary)] hover:bg-[var(--primary)]/10">
-                          <FileDown className="h-4 w-4" />
+                        <button onClick={() => downloadSaleInvoice(g.first)} title="Download PDF" className="h-7 w-7 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:text-orange-600 hover:border-orange-200">
+                          <FileDown className="h-3.5 w-3.5" />
                         </button>
-                        <button onClick={async()=>{ if(!confirm(`Delete order ${g.saleNo} with ${g.count} item(s)?`)) return; for(const r of g.rows){ if(r.id) await removeSale(r.id) } }} title="Delete order" className="p-1.5 rounded-lg text-gray-500 hover:text-red-600 hover:bg-red-50">
-                          <Trash2 className="h-4 w-4" />
+                        <button onClick={async()=>{ if(!confirm(`Delete order ${g.saleNo} with ${g.count} item(s)?`)) return; for(const r of g.rows){ if(r.id) await removeSale(r.id) } }} title="Delete order" className="h-7 w-7 rounded-full bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 flex items-center justify-center text-red-600 hover:bg-red-600 hover:text-white transition-colors">
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </td>
@@ -1137,12 +1176,12 @@ export default function StudentSalesPage() {
             </tbody>
           </table>
         </div>
-        <div className="px-5 py-3 border-t border-gray-200 flex items-center justify-between text-xs text-gray-500">
-          <span>Showing {pagedOrders.length} of {groupedOrders.length} orders · Page {recentPage} of {totalOrderPages}</span>
-          <div className="flex items-center gap-1">
-            <button onClick={()=> setRecentPage(p=> Math.max(1,p-1))} disabled={recentPage===1} className="px-2 py-1 rounded border border-gray-300 disabled:opacity-40 hover:bg-gray-50">Prev</button>
-            <span className="px-2">{recentPage}/{totalOrderPages}</span>
-            <button onClick={()=> setRecentPage(p=> Math.min(totalOrderPages,p+1))} disabled={recentPage===totalOrderPages} className="px-2 py-1 rounded border border-gray-300 disabled:opacity-40 hover:bg-gray-50">Next</button>
+        <div className="px-5 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30 flex items-center justify-between text-xs font-medium text-slate-600 dark:text-slate-400">
+          <span>Showing <b className="text-slate-900 dark:text-white">{pagedOrders.length}</b> of <b className="text-slate-900 dark:text-white">{groupedOrders.length}</b> · Page {recentPage} of {totalOrderPages}</span>
+          <div className="flex items-center gap-1.5">
+            <button onClick={()=> setRecentPage(p=> Math.max(1,p-1))} disabled={recentPage===1} className="px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 disabled:opacity-40 hover:bg-slate-50 dark:hover:bg-slate-700 font-bold">Prev</button>
+            <span className="px-2 font-black text-slate-900 dark:text-white">{recentPage}/{totalOrderPages}</span>
+            <button onClick={()=> setRecentPage(p=> Math.min(totalOrderPages,p+1))} disabled={recentPage===totalOrderPages} className="px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 disabled:opacity-40 hover:bg-slate-50 dark:hover:bg-slate-700 font-bold">Next</button>
           </div>
         </div>
       </div>

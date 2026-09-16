@@ -39,6 +39,7 @@ type MeUser = {
   origUid?: number
   origRole?: string
   origName?: string
+  impersonationDepth?: number
 }
 
 type Me = {
@@ -177,6 +178,8 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const role = me.user?.role || ""
   const nav = NAV[role] || NAV.student
   const impersonating = Boolean(me.user?.origUid)
+  const originIsSaas = me.user?.origRole === "super_admin"
+  const backLevels = Math.max(0, (me.user?.impersonationDepth || 1) - 1)
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" })
@@ -322,7 +325,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
             style={{ backgroundColor: "var(--primary)" }}
           >
             <ArrowLeftCircle className="h-4 w-4 shrink-0" />
-            {!collapsed && <span className="truncate">Back to Admin</span>}
+            {!collapsed && <span className="truncate">Back to {originIsSaas ? "SaaS Console" : "Admin"}</span>}
           </button>
         )}
         <button
@@ -346,13 +349,14 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
               <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
               Viewing portal as {me.user?.name || "this user"} ({role})
               {me.user?.origName ? ` · logged in by ${me.user.origName}` : ""}
+              {backLevels > 0 ? ` · ${backLevels} more ${backLevels === 1 ? "step" : "steps"} back` : ""}
             </span>
             <button
               onClick={handleBackToAdmin}
               className="inline-flex items-center gap-1.5 shrink-0 font-semibold px-3 py-1 rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition-colors lg:hidden"
             >
               <ArrowLeftCircle className="h-4 w-4" />
-              Back to Admin
+              Back to {originIsSaas ? "SaaS Console" : "Admin"}
             </button>
           </div>
         </div>

@@ -56,14 +56,44 @@ function ClassPageInner() {
   const sectionsOf = (classId: number) =>
     sections.filter((s) => s.class_id === classId).sort((a, b) => a.name.localeCompare(b.name));
 
+  const totalClasses = classes.length
+  const totalSections = sections.length
+  const uniqueSections = new Set(sections.map(s => s.name.trim().toLowerCase())).size
+
   return (
-    <div className="space-y-6 p-6">
-      <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-[var(--primary)] to-[var(--primary)]/80 px-6 py-4 shadow-sm">
-        <h1 className="text-xl font-semibold text-white">Class &amp; Section</h1>
-        <p className="mt-1 text-sm text-white/80">Manage class levels and assign sections to each class</p>
+    <div className="space-y-6">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-violet-600 via-indigo-600 to-purple-700 px-6 py-6 shadow-lg">
+        <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/15 blur-2xl" />
+        <div className="absolute -right-6 -bottom-12 h-32 w-32 rounded-full bg-white/10 blur-xl" />
+        <div className="absolute left-1/3 top-1/2 -translate-y-1/2 opacity-10 hidden lg:block"><GraduationCap className="h-28 w-28 text-white" /></div>
+        <div className="relative z-10">
+          <h1 className="text-xl font-bold text-white flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/20 backdrop-blur"><GraduationCap className="h-4 w-4 text-white" /></span>
+            Class &amp; Section
+          </h1>
+          <p className="mt-1 text-sm text-white/80">Manage class levels and assign sections to each class • {totalClasses} classes • {uniqueSections} sections</p>
+        </div>
       </div>
 
-      <div className="flex gap-2">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-indigo-50 p-4 shadow-sm">
+          <div className="flex items-center justify-between"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white shadow-sm border text-violet-600"><GraduationCap className="h-4 w-4" /></span><span className="h-2 w-2 rounded-full bg-violet-500" /></div>
+          <p className="text-2xl font-black text-violet-700 mt-2">{totalClasses}</p>
+          <p className="text-[11px] font-bold tracking-widest uppercase text-violet-600/70">Total Classes</p>
+        </div>
+        <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 p-4 shadow-sm">
+          <div className="flex items-center justify-between"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white shadow-sm border text-emerald-600"><Layers className="h-4 w-4" /></span><span className="h-2 w-2 rounded-full bg-emerald-500" /></div>
+          <p className="text-2xl font-black text-emerald-700 mt-2">{uniqueSections}</p>
+          <p className="text-[11px] font-bold tracking-widest uppercase text-emerald-600/70">Sections</p>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-gray-50 p-4 shadow-sm">
+          <div className="flex items-center justify-between"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white shadow-sm border text-slate-600"><Layers className="h-4 w-4" /></span><span className="h-2 w-2 rounded-full bg-slate-400" /></div>
+          <p className="text-2xl font-black text-slate-700 mt-2">{totalSections}</p>
+          <p className="text-[11px] font-bold tracking-widest uppercase text-slate-500">Assignments</p>
+        </div>
+      </div>
+
+      <div className="inline-flex p-1 rounded-2xl bg-gray-100 border border-gray-200">
         {([
           { key: "class" as TabKey, label: "Class", icon: GraduationCap },
           { key: "sections" as TabKey, label: "Section", icon: Layers },
@@ -71,10 +101,10 @@ function ClassPageInner() {
           <button
             key={t.key}
             onClick={() => switchTab(t.key)}
-            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            className={`inline-flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-bold transition-all ${
               tab === t.key
-                ? "bg-[var(--primary)] text-white shadow-sm"
-                : "border border-gray-200 bg-white text-[var(--foreground)] hover:bg-gray-50"
+                ? "bg-white text-[var(--primary)] shadow-md border border-gray-200"
+                : "text-gray-600 hover:text-gray-800"
             }`}
           >
             <t.icon className="h-4 w-4" />
@@ -240,8 +270,12 @@ function ClassTab({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-        <h2 className="mb-4 text-base font-semibold text-[var(--title-color)]">Add Class</h2>
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-100 bg-gradient-to-r from-violet-50 to-indigo-50">
+          <h2 className="text-sm font-bold text-gray-800 flex items-center gap-2"><GraduationCap className="h-4 w-4 text-violet-600" /> Add Class</h2>
+          <p className="text-xs text-gray-500">Create a new class and assign sections</p>
+        </div>
+        <div className="p-5">
         {error && (
           <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>
         )}
@@ -269,16 +303,17 @@ function ClassTab({
         <button
           onClick={handleAdd}
           disabled={saving}
-          className="mt-4 inline-flex w-full h-[38px] items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-4 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+          className="mt-4 inline-flex w-full h-[38px] items-center justify-center gap-2 rounded-xl bg-[var(--primary)] px-4 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 shadow-md"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
           Save
         </button>
+        </div>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm lg:col-span-2">
-        <div className="px-5 py-3 border-b border-gray-200">
-          <h3 className="text-sm font-semibold text-[var(--title-color)]">Class List</h3>
+      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm lg:col-span-2">
+        <div className="px-5 py-3 border-b border-gray-100 bg-gradient-to-r from-violet-50 to-indigo-50">
+          <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2"><GraduationCap className="h-4 w-4 text-violet-600" /> Class List <span className="ml-auto text-xs font-medium bg-white border px-2.5 py-1 rounded-full">{sortedClasses.length} classes</span></h3>
         </div>
         <table className="w-full text-sm">
           <thead>

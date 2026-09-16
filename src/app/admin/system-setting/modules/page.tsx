@@ -1,8 +1,8 @@
 "use client"
 
 import { useState, useMemo, useEffect } from "react"
-import { Eye, EyeOff, Check, X, Search, Loader2, LayoutGrid, List } from "lucide-react"
-import { menuData, type MenuCategory } from "@/lib/menu-data"
+import { Eye, EyeOff, Check, X, Search, Loader2, LayoutGrid, List, Lock } from "lucide-react"
+import { menuData } from "@/lib/menu-data"
 
 type SidebarMenu = {
   id: number
@@ -12,6 +12,7 @@ type SidebarMenu = {
   path: string
   sort_order: number
   is_visible: boolean
+  locked?: boolean
 }
 
 type ViewMode = "card" | "list"
@@ -23,7 +24,7 @@ export default function ModulesPage() {
   const [success, setSuccess] = useState("")
   const [keyword, setKeyword] = useState("")
   const [view, setView] = useState<ViewMode>("card")
-  const [selectedCat, setSelectedCat] = useState<MenuCategory | null>(null)
+  const [selectedCat, setSelectedCat] = useState<(typeof mergedCategories)[0] | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [localVis, setLocalVis] = useState<Record<string, boolean>>({})
 
@@ -82,20 +83,25 @@ export default function ModulesPage() {
         ...cat,
         dbId: db?.id ?? null,
         isVisible: db?.is_visible ?? true,
-        childVis: cat.items.map((item) => {
-          const cdb = dbMenus.find(
-            (m) => m.label === item.label && m.parent_id === db?.id
-          )
-          return { label: item.label, dbId: cdb?.id ?? null, isVisible: cdb?.is_visible ?? true }
-        }),
+        locked: db?.locked ?? false,
+        childVis: cat.items
+          .map((item) => {
+            const cdb = dbMenus.find(
+              (m) => m.label === item.label && m.parent_id === db?.id
+            )
+            return { label: item.label, dbId: cdb?.id ?? null, isVisible: cdb?.is_visible ?? true, locked: cdb?.locked ?? false }
+          })
+          .filter((c) => !(c.locked && !c.isVisible)),
       }
     })
   }, [menuData, dbByLabel, dbMenus])
 
   const filtered = useMemo(() => {
-    if (!keyword.trim()) return mergedCategories
+    // Super-admin-disabled modules are fully hidden from the school panel
+    const visibleCats = mergedCategories.filter((c) => !(c.locked && !c.isVisible))
+    if (!keyword.trim()) return visibleCats
     const kw = keyword.toLowerCase()
-    return mergedCategories.filter((c) => c.label.toLowerCase().includes(kw))
+    return visibleCats.filter((c) => c.label.toLowerCase().includes(kw))
   }, [mergedCategories, keyword])
 
   const syncToDb = async (catLabel: string, childLabel: string | null, visible: boolean) => {
@@ -113,10 +119,10 @@ export default function ModulesPage() {
         await fetch(api, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: existing.id, is_visible: visible }),
+          body: JSON.stringify({ id: existing.id, is_visible: visible, locked: false }),
         })
         setDbMenus((prev) =>
-          prev.map((m) => (m.id === existing.id ? { ...m, is_visible: visible } : m))
+          prev.map((m) => (m.id === existing.id ? { ...m, is_visible: visible, locked: false } : m))
         )
       } else {
         const catDb = dbByLabel[catLabel.toLowerCase()]
@@ -127,6 +133,7 @@ export default function ModulesPage() {
           path: "",
           sort_order: 1,
           is_visible: visible,
+          locked: false,
         }
         if (parentId) payload.parent_id = parentId
 
@@ -151,14 +158,9 @@ export default function ModulesPage() {
   }
 
   const openSubmenuModal = (cat: (typeof mergedCategories)[0]) => {
-    const fullCat = menuData.find((c) => c.label === cat.label)!
-    setSelectedCat(fullCat)
-    const vis: Record<string, boolean> = {}
-    vis["__main__"] = cat.isVisible
-    for (const item of fullCat.items) {
-      const child = cat.childVis.find((c) => c.label === item.label)
-      vis[item.label] = child?.isVisible ?? true
-    }
+    setSelectedCat(cat)
+    const vis: Record<string, boolean> = { __main__: cat.isVisible }
+    for (const item of cat.childVis) vis[item.label] = item.isVisible
     setLocalVis(vis)
     setShowModal(true)
   }
@@ -177,7 +179,7 @@ export default function ModulesPage() {
       await syncToDb(selectedCat.label, null, mainVis)
     }
 
-    for (const item of selectedCat.items) {
+    for (const item of selectedCat.childVis) {
       const itemVis = localVis[item.label]
       const current = cat.childVis.find((c) => c.label === item.label)
       if (itemVis !== undefined && itemVis !== current?.isVisible) {
@@ -301,10 +303,15 @@ export default function ModulesPage() {
                         )}
                       </button>
                     </div>
-                    <div className="mt-1">
+                    <div className="mt-1 flex items-center gap-2">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${cat.isVisible ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
                         {cat.isVisible ? "Active" : "Inactive"}
                       </span>
+                      {cat.locked && cat.isVisible && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-700" title="This module is controlled by the super admin">
+                          <Lock className="h-3 w-3" /> Super admin
+                        </span>
+                      )}
                     </div>
                   </div>
                   {childCount > 0 && (
@@ -351,9 +358,16 @@ export default function ModulesPage() {
                       <td className="px-4 py-3 font-medium text-gray-800">{cat.label}</td>
                       <td className="px-4 py-3 text-gray-600">{childCount > 0 ? `${visibleCount}/${childCount} active` : "—"}</td>
                       <td className="px-4 py-3">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${cat.isVisible ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                          {cat.isVisible ? "Active" : "Inactive"}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${cat.isVisible ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                            {cat.isVisible ? "Active" : "Inactive"}
+                          </span>
+                          {cat.locked && cat.isVisible && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700" title="Controlled by super admin">
+                              <Lock className="h-3 w-3" />
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
@@ -417,7 +431,7 @@ export default function ModulesPage() {
                     {localVis["__main__"] !== false ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
                   </button>
                 </div>
-                {selectedCat.items.map((item) => (
+                {selectedCat.childVis.map((item) => (
                   <div key={item.label} className="flex items-center justify-between px-3 py-2 hover:bg-gray-50 rounded-lg transition-colors">
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-gray-400">└─</span>

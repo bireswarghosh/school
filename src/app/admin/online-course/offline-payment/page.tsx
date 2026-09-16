@@ -103,10 +103,15 @@ export default function OfflinePaymentPage() {
         </div>
       )}
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-800">Offline Payment</h2>
-          <p className="text-sm text-gray-500 mt-1">Online Course / Offline Payment</p>
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-600 px-6 py-6 shadow-lg">
+        <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/15 blur-2xl" />
+        <div className="absolute -right-6 -bottom-12 h-32 w-32 rounded-full bg-white/10 blur-xl" />
+        <div className="relative z-10">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/20 backdrop-blur"><DollarSign className="h-4 w-4 text-white" /></span>
+            Offline Payment
+          </h2>
+          <p className="text-sm text-white/80 mt-1">Online Course / Record cash, cheque or transfer payments</p>
         </div>
       </div>
 

@@ -12,6 +12,7 @@ export type AuthUser = {
   origUid?: number
   origRole?: string
   origName?: string
+  impersonationDepth?: number
 }
 
 export type School = {
