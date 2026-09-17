@@ -154,11 +154,11 @@ export default function SubjectGroupPage() {
     const firstSection = item.sections[0];
     setEditing(item);
     setForm({
-      name: item.name,
+      name: item.name ?? "",
       classId: firstSection ? String(firstSection.class_id) : "",
       sectionIds: item.sections.map((s) => s.section_id),
       subjectIds: item.subjects.map((s) => s.subject_id),
-      description: item.description,
+      description: item.description ?? "",
     });
     setError("");
   };
@@ -171,7 +171,7 @@ export default function SubjectGroupPage() {
       classId: firstSection ? String(firstSection.class_id) : "",
       sectionIds: [],
       subjectIds: item.subjects.map((s) => s.subject_id),
-      description: item.description,
+      description: item.description ?? "",
     });
     // also prefill paste text so user can see what was copied
     setPasteText(item.subjects.map((s) => s.name).join(", "));
@@ -194,7 +194,7 @@ export default function SubjectGroupPage() {
     setError("");
     const payload = {
       name: form.name.trim(),
-      description: form.description.trim(),
+      description: String(form.description ?? "").trim(),
       classId: Number(form.classId),
       sectionIds: form.sectionIds,
       subjectIds: form.subjectIds,
@@ -257,7 +257,7 @@ export default function SubjectGroupPage() {
                 Class <span className="text-red-500">*</span>
               </label>
               <select
-                value={form.classId}
+                value={form.classId ?? ""}
                 onChange={(e) => {
                   setForm({ ...form, classId: e.target.value, sectionIds: [] });
                   if (error) setError("");
@@ -387,7 +387,7 @@ export default function SubjectGroupPage() {
             <div>
               <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">Description</label>
               <textarea
-                value={form.description}
+                value={form.description ?? ""}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                 placeholder="Enter ..."
                 rows={3}
