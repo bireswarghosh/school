@@ -2,7 +2,7 @@
 // The generic api-handler + db.ts helpers automatically add
 // `school_id = ?` filtering for these tables.
 export const TENANT_TABLES = new Set<string>([
-  "classes", "sections", "subjects", "subject_groups", "departments", "designations", "staff", "students",
+  "classes", "sections", "subjects", "subject_types", "subject_groups", "departments", "designations", "staff", "students",
   "sessions", "student_categories", "student_houses", "disable_reasons", "student_promotions", "online_admissions",
   "alumni", "alumni_events", "alumni_attendance", "alumni_finance", "class_teachers", "timetable_entries", "lessons",
   "topics", "lesson_plans", "syllabus_statuses", "content_types", "content_items", "video_tutorials", "homework",

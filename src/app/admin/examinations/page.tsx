@@ -310,7 +310,7 @@ export default function ExaminationsPage() {
           <div className="p-0">
             <div className="px-5 py-3 border-b border-gray-100 bg-violet-50/50 flex items-center gap-2">
               <LayoutTemplate className="h-4 w-4 text-violet-600" />
-              <h3 className="text-sm font-semibold text-gray-700">Result Templates</h3>
+              <h3 className="text-sm font-semibold text-gray-700">Result Templates — Primary Format (Class I to V)</h3>
               <span className="ml-auto text-xs text-gray-400">{templates.length} templates</span>
               <Link href="/admin/result-card/templates" className="ml-2 inline-flex items-center gap-1.5 px-3 py-1.5 bg-[var(--primary)] text-white text-xs font-medium rounded-full hover:opacity-90">
                 <Plus className="h-3.5 w-3.5" /> Manage Templates
@@ -335,7 +335,7 @@ export default function ExaminationsPage() {
                         <td className="px-4 py-3 font-medium text-gray-800 flex items-center gap-2"><FileText className="h-4 w-4 text-violet-500" /> {t.name}</td>
                         <td className="px-4 py-3 text-gray-600">{t.class_name || "—"}</td>
                         <td className="px-4 py-3 text-gray-600">{t.session || "—"}</td>
-                        <td className="px-4 py-3 text-gray-600">{t.pages?.length ?? 0}</td>
+                        <td className="px-4 py-3 text-gray-600">{t.pages?.[0]?.config ? "Dynamic" : (t.pages?.length ?? 0)}</td>
                         <td className="px-4 py-3"><span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${t.is_active ? "bg-green-100 text-green-700 border border-green-200" : "bg-gray-100 text-gray-500"}`}>{t.is_active ? "Active" : "Inactive"}</span></td>
                       </tr>
                     ))
@@ -344,7 +344,7 @@ export default function ExaminationsPage() {
               </table>
             </div>
             <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
-              <span className="text-sm text-gray-500">{templates.length} templates — manage full builder at Result Templates</span>
+              <span className="text-sm text-gray-500">{templates.length} templates — Primary Format (Class I to V) dynamic builder at Result Templates</span>
               <Link href="/admin/result-card/templates" className="text-sm font-medium text-[var(--primary)] hover:underline">Open Template Builder →</Link>
             </div>
           </div>

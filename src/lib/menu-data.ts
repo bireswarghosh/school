@@ -366,7 +366,7 @@ export const menuData: MenuCategory[] = [
     label: "Custom Result",
     icon: "Award",
     items: [
-      { label: "Result Templates", path: "/admin/result-card/templates" },
+      { label: "Primary Format (Class I to V)", path: "/admin/result-card/templates" },
       { label: "Enter / Import Results", path: "/admin/result-card/records" },
       { label: "Print Result Cards", path: "/admin/result-card/print" },
     ],
