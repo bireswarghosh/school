@@ -533,11 +533,11 @@ export default function PrimaryFormatCard({
           <div className="flex-col">
             <table>
               <thead>
-                <tr><th>WORK HABITS</th><th>Half-Yearly</th><th>Annual</th></tr>
+                <tr><th>REGULARITY RECORD</th><th>Half-Yearly</th><th>Annual</th></tr>
               </thead>
               <tbody>
-                {cfg.workHabits.map((w) => (
-                  <tr key={w.id}><td className="text-left">{w.label}</td><td>{cellInput(`${w.id}_half`)}</td><td>{cellInput(`${w.id}_annual`)}</td></tr>
+                {cfg.regularity.map((r) => (
+                  <tr key={r.id}><td className="text-left">{r.label}</td><td>{cellInput(`${r.id}_half`)}</td><td>{cellInput(`${r.id}_annual`)}</td></tr>
                 ))}
               </tbody>
             </table>
@@ -561,15 +561,17 @@ export default function PrimaryFormatCard({
           <div className="flex-col">
             <table>
               <thead>
-                <tr><th>REGULARITY RECORD</th><th>Half-Yearly</th><th>Annual</th></tr>
+                <tr><th>WORK HABITS</th><th>Half-Yearly</th><th>Annual</th></tr>
               </thead>
               <tbody>
-                {cfg.regularity.map((r) => (
-                  <tr key={r.id}><td className="text-left">{r.label}</td><td>{cellInput(`${r.id}_half`)}</td><td>{cellInput(`${r.id}_annual`)}</td></tr>
+                {cfg.workHabits.map((w) => (
+                  <tr key={w.id}><td className="text-left">{w.label}</td><td>{cellInput(`${w.id}_half`)}</td><td>{cellInput(`${w.id}_annual`)}</td></tr>
                 ))}
               </tbody>
             </table>
+          </div>
 
+          <div className="flex-col">
             <table>
               <thead>
                 <tr><th>CO-CURRICULAR ACTIVITIES</th><th>Half-Yearly</th><th>Annual</th></tr>
@@ -581,23 +583,34 @@ export default function PrimaryFormatCard({
               </tbody>
             </table>
           </div>
-
-          <div className="flex-col">
-            <table>
-              <thead>
-                <tr><th colSpan={2}>KEY TO GRADES</th></tr>
-                <tr><th>GRADE</th><th>MARKS</th></tr>
-              </thead>
-              <tbody>
-                {cfg.gradeScale.map((g, i) => (
-                  <tr key={i}><td>{g.grade}</td><td>{g.range}</td></tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         </div>
 
-        <div className="final-result">
+        <table style={{ width: "100%", marginBottom: 16 }}>
+          <thead>
+            <tr><th colSpan={8} style={{ background: "#f8fafc", fontSize: 11, padding: "6px", letterSpacing: "0.05em" }}>KEY TO GRADES</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              {cfg.gradeScale.slice(0, 4).map((g, i) => (
+                <td key={`g1-${i}`} style={{ padding: "4px", textAlign: "center", border: "1px solid #000", background: i % 2 === 0 ? "#fff" : "#f8fafc" }}>
+                  <div style={{ fontWeight: 700, fontSize: 12 }}>{g.grade}</div>
+                  <div style={{ fontSize: 10, color: "#475569" }}>{g.range}</div>
+                </td>
+              ))}
+            </tr>
+            <tr>
+              {cfg.gradeScale.slice(4).map((g, i) => (
+                <td key={`g2-${i}`} style={{ padding: "4px", textAlign: "center", border: "1px solid #000", background: i % 2 === 0 ? "#fff" : "#f8fafc" }}>
+                  <div style={{ fontWeight: 700, fontSize: 12 }}>{g.grade}</div>
+                  <div style={{ fontSize: 10, color: "#475569" }}>{g.range}</div>
+                </td>
+              ))}
+              {cfg.gradeScale.length === 7 && <td colSpan={1} style={{ border: "1px solid #000", background: "#f8fafc" }}></td>}
+            </tr>
+          </tbody>
+        </table>
+
+        <div className="final-result" style={{ pageBreakBefore: "always", breakBefore: "page" }}>
           Overall Marks & Grade :{" "}
           {editable ? (
             <input value={data.overallMarks ?? ""} onChange={(e) => onChange?.("overallMarks", e.target.value)} style={{ width: 250, border: "none", borderBottom: "1px dashed #000", textAlign: "center", fontWeight: 700, fontSize: 16 }} />

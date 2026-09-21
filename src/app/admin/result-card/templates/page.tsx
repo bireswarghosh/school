@@ -6,7 +6,12 @@ import { useApi } from "@/lib/use-api"
 import { useClassesAndSections } from "@/lib/use-classes-sections"
 import PrimaryFormatCard, { PRIMARY_DEFAULT, PrimaryData } from "@/components/result-card/PrimaryFormatCard"
 import ProgressReportCard, { PROGRESS_DEFAULT } from "@/components/result-card/ProgressReportCard"
+import PrePrimaryFormatCard, { PREPRIMARY_DEFAULT } from "@/components/result-card/PrePrimaryFormatCard"
+import MiddleSchoolFormatCard, { MIDDLE_DEFAULT } from "@/components/result-card/MiddleSchoolFormatCard"
 import { DEFAULT_PRIMARY_CONFIG, PrimaryTemplateConfig, extractConfigFromTemplate, uid, ensureDataForConfig } from "@/lib/primary-config"
+import { DEFAULT_PROGRESS_CONFIG, ProgressTemplateConfig, extractProgressConfig, ensureProgressData } from "@/lib/progress-config"
+import { DEFAULT_PREPRIMARY_CONFIG, PrePrimaryConfig, extractPrePrimaryConfig, ensurePrePrimaryData } from "@/lib/preprimary-config"
+import { DEFAULT_MIDDLE_CONFIG, MiddleSchoolConfig, extractMiddleConfig, ensureMiddleData } from "@/lib/middle-config"
 import Swal from "sweetalert2"
 import "sweetalert2/dist/sweetalert2.min.css"
 
@@ -31,8 +36,12 @@ const swal = Swal.mixin({
 
 const TEMPLATE_NAME = "Primary Format (Class I to V)"
 const PROGRESS_NAME = "PROGRESS REPORT"
+const PREPRIMARY_NAME = "Pre-Primary Format (Montessori to K.G.)"
+const MIDDLE_NAME = "Middle School Format (Class VI to VIII)"
 const SESSION_DEFAULT = "2025-26"
 const isProgressTpl = (tpl: TemplateSetting | null | undefined) => !!tpl && tpl.name.toLowerCase().includes("progress")
+const isPrePrimaryTpl = (tpl: TemplateSetting | null | undefined) => !!tpl && tpl.name.toLowerCase().includes("pre-primary")
+const isMiddleTpl = (tpl: TemplateSetting | null | undefined) => !!tpl && tpl.name.toLowerCase().includes("middle")
 
 type TemplateSetting = {
   id: number
@@ -78,6 +87,9 @@ export default function TemplatesPage() {
   const [creating, setCreating] = useState(false)
   const [activeTab, setActiveTab] = useState<"fill" | "edit">("fill")
   const [tplConfig, setTplConfig] = useState<PrimaryTemplateConfig>({ ...DEFAULT_PRIMARY_CONFIG })
+  const [progressConfig, setProgressConfig] = useState<ProgressTemplateConfig>({ ...DEFAULT_PROGRESS_CONFIG })
+  const [prePrimaryConfig, setPrePrimaryConfig] = useState<PrePrimaryConfig>({ ...DEFAULT_PREPRIMARY_CONFIG })
+  const [middleConfig, setMiddleConfig] = useState<MiddleSchoolConfig>({ ...DEFAULT_MIDDLE_CONFIG })
   const [editTplName, setEditTplName] = useState("")
   const [savingTpl, setSavingTpl] = useState(false)
   const [uploadingLogo, setUploadingLogo] = useState(false)
@@ -90,10 +102,12 @@ export default function TemplatesPage() {
   const [activeTemplateId, setActiveTemplateId] = useState<number | null>(null)
   const primaryTemplate = useMemo(() => templates.find((t) => t.name === TEMPLATE_NAME) || null, [templates])
   const progressTemplate = useMemo(() => templates.find((t) => t.name.toLowerCase().includes("progress")) || null, [templates])
+  const prePrimaryTemplate = useMemo(() => templates.find((t) => t.name.toLowerCase().includes("pre-primary")) || null, [templates])
+  const middleTemplate = useMemo(() => templates.find((t) => t.name.toLowerCase().includes("middle")) || null, [templates])
   const activeTemplate = useMemo(() => {
     if (activeTemplateId) return templates.find((t) => t.id === activeTemplateId) || null
-    return primaryTemplate || progressTemplate || templates[0] || null
-  }, [templates, activeTemplateId, primaryTemplate, progressTemplate])
+    return primaryTemplate || progressTemplate || prePrimaryTemplate || middleTemplate || templates[0] || null
+  }, [templates, activeTemplateId, primaryTemplate, progressTemplate, prePrimaryTemplate, middleTemplate])
   const templateId = activeTemplate?.id ?? null
   const templateRecords = useMemo(() => (templateId ? records.filter((r) => r.template_id === templateId) : []), [records, templateId])
 
@@ -118,11 +132,33 @@ export default function TemplatesPage() {
   useEffect(() => {
     if (activeTemplate) {
       setEditTplName(activeTemplate.name)
-      if (isProgressTpl(activeTemplate)) {
-        setData((prev) => ({ ...PROGRESS_DEFAULT, ...(prev && prev.studentName ? prev : {}) }))
-        const cfg = extractConfigFromTemplate(activeTemplate as any)
-        if (cfg) setTplConfig(cfg)
-        else setTplConfig({ ...DEFAULT_PRIMARY_CONFIG })
+      if (isMiddleTpl(activeTemplate)) {
+        const cfg = extractMiddleConfig(activeTemplate as any)
+        if (cfg) {
+          setMiddleConfig(cfg)
+          setData((prev) => ensureMiddleData(cfg, { ...MIDDLE_DEFAULT, ...prev }))
+        } else {
+          setMiddleConfig({ ...DEFAULT_MIDDLE_CONFIG })
+          setData((prev) => ensureMiddleData(DEFAULT_MIDDLE_CONFIG, { ...MIDDLE_DEFAULT, ...prev }))
+        }
+      } else if (isPrePrimaryTpl(activeTemplate)) {
+        const cfg = extractPrePrimaryConfig(activeTemplate as any)
+        if (cfg) {
+          setPrePrimaryConfig(cfg)
+          setData((prev) => ensurePrePrimaryData(cfg, { ...PREPRIMARY_DEFAULT, ...prev }))
+        } else {
+          setPrePrimaryConfig({ ...DEFAULT_PREPRIMARY_CONFIG })
+          setData((prev) => ensurePrePrimaryData(DEFAULT_PREPRIMARY_CONFIG, { ...PREPRIMARY_DEFAULT, ...prev }))
+        }
+      } else if (isProgressTpl(activeTemplate)) {
+        const cfg = extractProgressConfig(activeTemplate as any)
+        if (cfg) {
+          setProgressConfig(cfg)
+          setData((prev) => ensureProgressData(cfg, { ...PROGRESS_DEFAULT, ...prev }))
+        } else {
+          setProgressConfig({ ...DEFAULT_PROGRESS_CONFIG })
+          setData((prev) => ensureProgressData(DEFAULT_PROGRESS_CONFIG, { ...PROGRESS_DEFAULT, ...prev }))
+        }
       } else {
         const cfg = extractConfigFromTemplate(activeTemplate as any)
         if (cfg) {
@@ -130,6 +166,7 @@ export default function TemplatesPage() {
           setData((prev) => ensureDataForConfig(cfg, prev))
         } else {
           setTplConfig({ ...DEFAULT_PRIMARY_CONFIG })
+          setData((prev) => ensureDataForConfig(DEFAULT_PRIMARY_CONFIG, prev))
         }
       }
     }
@@ -171,8 +208,8 @@ export default function TemplatesPage() {
         body: JSON.stringify({
           name: PROGRESS_NAME,
           session: SESSION_DEFAULT,
-          pages: [{ id: "progress-config", label: "Progress Config", config: { type: "progress" } }],
-          grade_scale: DEFAULT_PRIMARY_CONFIG.gradeScale,
+          pages: [{ id: "progress-config", label: "Progress Config", config: DEFAULT_PROGRESS_CONFIG }],
+          grade_scale: [],
           is_active: true,
         }),
       })
@@ -180,6 +217,56 @@ export default function TemplatesPage() {
       if (!res.ok) throw new Error(json.error || "Failed to create template")
       await refetchTpl()
       swal.fire({ icon: "success", title: "Template created", text: json.name || PROGRESS_NAME, confirmButtonColor: "#ff7732" })
+    } catch (e: any) {
+      swal.fire({ icon: "error", title: "Create failed", text: e.message, confirmButtonColor: "#ff7732" })
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const createPrePrimaryTemplate = async () => {
+    setCreating(true)
+    try {
+      const res = await fetch("/api/result-card/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: PREPRIMARY_NAME,
+          session: SESSION_DEFAULT,
+          pages: [{ id: "preprimary-config", label: "PrePrimary Config", config: DEFAULT_PREPRIMARY_CONFIG }],
+          grade_scale: [],
+          is_active: true,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || "Failed to create template")
+      await refetchTpl()
+      swal.fire({ icon: "success", title: "Template created", text: json.name || PREPRIMARY_NAME, confirmButtonColor: "#ff7732" })
+    } catch (e: any) {
+      swal.fire({ icon: "error", title: "Create failed", text: e.message, confirmButtonColor: "#ff7732" })
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const createMiddleTemplate = async () => {
+    setCreating(true)
+    try {
+      const res = await fetch("/api/result-card/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: MIDDLE_NAME,
+          session: SESSION_DEFAULT,
+          pages: [{ id: "middle-config", label: "Middle Config", config: DEFAULT_MIDDLE_CONFIG }],
+          grade_scale: [],
+          is_active: true,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || "Failed to create template")
+      await refetchTpl()
+      swal.fire({ icon: "success", title: "Template created", text: json.name || MIDDLE_NAME, confirmButtonColor: "#ff7732" })
     } catch (e: any) {
       swal.fire({ icon: "error", title: "Create failed", text: e.message, confirmButtonColor: "#ff7732" })
     } finally {
@@ -254,14 +341,32 @@ export default function TemplatesPage() {
     if (!trimmed) return swal.fire({ icon: "warning", title: "Name required", text: "Template name cannot be empty", confirmButtonColor: "#ff7732" })
     setSavingTpl(true)
     try {
+      const isMiddle = isMiddleTpl(activeTemplate)
+      const isPrePrimary = isPrePrimaryTpl(activeTemplate)
+      const isProgress = isProgressTpl(activeTemplate)
+      let pages: any
+      let grade_scale: any
+      if (isMiddle) {
+        pages = [{ id: "middle-config", label: "Middle Config", config: middleConfig }]
+        grade_scale = []
+      } else if (isPrePrimary) {
+        pages = [{ id: "preprimary-config", label: "PrePrimary Config", config: prePrimaryConfig }]
+        grade_scale = []
+      } else if (isProgress) {
+        pages = [{ id: "progress-config", label: "Progress Config", config: progressConfig }]
+        grade_scale = []
+      } else {
+        pages = [{ id: "primary-config", label: "Primary Config", config: tplConfig }]
+        grade_scale = tplConfig.gradeScale
+      }
       const res = await fetch(`/api/result-card/templates/${activeTemplate.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: trimmed,
           session: activeTemplate.session || SESSION_DEFAULT,
-          pages: [{ id: "primary-config", label: "Primary Config", config: tplConfig }],
-          grade_scale: tplConfig.gradeScale,
+          pages,
+          grade_scale,
           is_active: true,
         }),
       })
@@ -464,26 +569,55 @@ export default function TemplatesPage() {
   const selectStudent = (id: number | "manual" | null) => {
     setSelectedStudentId(id)
     setRecordId(null)
-    const def = isProgressTpl(activeTemplate) ? PROGRESS_DEFAULT : PRIMARY_DEFAULT
     if (id === null) {
-      setData(isProgressTpl(activeTemplate) ? { ...PROGRESS_DEFAULT } : ensureDataForConfig(tplConfig, { ...PRIMARY_DEFAULT }))
+      if (isMiddleTpl(activeTemplate)) setData({ ...MIDDLE_DEFAULT })
+      else if (isPrePrimaryTpl(activeTemplate)) setData({ ...PREPRIMARY_DEFAULT })
+      else if (isProgressTpl(activeTemplate)) setData({ ...PROGRESS_DEFAULT })
+      else setData(ensureDataForConfig(tplConfig, { ...PRIMARY_DEFAULT }))
       return
     }
     if (id === "manual") {
-      setData(isProgressTpl(activeTemplate) ? { ...PROGRESS_DEFAULT } : ensureDataForConfig(tplConfig, { ...PRIMARY_DEFAULT }))
+      if (isMiddleTpl(activeTemplate)) setData({ ...MIDDLE_DEFAULT })
+      else if (isPrePrimaryTpl(activeTemplate)) setData({ ...PREPRIMARY_DEFAULT })
+      else if (isProgressTpl(activeTemplate)) setData({ ...PROGRESS_DEFAULT })
+      else setData(ensureDataForConfig(tplConfig, { ...PRIMARY_DEFAULT }))
       return
     }
     const s = students.find((x) => x.id === id)
     const existing = templateRecords.find((r) => r.student_id === id)
     if (existing) {
       setRecordId(existing.id)
-      if (isProgressTpl(activeTemplate)) {
+      if (isMiddleTpl(activeTemplate)) {
+        setData({ ...MIDDLE_DEFAULT, ...(existing.data as any) })
+      } else if (isPrePrimaryTpl(activeTemplate)) {
+        setData({ ...PREPRIMARY_DEFAULT, ...(existing.data as any) })
+      } else if (isProgressTpl(activeTemplate)) {
         setData({ ...PROGRESS_DEFAULT, ...(existing.data as any) })
       } else {
         setData(ensureDataForConfig(tplConfig, { ...PRIMARY_DEFAULT, ...(existing.data as PrimaryData) }))
       }
     } else if (s) {
-      if (isProgressTpl(activeTemplate)) {
+      if (isMiddleTpl(activeTemplate)) {
+        setData({
+          ...MIDDLE_DEFAULT,
+          name: [s.first_name, s.last_name].filter(Boolean).join(" ") || MIDDLE_DEFAULT.name,
+          class: s.class_name || MIDDLE_DEFAULT.class,
+          rollNo: String(s.roll_no ?? MIDDLE_DEFAULT.rollNo),
+          motherName: (s as any).mother_name || MIDDLE_DEFAULT.motherName,
+          fatherName: (s as any).father_name || MIDDLE_DEFAULT.fatherName,
+          session: SESSION_DEFAULT,
+        })
+      } else if (isPrePrimaryTpl(activeTemplate)) {
+        setData({
+          ...PREPRIMARY_DEFAULT,
+          name: [s.first_name, s.last_name].filter(Boolean).join(" ") || PREPRIMARY_DEFAULT.name,
+          class: s.class_name || PREPRIMARY_DEFAULT.class,
+          rollNo: String(s.roll_no ?? PREPRIMARY_DEFAULT.rollNo),
+          motherName: (s as any).mother_name || PREPRIMARY_DEFAULT.motherName,
+          fatherName: (s as any).father_name || PREPRIMARY_DEFAULT.fatherName,
+          session: SESSION_DEFAULT,
+        })
+      } else if (isProgressTpl(activeTemplate)) {
         setData({
           ...PROGRESS_DEFAULT,
           studentName: [s.first_name, s.last_name].filter(Boolean).join(" ") || PROGRESS_DEFAULT.studentName,
@@ -509,7 +643,11 @@ export default function TemplatesPage() {
   const loadRecord = (r: RecordRow) => {
     setSelectedStudentId(r.student_id || "manual")
     setRecordId(r.id)
-    if (isProgressTpl(activeTemplate)) {
+    if (isMiddleTpl(activeTemplate)) {
+      setData({ ...MIDDLE_DEFAULT, ...(r.data as any) })
+    } else if (isPrePrimaryTpl(activeTemplate)) {
+      setData({ ...PREPRIMARY_DEFAULT, ...(r.data as any) })
+    } else if (isProgressTpl(activeTemplate)) {
       setData({ ...PROGRESS_DEFAULT, ...(r.data as any) })
     } else {
       setData(ensureDataForConfig(tplConfig, { ...PRIMARY_DEFAULT, ...(r.data as PrimaryData) }))
@@ -556,7 +694,11 @@ export default function TemplatesPage() {
       confirmButtonText: "Reset",
     })
     if (!result.isConfirmed) return
-    if (isProgressTpl(activeTemplate)) {
+    if (isMiddleTpl(activeTemplate)) {
+      setData({ ...MIDDLE_DEFAULT })
+    } else if (isPrePrimaryTpl(activeTemplate)) {
+      setData({ ...PREPRIMARY_DEFAULT })
+    } else if (isProgressTpl(activeTemplate)) {
       setData({ ...PROGRESS_DEFAULT })
     } else {
       setData(ensureDataForConfig(tplConfig, { ...PRIMARY_DEFAULT }))
@@ -574,12 +716,12 @@ export default function TemplatesPage() {
 
   return (
     <div className="space-y-5">
-      <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-[var(--primary)] to-[var(--primary)]/80 px-6 py-4 shadow-sm">
+      <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-[var(--primary)] to-[var(--primary)]/80 px-6 py-4 shadow-sm no-print">
         <h1 className="text-xl font-semibold text-white">Primary Format (Class I to V)</h1>
         <p className="mt-1 text-sm text-white/80">Custom Result / Primary Format — dynamic editable template</p>
       </div>
 
-      <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
+      <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 no-print">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-lg bg-orange-100 flex items-center justify-center">
@@ -602,6 +744,16 @@ export default function TemplatesPage() {
             {!progressTemplate && !tplLoading && (
               <button onClick={createProgressTemplate} disabled={creating} className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 px-4 py-2 text-sm font-medium text-indigo-600 hover:bg-indigo-50 disabled:opacity-50">
                 <Plus className="h-4 w-4" /> Add PROGRESS REPORT
+              </button>
+            )}
+            {!prePrimaryTemplate && !tplLoading && (
+              <button onClick={createPrePrimaryTemplate} disabled={creating} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 px-4 py-2 text-sm font-medium text-emerald-600 hover:bg-emerald-50 disabled:opacity-50">
+                <Plus className="h-4 w-4" /> Add Pre-Primary Format
+              </button>
+            )}
+            {!middleTemplate && !tplLoading && (
+              <button onClick={createMiddleTemplate} disabled={creating} className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 px-4 py-2 text-sm font-medium text-sky-600 hover:bg-sky-50 disabled:opacity-50">
+                <Plus className="h-4 w-4" /> Add Middle School Format
               </button>
             )}
           </div>
@@ -634,7 +786,7 @@ export default function TemplatesPage() {
                         {(() => {
                           const cfg = extractConfigFromTemplate(t as any)
                           if (cfg?.assignments && cfg.assignments.length > 0) {
-                            return <div className="text-[11px] text-indigo-600 truncate max-w-[280px]">{cfg.assignments.map((a) => `${a.className}${a.sectionIds.length ? ` (${a.sectionNames.join(",")})` : ""}`).join(" • ")}</div>
+                            return <div className="text-[11px] text-indigo-600 whitespace-normal break-words max-w-[320px] leading-tight">{cfg.assignments.map((a) => `${a.className}${a.sectionIds.length ? ` (${a.sectionNames.join(",")})` : ""}`).join(" • ")}</div>
                           }
                           return <div className="text-[11px] text-gray-400">All classes • Click Assign to set</div>
                         })()}
@@ -755,9 +907,13 @@ export default function TemplatesPage() {
             )}
           </div>
 
-          <div className="overflow-auto bg-[#e9ecef] p-4 rounded-xl border border-gray-200">
-            {isProgressTpl(activeTemplate) ? (
-              <ProgressReportCard data={data} onChange={handleChange} editable />
+          <div className="overflow-auto bg-[#e9ecef] p-4 rounded-xl border border-gray-200 print-area">
+            {isMiddleTpl(activeTemplate) ? (
+              <MiddleSchoolFormatCard data={data} onChange={handleChange} editable config={middleConfig} />
+            ) : isPrePrimaryTpl(activeTemplate) ? (
+              <PrePrimaryFormatCard data={data} onChange={handleChange} editable config={prePrimaryConfig} />
+            ) : isProgressTpl(activeTemplate) ? (
+              <ProgressReportCard data={data} onChange={handleChange} editable config={progressConfig} />
             ) : (
               <PrimaryFormatCard data={data} onChange={handleChange} editable config={tplConfig} />
             )}
@@ -784,15 +940,255 @@ export default function TemplatesPage() {
             </div>
           </div>
 
-          {isProgressTpl(activeTemplate) ? (
-            <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-6 text-center">
-              <h4 className="text-sm font-bold text-indigo-800">PROGRESS REPORT — Fixed Layout</h4>
-              <p className="text-xs text-indigo-600 mt-2">This template is a fixed Annual layout from <code>PROGRESS REPORT.html</code> — Formative II (FA2 20 / Project 10 / Class Test 10) + Summative II (SA2 40 / Class Test 10 / VIVA 10), 7 subjects with Lit/Lang split, Other Subjects and signatures.</p>
-              <p className="text-xs text-gray-500 mt-2">Edit name above and click <b>Save Template</b> • Use <b>Fill</b> tab to enter marks per student • All fields remain editable in Fill/Preview</p>
-              <div className="mt-6 text-left">
-                <ProgressReportCard data={data} onChange={() => {}} editable={false} />
+          {isMiddleTpl(activeTemplate) ? (
+            <>
+              <div className="rounded-xl border border-sky-200 bg-white shadow-sm p-5">
+                <h4 className="text-sm font-semibold text-sky-800 mb-3">Middle School Header — Class VI to VIII — all editable</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">School Name</label>
+                    <input value={middleConfig.header.schoolName} onChange={(e) => setMiddleConfig({ ...middleConfig, header: { ...middleConfig.header, schoolName: e.target.value } })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Board</label>
+                    <input value={middleConfig.header.board} onChange={(e) => setMiddleConfig({ ...middleConfig, header: { ...middleConfig.header, board: e.target.value } })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Tagline</label>
+                    <input value={middleConfig.header.tagline} onChange={(e) => setMiddleConfig({ ...middleConfig, header: { ...middleConfig.header, tagline: e.target.value } })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Estd</label>
+                    <input value={middleConfig.header.estd} onChange={(e) => setMiddleConfig({ ...middleConfig, header: { ...middleConfig.header, estd: e.target.value } })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Title</label>
+                    <input value={middleConfig.header.title} onChange={(e) => setMiddleConfig({ ...middleConfig, header: { ...middleConfig.header, title: e.target.value } })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Subtitle</label>
+                    <input value={middleConfig.header.subtitle} onChange={(e) => setMiddleConfig({ ...middleConfig, header: { ...middleConfig.header, subtitle: e.target.value } })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  </div>
+                </div>
               </div>
-            </div>
+
+              <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-semibold text-gray-800">Subjects ({middleConfig.subjects.length}) — TERM I/II table</h4>
+                  <button onClick={() => setMiddleConfig({ ...middleConfig, subjects: [...middleConfig.subjects, { id: `sub${uid()}`, label: "New Subject" }] })} className="inline-flex items-center gap-1 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-white"><Plus className="h-3.5 w-3.5" /> Add Subject</button>
+                </div>
+                <div className="space-y-2">
+                  {middleConfig.subjects.map((s, idx) => (
+                    <div key={s.id} className="flex gap-2 items-center rounded-lg border border-gray-200 p-3 bg-gray-50/50">
+                      <input value={s.label} onChange={(e) => { const a = [...middleConfig.subjects]; a[idx] = { ...s, label: e.target.value }; setMiddleConfig({ ...middleConfig, subjects: a }) }} className="flex-1 rounded-lg border border-gray-300 px-2 py-1.5 text-sm" placeholder="e.g. English (i) Language" />
+                      <button onClick={() => { if (idx > 0) setMiddleConfig({ ...middleConfig, subjects: move(middleConfig.subjects, idx, idx - 1) }) }} className="p-1 rounded hover:bg-white"><ArrowUp className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => { if (idx < middleConfig.subjects.length - 1) setMiddleConfig({ ...middleConfig, subjects: move(middleConfig.subjects, idx, idx + 1) }) }} className="p-1 rounded hover:bg-white"><ArrowDown className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => setMiddleConfig({ ...middleConfig, subjects: middleConfig.subjects.filter((_, i) => i !== idx) })} className="p-1 rounded hover:bg-red-50 text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-semibold text-gray-800">Personality ({middleConfig.personality.length})</h4>
+                    <button onClick={() => setMiddleConfig({ ...middleConfig, personality: [...middleConfig.personality, { id: `p${uid()}`, label: "New Item" }] })} className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-2 py-1.5 text-xs hover:bg-gray-50"><Plus className="h-3 w-3" /> Add</button>
+                  </div>
+                  <div className="space-y-1">
+                    {middleConfig.personality.map((p, idx) => (
+                      <div key={p.id} className="flex gap-2">
+                        <input value={p.label} onChange={(e) => { const a = [...middleConfig.personality]; a[idx] = { ...p, label: e.target.value }; setMiddleConfig({ ...middleConfig, personality: a }) }} className="flex-1 rounded-lg border border-gray-300 px-2 py-1.5 text-xs" />
+                        <button onClick={() => setMiddleConfig({ ...middleConfig, personality: middleConfig.personality.filter((_, i) => i !== idx) })} className="p-1 hover:bg-red-50 text-red-500 rounded"><Trash2 className="h-3 w-3" /></button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-semibold text-gray-800">Co-curricular ({middleConfig.coCurricular.length})</h4>
+                    <button onClick={() => setMiddleConfig({ ...middleConfig, coCurricular: [...middleConfig.coCurricular, { id: `c${uid()}`, label: "New Item" }] })} className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-2 py-1.5 text-xs hover:bg-gray-50"><Plus className="h-3 w-3" /> Add</button>
+                  </div>
+                  <div className="space-y-1">
+                    {middleConfig.coCurricular.map((c, idx) => (
+                      <div key={c.id} className="flex gap-2">
+                        <input value={c.label} onChange={(e) => { const a = [...middleConfig.coCurricular]; a[idx] = { ...c, label: e.target.value }; setMiddleConfig({ ...middleConfig, coCurricular: a }) }} className="flex-1 rounded-lg border border-gray-300 px-2 py-1.5 text-xs" />
+                        <button onClick={() => setMiddleConfig({ ...middleConfig, coCurricular: middleConfig.coCurricular.filter((_, i) => i !== idx) })} className="p-1 hover:bg-red-50 text-red-500 rounded"><Trash2 className="h-3 w-3" /></button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4">
+                <p className="text-xs font-semibold text-gray-700">Live Preview — Middle School (VI-VIII)</p>
+                <p className="text-[11px] text-gray-500 mb-3">All header/subjects/personality/co-curricular values are editable — marks remain editable in Fill tab.</p>
+                <div className="overflow-auto bg-[#e9ecef] p-4 rounded-xl border border-gray-200 max-h-[70vh]">
+                  <MiddleSchoolFormatCard data={data} onChange={() => {}} editable={false} config={middleConfig} />
+                </div>
+              </div>
+            </>
+          ) : isPrePrimaryTpl(activeTemplate) ? (
+            <>
+              <div className="rounded-xl border border-emerald-200 bg-white shadow-sm p-5">
+                <h4 className="text-sm font-semibold text-emerald-800 mb-3">Pre-Primary Header — Montessori to K.G. — all editable</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">School Name</label>
+                    <input value={prePrimaryConfig.header.schoolName} onChange={(e) => setPrePrimaryConfig({ ...prePrimaryConfig, header: { ...prePrimaryConfig.header, schoolName: e.target.value } })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Subtitle</label>
+                    <input value={prePrimaryConfig.header.subtitle} onChange={(e) => setPrePrimaryConfig({ ...prePrimaryConfig, header: { ...prePrimaryConfig.header, subtitle: e.target.value } })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Tagline</label>
+                    <input value={prePrimaryConfig.header.tagline} onChange={(e) => setPrePrimaryConfig({ ...prePrimaryConfig, header: { ...prePrimaryConfig.header, tagline: e.target.value } })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Estd</label>
+                    <input value={prePrimaryConfig.header.estd} onChange={(e) => setPrePrimaryConfig({ ...prePrimaryConfig, header: { ...prePrimaryConfig.header, estd: e.target.value } })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Title</label>
+                    <input value={prePrimaryConfig.header.title} onChange={(e) => setPrePrimaryConfig({ ...prePrimaryConfig, header: { ...prePrimaryConfig.header, title: e.target.value } })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-semibold text-gray-800">Left Column Groups ({prePrimaryConfig.leftGroups.length})</h4>
+                  <button onClick={() => setPrePrimaryConfig({ ...prePrimaryConfig, leftGroups: [...prePrimaryConfig.leftGroups, { id: `lg${uid()}`, title: "New Group", items: [{ id: `it${uid()}`, label: "• New Item" }] }] })} className="inline-flex items-center gap-1 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-white"><Plus className="h-3.5 w-3.5" /> Add Group</button>
+                </div>
+                <div className="space-y-4">
+                  {prePrimaryConfig.leftGroups.map((g, gi) => (
+                    <div key={g.id} className="rounded-lg border border-gray-200 p-3 bg-gray-50/50">
+                      <div className="flex gap-2 mb-2">
+                        <input value={g.title} onChange={(e) => { const a = [...prePrimaryConfig.leftGroups]; a[gi] = { ...g, title: e.target.value }; setPrePrimaryConfig({ ...prePrimaryConfig, leftGroups: a }) }} className="flex-1 rounded-lg border border-gray-300 px-2 py-1.5 text-xs font-semibold" placeholder="Group title e.g. Subject: a) ENGLISH (empty for no header)" />
+                        <button onClick={() => setPrePrimaryConfig({ ...prePrimaryConfig, leftGroups: prePrimaryConfig.leftGroups.filter((_, i) => i !== gi) })} className="p-1 hover:bg-red-50 text-red-500 rounded"><Trash2 className="h-3.5 w-3.5" /></button>
+                      </div>
+                      <div className="space-y-1">
+                        {g.items.map((it, ii) => (
+                          <div key={it.id} className="flex gap-2">
+                            <input value={it.label} onChange={(e) => { const a = [...prePrimaryConfig.leftGroups]; const items = [...a[gi].items]; items[ii] = { ...it, label: e.target.value }; a[gi] = { ...g, items }; setPrePrimaryConfig({ ...prePrimaryConfig, leftGroups: a }) }} className="flex-1 rounded-lg border border-gray-300 px-2 py-1 text-xs" placeholder="• Item label" />
+                            <button onClick={() => { const a = [...prePrimaryConfig.leftGroups]; a[gi] = { ...g, items: a[gi].items.filter((_, i) => i !== ii) }; setPrePrimaryConfig({ ...prePrimaryConfig, leftGroups: a }) }} className="p-1 hover:bg-red-50 text-red-500 rounded"><Trash2 className="h-3 w-3" /></button>
+                          </div>
+                        ))}
+                        <button onClick={() => { const a = [...prePrimaryConfig.leftGroups]; a[gi] = { ...g, items: [...g.items, { id: `it${uid()}`, label: "• New Item" }] }; setPrePrimaryConfig({ ...prePrimaryConfig, leftGroups: a }) }} className="text-xs text-[var(--primary)] hover:underline">+ Add item</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-semibold text-gray-800">Right Column Groups ({prePrimaryConfig.rightGroups.length})</h4>
+                  <button onClick={() => setPrePrimaryConfig({ ...prePrimaryConfig, rightGroups: [...prePrimaryConfig.rightGroups, { id: `rg${uid()}`, title: "New Group", items: [{ id: `it${uid()}`, label: "• New Item" }] }] })} className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-2 py-1.5 text-xs hover:bg-gray-50"><Plus className="h-3 w-3" /> Add Group</button>
+                </div>
+                <div className="space-y-4">
+                  {prePrimaryConfig.rightGroups.map((g, gi) => (
+                    <div key={g.id} className="rounded-lg border border-gray-200 p-3 bg-gray-50/50">
+                      <div className="flex gap-2 mb-2">
+                        <input value={g.title} onChange={(e) => { const a = [...prePrimaryConfig.rightGroups]; a[gi] = { ...g, title: e.target.value }; setPrePrimaryConfig({ ...prePrimaryConfig, rightGroups: a }) }} className="flex-1 rounded-lg border border-gray-300 px-2 py-1.5 text-xs font-semibold" />
+                        <button onClick={() => setPrePrimaryConfig({ ...prePrimaryConfig, rightGroups: prePrimaryConfig.rightGroups.filter((_, i) => i !== gi) })} className="p-1 hover:bg-red-50 text-red-500 rounded"><Trash2 className="h-3.5 w-3.5" /></button>
+                      </div>
+                      <div className="space-y-1">
+                        {g.items.map((it, ii) => (
+                          <div key={it.id} className="flex gap-2">
+                            <input value={it.label} onChange={(e) => { const a = [...prePrimaryConfig.rightGroups]; const items = [...a[gi].items]; items[ii] = { ...it, label: e.target.value }; a[gi] = { ...g, items }; setPrePrimaryConfig({ ...prePrimaryConfig, rightGroups: a }) }} className="flex-1 rounded-lg border border-gray-300 px-2 py-1 text-xs" />
+                            <button onClick={() => { const a = [...prePrimaryConfig.rightGroups]; a[gi] = { ...g, items: a[gi].items.filter((_, i) => i !== ii) }; setPrePrimaryConfig({ ...prePrimaryConfig, rightGroups: a }) }} className="p-1 hover:bg-red-50 text-red-500 rounded"><Trash2 className="h-3 w-3" /></button>
+                          </div>
+                        ))}
+                        <button onClick={() => { const a = [...prePrimaryConfig.rightGroups]; a[gi] = { ...g, items: [...g.items, { id: `it${uid()}`, label: "• New Item" }] }; setPrePrimaryConfig({ ...prePrimaryConfig, rightGroups: a }) }} className="text-xs text-[var(--primary)] hover:underline">+ Add item</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4">
+                <p className="text-xs font-semibold text-gray-700">Live Preview — Pre-Primary (Montessori to K.G.)</p>
+                <p className="text-[11px] text-gray-500 mb-3">All left/right groups and header are editable — marks remain editable in Fill tab.</p>
+                <div className="overflow-auto bg-[#e9ecef] p-4 rounded-xl border border-gray-200 max-h-[70vh]">
+                  <PrePrimaryFormatCard data={data} onChange={() => {}} editable={false} config={prePrimaryConfig} />
+                </div>
+              </div>
+            </>
+          ) : isProgressTpl(activeTemplate) ? (
+            <>
+              <div className="rounded-xl border border-indigo-200 bg-white shadow-sm p-5">
+                <h4 className="text-sm font-semibold text-indigo-800 mb-3">Progress Header — all values editable</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">School Name</label>
+                    <input value={progressConfig.header.schoolName} onChange={(e) => setProgressConfig({ ...progressConfig, header: { ...progressConfig.header, schoolName: e.target.value } })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Board</label>
+                    <input value={progressConfig.header.board} onChange={(e) => setProgressConfig({ ...progressConfig, header: { ...progressConfig.header, board: e.target.value } })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="I.C.S.E (New Delhi)" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Address</label>
+                    <input value={progressConfig.header.address} onChange={(e) => setProgressConfig({ ...progressConfig, header: { ...progressConfig.header, address: e.target.value } })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Title</label>
+                    <input value={progressConfig.header.title} onChange={(e) => setProgressConfig({ ...progressConfig, header: { ...progressConfig.header, title: e.target.value } })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Year Label (e.g. ANNUAL)</label>
+                    <input value={progressConfig.yearLabel} onChange={(e) => setProgressConfig({ ...progressConfig, yearLabel: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Principal Label</label>
+                    <input value={progressConfig.principalLabel} onChange={(e) => setProgressConfig({ ...progressConfig, principalLabel: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-semibold text-gray-800">Progress Subjects ({progressConfig.subjects.length}) — all editable</h4>
+                  <button onClick={() => setProgressConfig({ ...progressConfig, subjects: [...progressConfig.subjects, { id: `sub${uid()}`, label: "New Subject", hasSplit: false }] })} className="inline-flex items-center gap-1 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-white"><Plus className="h-3.5 w-3.5" /> Add Subject</button>
+                </div>
+                <div className="space-y-2">
+                  {progressConfig.subjects.map((s, idx) => (
+                    <div key={s.id} className="flex gap-2 items-center rounded-lg border border-gray-200 p-3 bg-gray-50/50">
+                      <input value={s.label} onChange={(e) => { const a = [...progressConfig.subjects]; a[idx] = { ...s, label: e.target.value }; setProgressConfig({ ...progressConfig, subjects: a }) }} className="flex-1 rounded-lg border border-gray-300 px-2 py-1.5 text-sm" placeholder="e.g. a) ENGLISH" />
+                      <label className="inline-flex items-center gap-1 text-xs font-medium text-gray-600"><input type="checkbox" checked={!!s.hasSplit} onChange={(e) => { const a = [...progressConfig.subjects]; a[idx] = { ...s, hasSplit: e.target.checked }; setProgressConfig({ ...progressConfig, subjects: a }) }} /> Split Lit/Lang</label>
+                      <button onClick={() => { if (idx > 0) setProgressConfig({ ...progressConfig, subjects: move(progressConfig.subjects, idx, idx - 1) }) }} className="p-1 rounded hover:bg-white"><ArrowUp className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => { if (idx < progressConfig.subjects.length - 1) setProgressConfig({ ...progressConfig, subjects: move(progressConfig.subjects, idx, idx + 1) }) }} className="p-1 rounded hover:bg-white"><ArrowDown className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => setProgressConfig({ ...progressConfig, subjects: progressConfig.subjects.filter((_, i) => i !== idx) })} className="p-1 rounded hover:bg-red-50 text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-semibold text-gray-800">Other Subjects ({progressConfig.otherSubjects.length})</h4>
+                  <button onClick={() => setProgressConfig({ ...progressConfig, otherSubjects: [...progressConfig.otherSubjects, { id: `other${uid()}`, label: "New Other" }] })} className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-2 py-1.5 text-xs hover:bg-gray-50"><Plus className="h-3 w-3" /> Add</button>
+                </div>
+                <div className="space-y-1.5">
+                  {progressConfig.otherSubjects.map((o, idx) => (
+                    <div key={o.id} className="flex gap-2 items-center">
+                      <input value={o.label} onChange={(e) => { const a = [...progressConfig.otherSubjects]; a[idx] = { ...o, label: e.target.value }; setProgressConfig({ ...progressConfig, otherSubjects: a }) }} className="flex-1 rounded-lg border border-gray-300 px-2 py-1.5 text-xs" />
+                      <button onClick={() => setProgressConfig({ ...progressConfig, otherSubjects: progressConfig.otherSubjects.filter((_, i) => i !== idx) })} className="p-1 hover:bg-red-50 text-red-500 rounded"><Trash2 className="h-3 w-3" /></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4">
+                <p className="text-xs font-semibold text-gray-700">Live Preview — Progress Report</p>
+                <p className="text-[11px] text-gray-500 mb-3">All header/subjects/other values above are editable — marks remain editable in Fill tab.</p>
+                <div className="overflow-auto bg-[#e9ecef] p-4 rounded-xl border border-gray-200 max-h-[70vh]">
+                  <ProgressReportCard data={data} onChange={() => {}} editable={false} config={progressConfig} />
+                </div>
+              </div>
+            </>
           ) : (
             <>
           {/* Header */}
@@ -991,12 +1387,12 @@ export default function TemplatesPage() {
       )}
 
       {showPreview && (
-        <div className="fixed inset-0 z-[60] flex flex-col bg-[#3a3f44]">
-          <div className="flex items-center justify-between px-4 py-3 bg-gray-900 text-white border-b border-gray-700">
+        <div className="fixed inset-0 z-[60] flex flex-col bg-[#3a3f44] no-print">
+          <div className="flex items-center justify-between px-4 py-3 bg-gray-900 text-white border-b border-gray-700 no-print">
             <div className="flex items-center gap-3">
               <div className="h-8 w-8 rounded-lg bg-white/10 flex items-center justify-center"><Eye className="h-4 w-4" /></div>
               <div>
-                <h3 className="text-sm font-semibold">Print Preview • A4 • 0.5in margins • One Page</h3>
+                <h3 className="text-sm font-semibold">Print Preview • A4 • 0.5in margins</h3>
                 <p className="text-xs text-white/60">{activeTemplate?.name} • {isProgressTpl(activeTemplate) ? data.studentName : data.name} • {data.class}{data.section ? `-${data.section}` : ""}</p>
               </div>
             </div>
@@ -1005,18 +1401,22 @@ export default function TemplatesPage() {
               <button onClick={() => setShowPreview(false)} className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/20 px-4 py-2 text-sm text-white border border-white/20"><X className="h-4 w-4" /> Close</button>
             </div>
           </div>
-          <div className="flex-1 overflow-auto p-4 md:p-8 flex justify-center bg-[#525659]">
-            <div className="bg-white shadow-2xl print-preview-page" style={{ width: "210mm", minHeight: "297mm", padding: "0.5in", boxSizing: "border-box", overflow: "hidden" }}>
-              <div style={{ transform: isProgressTpl(activeTemplate) ? "scale(0.85)" : "scale(0.78)", transformOrigin: "top left", width: isProgressTpl(activeTemplate) ? "117.6%" : "128.2%", marginBottom: isProgressTpl(activeTemplate) ? "-8%" : "-22%" }}>
-                {isProgressTpl(activeTemplate) ? (
-                  <ProgressReportCard data={data} editable={false} />
+          <div className="flex-1 overflow-auto p-4 md:p-8 flex justify-center bg-[#525659] no-print">
+            <div className="bg-white shadow-2xl print-area print-preview-page" style={{ width: "210mm", minHeight: "297mm", padding: "0.5in", boxSizing: "border-box", overflow: "visible" }}>
+              <div style={{ transform: "scale(0.68)", transformOrigin: "top left", width: "147%" }}>
+                {isMiddleTpl(activeTemplate) ? (
+                  <MiddleSchoolFormatCard data={data} config={middleConfig} editable={false} />
+                ) : isPrePrimaryTpl(activeTemplate) ? (
+                  <PrePrimaryFormatCard data={data} config={prePrimaryConfig} editable={false} />
+                ) : isProgressTpl(activeTemplate) ? (
+                  <ProgressReportCard data={data} config={progressConfig} editable={false} />
                 ) : (
                   <PrimaryFormatCard data={data} config={tplConfig} editable={false} />
                 )}
               </div>
             </div>
           </div>
-          <div className="px-4 py-2 bg-gray-900 text-white/70 text-xs text-center border-t border-gray-700">Preview is scaled to fit one A4 page • Actual print uses 0.5in margins all sides • Use Print Now or Ctrl+P</div>
+          <div className="px-4 py-2 bg-gray-900 text-white/70 text-xs text-center border-t border-gray-700 no-print">Full print • 0.5in margins all sides • Normal page breaks as needed • Use Print Now or Ctrl+P</div>
         </div>
       )}
 
@@ -1026,7 +1426,21 @@ export default function TemplatesPage() {
             @page { size: A4 portrait; margin: 0.5in; }
             html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            .no-print, header, nav, aside { display: none !important; }
+            body * { visibility: hidden !important; }
+            .print-area, .print-area * { visibility: visible !important; }
+            .print-area {
+              position: absolute !important;
+              left: 0 !important;
+              top: 0 !important;
+              width: 100% !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              background: #fff !important;
+              border: none !important;
+              box-shadow: none !important;
+              overflow: visible !important;
+            }
+            .no-print, header, nav, aside { display: none !important; visibility: hidden !important; }
             .primary-format-root .page, .progress-report-root .page {
               box-shadow: none !important;
               margin: 0 !important;
@@ -1035,9 +1449,10 @@ export default function TemplatesPage() {
               max-width: none !important;
               border: none !important;
             }
-            .primary-format-root table, .progress-report-root table { page-break-inside: avoid; }
-            .primary-format-root .flex-container, .progress-report-root .flex-container { page-break-inside: avoid; }
-            .primary-format-root, .progress-report-root { zoom: 0.88; }
+            .primary-format-root table, .progress-report-root table { page-break-inside: auto; break-inside: auto; }
+            .primary-format-root .flex-container, .progress-report-root .flex-container { page-break-inside: auto; break-inside: auto; }
+            .primary-format-root .page, .progress-report-root .page { page-break-after: auto; break-after: auto; }
+            .primary-format-root, .progress-report-root { zoom: 0.68; }
             .print-preview-page { box-shadow: none !important; }
           }
           /* SweetAlert nicer overrides */

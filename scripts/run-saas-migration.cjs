@@ -54,6 +54,7 @@ const SQL_FILES = [
    path.join(__dirname, "..", "src", "lib", "sql", "063_icse_examination.sql"),
    path.join(__dirname, "..", "src", "lib", "sql", "064_sidebar_menu_locked.sql"),
    path.join(__dirname, "..", "src", "lib", "sql", "065_result_card.sql"),
+   path.join(__dirname, "..", "src", "lib", "sql", "066_admission_enquiry_reg_purchase.sql"),
  ];
 
 function hashPassword(password) {

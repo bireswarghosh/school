@@ -49,6 +49,16 @@ async function getWithJoins(id?: number) {
       e.followup_date AS "nextFollowUp",
       e.assigned_to AS "assigned",
       e.no_of_child AS "noOfChild",
+      e.reg_form_purchased AS "regFormPurchased",
+      e.reg_form_no AS "regFormNo",
+      e.reg_form_amount AS "regFormAmount",
+      e.reg_form_payment_mode AS "regFormPaymentMode",
+      e.reg_form_payment_date AS "regFormPaymentDate",
+      e.reg_form_status AS "regFormStatus",
+      e.reg_form_transaction_id AS "regFormTransactionId",
+      e.reg_form_cheque_no AS "regFormChequeNo",
+      e.reg_form_bank AS "regFormBank",
+      e.reg_form_note AS "regFormNote",
       e.created_at AS "createdAt"
     FROM ${TABLE} e
     LEFT JOIN source_types st ON st.id = e.source_type_id
@@ -72,6 +82,21 @@ export async function GET(req: NextRequest) {
   }
 }
 
+async function mapRegForm(data: Record<string, any>, value: any, key: string) {
+  if (key === "regFormPurchased") data.reg_form_purchased = !!value
+  else if (key === "regFormNo") data.reg_form_no = value || null
+  else if (key === "regFormAmount") data.reg_form_amount = value || 0
+  else if (key === "regFormPaymentMode") data.reg_form_payment_mode = value || null
+  else if (key === "regFormPaymentDate") data.reg_form_payment_date = value || null
+  else if (key === "regFormStatus") data.reg_form_status = value || null
+  else if (key === "regFormTransactionId") data.reg_form_transaction_id = value || null
+  else if (key === "regFormChequeNo") data.reg_form_cheque_no = value || null
+  else if (key === "regFormBank") data.reg_form_bank = value || null
+  else if (key === "regFormNote") data.reg_form_note = value || null
+  else return false
+  return true
+}
+
 async function mapBody(body: Record<string, any>) {
   const data: Record<string, any> = {}
   for (const [key, value] of Object.entries(body)) {
@@ -82,7 +107,7 @@ async function mapBody(body: Record<string, any>) {
     else if (key === "lastFollowUp") { if (value) data.last_followup_date = value }
     else if (key === "nextFollowUp") data.followup_date = value
     else if (key === "noOfChild") data.no_of_child = value
-    else data[key] = value
+    else if (!await mapRegForm(data, value, key)) data[key] = value
   }
   return data
 }
@@ -124,7 +149,7 @@ export async function PUT(req: NextRequest) {
       else if (key === "lastFollowUp") { if (value) data.last_followup_date = value }
       else if (key === "nextFollowUp") data.followup_date = value
       else if (key === "noOfChild") data.no_of_child = value
-      else data[key] = value
+      else if (!await mapRegForm(data, value, key)) data[key] = value
     }
     const item = await update(TABLE, id, data)
     const rows = item ? await getWithJoins(item.id) : []

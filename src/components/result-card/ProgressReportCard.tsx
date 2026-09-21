@@ -1,6 +1,7 @@
 "use client"
 
 import { useSchoolInfo } from "@/lib/use-school-info"
+import { DEFAULT_PROGRESS_CONFIG, ProgressTemplateConfig } from "@/lib/progress-config"
 
 export type ProgressData = Record<string, string>
 
@@ -76,13 +77,16 @@ export default function ProgressReportCard({
   data,
   onChange,
   editable = true,
+  config,
 }: {
   data: ProgressData
   onChange?: (key: string, value: string) => void
   editable?: boolean
+  config?: ProgressTemplateConfig
 }) {
   const { info: schoolInfo } = useSchoolInfo()
   const logoSrc = schoolInfo.logoSrc || ""
+  const cfg = config || DEFAULT_PROGRESS_CONFIG
 
   const cell = (k: string) =>
     editable ? (
@@ -225,14 +229,20 @@ export default function ProgressReportCard({
       `}</style>
 
       <div className="page">
-        <div className="header page2-header">
-          {logoSrc ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={logoSrc} alt="logo" style={{ maxHeight: 70, margin: "0 auto 8px", display: "block", objectFit: "contain" }} />
-          ) : null}
-          <h1>ST. JONAS CONVENT SCHOOL</h1>
-          <h4>I.C.S.E (New Delhi)<br />Udang, Amta, Howrah - 711401</h4>
-          <h2>PROGRESS REPORT</h2>
+        <div className="header page2-header" style={{ display: "flex", alignItems: "center", gap: 16, borderBottom: "2px solid #000", paddingBottom: 15, marginBottom: 20 }}>
+          <div style={{ flex: "0 0 150px", textAlign: "center", borderRight: "1px solid #e5e7eb", paddingRight: 12, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+            {logoSrc ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={logoSrc} alt="school logo" style={{ maxHeight: 90, maxWidth: 130, objectFit: "contain", display: "block" }} />
+            ) : (
+              <div style={{ height: 90, width: 110, border: "1px dashed #d1d5db", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#9ca3af" }}>Logo</div>
+            )}
+          </div>
+          <div style={{ flex: 1, textAlign: "center", paddingLeft: 12 }}>
+            <h1 style={{ margin: "4px 0", fontSize: 26, fontWeight: 700 }}>{cfg.header.schoolName}</h1>
+            <h4 style={{ margin: "4px 0", fontSize: 13, fontWeight: 400, lineHeight: 1.4 }}>{cfg.header.board}<br />{cfg.header.address}</h4>
+            <h2 style={{ margin: "8px 0 0", textDecoration: "underline", fontSize: 20, fontWeight: 700 }}>{cfg.header.title}</h2>
+          </div>
         </div>
 
         <div className="student-info">
@@ -256,7 +266,7 @@ export default function ProgressReportCard({
           </div>
         </div>
 
-        <h3 style={{ textAlign: "center", textDecoration: "underline", fontSize: 16, fontWeight: 700, margin: "10px 0" }}>{data.yearLabel || "ANNUAL"}</h3>
+        <h3 style={{ textAlign: "center", textDecoration: "underline", fontSize: 16, fontWeight: 700, margin: "10px 0" }}>{editable ? <input value={data.yearLabel ?? cfg.yearLabel} onChange={(e) => onChange?.("yearLabel", e.target.value)} style={{ border: "none", borderBottom: "1px solid #000", width: 120, textAlign: "center", fontWeight: 700, fontSize: 16, background: "transparent" }} /> : <span>{data.yearLabel || cfg.yearLabel}</span>}</h3>
 
         <table>
           <thead>
@@ -275,45 +285,30 @@ export default function ProgressReportCard({
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td className="text-left">a) ENGLISH<br />&nbsp;&nbsp;&nbsp;&nbsp;Lit<br />&nbsp;&nbsp;&nbsp;&nbsp;Lang</td>
-              <td>{stacked("en_fa2_lit", "en_fa2_lang")}</td>
-              <td>{stacked("en_proj_lit", "en_proj_lang")}</td>
-              <td>{stacked("en_ct_lit", "en_ct_lang")}</td>
-              <td>{stacked("en_sa2_lit", "en_sa2_lang")}</td>
-              <td>{stacked("en_ct2_lit", "en_ct2_lang")}</td>
-              <td>{stacked("en_viva_lit", "en_viva_lang")}</td>
-            </tr>
-            <tr>
-              <td className="text-left">b) 2nd LANGUAGE<br />&nbsp;&nbsp;&nbsp;&nbsp;(Hindi / Bengali)</td>
-              <td>{cell("lang2_fa2")}</td><td>{cell("lang2_proj")}</td><td>{cell("lang2_ct")}</td>
-              <td>{cell("lang2_sa2")}</td><td>{cell("lang2_ct2")}</td><td>{cell("lang2_viva")}</td>
-            </tr>
-            <tr>
-              <td className="text-left">c) 3rd LANGUAGE<br />&nbsp;&nbsp;&nbsp;&nbsp;(Hindi / Bengali)</td>
-              <td>{cell("lang3_fa2")}</td><td>{cell("lang3_proj")}</td><td>{cell("lang3_ct")}</td>
-              <td>{cell("lang3_sa2")}</td><td>{cell("lang3_ct2")}</td><td>{cell("lang3_viva")}</td>
-            </tr>
-            <tr>
-              <td className="text-left">d) MATHEMATICS</td>
-              <td>{cell("maths_fa2")}</td><td>{cell("maths_proj")}</td><td>{cell("maths_ct")}</td>
-              <td>{cell("maths_sa2")}</td><td>{cell("maths_ct2")}</td><td>{cell("maths_viva")}</td>
-            </tr>
-            <tr>
-              <td className="text-left">e) ENVIRONMENTAL SCIENCE</td>
-              <td>{cell("evs_fa2")}</td><td>{cell("evs_proj")}</td><td>{cell("evs_ct")}</td>
-              <td>{cell("evs_sa2")}</td><td>{cell("evs_ct2")}</td><td>{cell("evs_viva")}</td>
-            </tr>
-            <tr>
-              <td className="text-left">f) SOCIAL STUDIES</td>
-              <td>{cell("sst_fa2")}</td><td>{cell("sst_proj")}</td><td>{cell("sst_ct")}</td>
-              <td>{cell("sst_sa2")}</td><td>{cell("sst_ct2")}</td><td>{cell("sst_viva")}</td>
-            </tr>
-            <tr>
-              <td className="text-left">g) COMPUTER</td>
-              <td>{cell("comp_fa2")}</td><td>{cell("comp_proj")}</td><td>{cell("comp_ct")}</td>
-              <td>{cell("comp_sa2")}</td><td>{cell("comp_ct2")}</td><td>{cell("comp_viva")}</td>
-            </tr>
+            {cfg.subjects.map((sub) => (
+              <tr key={sub.id}>
+                <td className="text-left" style={{ whiteSpace: "pre-line" }}>{sub.label}</td>
+                {sub.hasSplit ? (
+                  <>
+                    <td>{stacked(`${sub.id}_fa2_lit`, `${sub.id}_fa2_lang`)}</td>
+                    <td>{stacked(`${sub.id}_proj_lit`, `${sub.id}_proj_lang`)}</td>
+                    <td>{stacked(`${sub.id}_ct_lit`, `${sub.id}_ct_lang`)}</td>
+                    <td>{stacked(`${sub.id}_sa2_lit`, `${sub.id}_sa2_lang`)}</td>
+                    <td>{stacked(`${sub.id}_ct2_lit`, `${sub.id}_ct2_lang`)}</td>
+                    <td>{stacked(`${sub.id}_viva_lit`, `${sub.id}_viva_lang`)}</td>
+                  </>
+                ) : (
+                  <>
+                    <td>{cell(`${sub.id}_fa2`)}</td>
+                    <td>{cell(`${sub.id}_proj`)}</td>
+                    <td>{cell(`${sub.id}_ct`)}</td>
+                    <td>{cell(`${sub.id}_sa2`)}</td>
+                    <td>{cell(`${sub.id}_ct2`)}</td>
+                    <td>{cell(`${sub.id}_viva`)}</td>
+                  </>
+                )}
+              </tr>
+            ))}
           </tbody>
         </table>
 
@@ -322,14 +317,12 @@ export default function ProgressReportCard({
             <tr><th colSpan={2}>Other Subjects:</th></tr>
           </thead>
           <tbody>
-            <tr>
-              <td className="text-left" style={{ width: "70%" }}>a) LIFE SKILL</td>
-              <td>{cell("life_skill")}</td>
-            </tr>
-            <tr>
-              <td className="text-left">b) GENERAL KNOWLEDGE</td>
-              <td>{cell("gk")}</td>
-            </tr>
+            {cfg.otherSubjects.map((o) => (
+              <tr key={o.id}>
+                <td className="text-left" style={{ width: "70%" }}>{o.label}</td>
+                <td>{cell(o.id)}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
 
@@ -342,7 +335,7 @@ export default function ProgressReportCard({
             ) : (
               <span style={{ fontFamily: "cursive", fontWeight: 700 }}>{data.principalName ?? ""}</span>
             )}
-            <div style={{ marginTop: 4, borderTop: "none" }}>Principal&apos;s Signature</div>
+            <div style={{ marginTop: 4, borderTop: "none" }}>{cfg.principalLabel}</div>
           </div>
         </div>
       </div>

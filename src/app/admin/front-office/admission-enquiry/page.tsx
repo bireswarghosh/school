@@ -4,7 +4,7 @@ import { toast as notify } from "@/lib/toast"
 import { useState, useRef, useEffect } from "react"
 import { useApi } from "@/lib/use-api"
 import { useClassesAndSections } from "@/lib/use-classes-sections"
-import { Search, Plus, Phone, Pencil, Trash2, X, Download, Upload, Printer, ChevronDown, Users, TrendingUp, Award, Calendar, UserCheck, Clock } from "lucide-react"
+import { Search, Plus, Phone, Pencil, Trash2, X, Download, Upload, Printer, ChevronDown, Users, TrendingUp, Award, Calendar, UserCheck, Clock, Eye } from "lucide-react"
 
 type EnquiryRecord = {
   id: number
@@ -23,6 +23,16 @@ type EnquiryRecord = {
   description: string
   note: string
   email: string
+  regFormPurchased: boolean
+  regFormNo: string
+  regFormAmount: number | string
+  regFormPaymentMode: string
+  regFormPaymentDate: string
+  regFormStatus: string
+  regFormTransactionId: string
+  regFormChequeNo: string
+  regFormBank: string
+  regFormNote: string
 }
 
 const sourceOptions = ["Advertisement", "Online Front Site", "Google Ads", "Admission Campaign", "Front Office"]
@@ -41,6 +51,9 @@ const emptyForm = {
   date: today(),
   followUpDate: today(),
   assigned: "", reference: "", source: "", classVal: "", noOfChild: 1,
+  regFormPurchased: false, regFormNo: "", regFormAmount: "", regFormPaymentMode: "Cash",
+  regFormPaymentDate: today(), regFormStatus: "Pending",
+  regFormTransactionId: "", regFormChequeNo: "", regFormBank: "", regFormNote: "",
 }
 
 type FollowUpRecord = {
@@ -61,6 +74,9 @@ const colLabels: Record<string, string> = {
   enquiryDate: "Enquiry Date", lastFollowUp: "Last Follow Up", nextFollowUp: "Next Follow Up",
   status: "Status", classVal: "Class", assigned: "Assigned", reference: "Reference",
   noOfChild: "No Of Child", address: "Address", description: "Description", note: "Note",
+  regFormPurchased: "Reg Form Purchased", regFormNo: "Reg Form No",
+  regFormAmount: "Reg Form Amount", regFormPaymentMode: "Payment Mode",
+  regFormPaymentDate: "Payment Date", regFormStatus: "Reg Form Status",
 }
 
 const cols = Object.keys(colLabels)
@@ -83,6 +99,7 @@ export default function AdmissionEnquiryPage() {
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [editId, setEditId] = useState<number | null>(null)
   const [followUpId, setFollowUpId] = useState<number | null>(null)
+  const [viewRecord, setViewRecord] = useState<EnquiryRecord | null>(null)
   const [form, setForm] = useState({ ...emptyForm })
   const [filterClass, setFilterClass] = useState("")
   const [filterSource, setFilterSource] = useState("")
@@ -131,7 +148,7 @@ export default function AdmissionEnquiryPage() {
   const totalPages = Math.ceil(filtered.length / rowsPerPage)
   const paginated = filtered.slice((page - 1) * rowsPerPage, page * rowsPerPage)
 
-  const handleInputChange = (field: string, value: string | number) => {
+  const handleInputChange = (field: string, value: string | number | boolean) => {
     setForm((prev) => ({ ...prev, [field]: value }))
     if (errors[field]) setErrors((prev) => ({ ...prev, [field]: "" }))
   }
@@ -143,26 +160,56 @@ export default function AdmissionEnquiryPage() {
     if (!form.date.trim()) errs.date = "Date is required"
     if (!form.followUpDate.trim()) errs.followUpDate = "Next Follow Up Date is required"
     if (!form.source) errs.source = "Source is required"
+    if (form.regFormPurchased) {
+      if (!form.regFormNo.trim()) errs.regFormNo = "Registration Form Number is required"
+      if (!form.regFormAmount || Number(form.regFormAmount) <= 0) errs.regFormAmount = "Amount is required"
+    }
     setErrors(errs)
     return Object.keys(errs).length === 0
+  }
+
+  const regFormPayload = () => {
+    if (!form.regFormPurchased) {
+      return { regFormPurchased: false, regFormNo: null, regFormAmount: 0, regFormPaymentMode: null, regFormPaymentDate: null, regFormStatus: "Pending", regFormTransactionId: null, regFormChequeNo: null, regFormBank: null, regFormNote: null }
+    }
+    return {
+      regFormPurchased: true,
+      regFormNo: form.regFormNo.trim(),
+      regFormAmount: Number(form.regFormAmount) || 0,
+      regFormPaymentMode: form.regFormPaymentMode,
+      regFormPaymentDate: form.regFormPaymentDate || today(),
+      regFormStatus: "Purchased",
+      regFormTransactionId: form.regFormTransactionId || null,
+      regFormChequeNo: form.regFormChequeNo || null,
+      regFormBank: form.regFormBank || null,
+      regFormNote: form.regFormNote || null,
+    }
   }
 
   const handleAdd = async () => {
     if (!validateForm()) return
     try {
-      await add({
+      const saved = await add({
         name: form.name, phone: form.phone, email: form.email,
         source: form.source, enquiryDate: form.date,
         nextFollowUp: form.followUpDate, status: "Active",
         classVal: form.classVal, assigned: form.assigned, reference: form.reference,
         noOfChild: form.noOfChild as number, address: form.address,
         description: form.description, note: form.note,
+        ...regFormPayload(),
       })
       setShowAddModal(false)
       setForm({ ...emptyForm })
+      if (form.regFormPurchased) notify.success(`Registration Form #${form.regFormNo} purchased & linked to enquiry`)
     } catch (e: any) {
       notify.error(e.message)
     }
+  }
+
+  const handleView = (id: number) => {
+    const record = enquiries.find((e) => e.id === id)
+    if (!record) return
+    setViewRecord(record)
   }
 
   const handleEdit = (id: number) => {
@@ -175,6 +222,16 @@ export default function AdmissionEnquiryPage() {
       date: fmt(record.enquiryDate), followUpDate: fmt(record.nextFollowUp),
       assigned: record.assigned, reference: record.reference,
       source: record.source, classVal: record.classVal, noOfChild: record.noOfChild,
+      regFormPurchased: record.regFormPurchased,
+      regFormNo: record.regFormNo || "",
+      regFormAmount: String(record.regFormAmount ?? ""),
+      regFormPaymentMode: record.regFormPaymentMode || "Cash",
+      regFormPaymentDate: fmt(record.regFormPaymentDate) || today(),
+      regFormStatus: record.regFormStatus || "Pending",
+      regFormTransactionId: record.regFormTransactionId || "",
+      regFormChequeNo: record.regFormChequeNo || "",
+      regFormBank: record.regFormBank || "",
+      regFormNote: record.regFormNote || "",
     })
     setErrors({})
     setShowEditModal(true)
@@ -190,6 +247,7 @@ export default function AdmissionEnquiryPage() {
         assigned: form.assigned, reference: form.reference,
         noOfChild: form.noOfChild as number, address: form.address,
         description: form.description, note: form.note,
+        ...regFormPayload(),
       })
       setShowEditModal(false)
       setEditId(null)
@@ -511,6 +569,147 @@ export default function AdmissionEnquiryPage() {
           />
         </div>
       </div>
+
+      {/* Registration Form Purchase */}
+      <div className="mt-6 rounded-xl border border-gray-200 bg-gray-50/60 p-4">
+        <label className="flex items-center gap-3 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={form.regFormPurchased}
+            onChange={(e) => handleInputChange("regFormPurchased", e.target.checked)}
+            className="h-4 w-4 rounded border-gray-300 text-[var(--primary)] focus:ring-[var(--primary)]"
+          />
+          <span className="text-sm font-medium text-gray-800">Registration Form Purchased</span>
+        </label>
+
+        {form.regFormPurchased && (
+          <div className="mt-4 space-y-4">
+            <div>
+              <p className="text-xs font-bold tracking-widest uppercase text-[var(--primary)] mb-2">
+                Step 1 · Registration Form Details
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Registration Form Number <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={form.regFormNo}
+                    onChange={(e) => handleInputChange("regFormNo", e.target.value)}
+                    placeholder="e.g. RF-2026-001"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent"
+                  />
+                  {errors.regFormNo && <p className="text-red-500 text-xs mt-1">{errors.regFormNo}</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Amount <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={form.regFormAmount}
+                    onChange={(e) => handleInputChange("regFormAmount", e.target.value)}
+                    placeholder="0.00"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent"
+                  />
+                  {errors.regFormAmount && <p className="text-red-500 text-xs mt-1">{errors.regFormAmount}</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Payment Date</label>
+                  <input
+                    type="date"
+                    value={form.regFormPaymentDate}
+                    onChange={(e) => handleInputChange("regFormPaymentDate", e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-bold tracking-widest uppercase text-[var(--primary)] mb-2">
+                Step 2 · Payment Process
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
+                  <div className="flex flex-wrap gap-4">
+                    {["Cash", "Cheque", "Card", "Online Transfer"].map((opt) => (
+                      <label key={opt} className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                        <input
+                          type="radio"
+                          name="regFormPaymentMode"
+                          checked={form.regFormPaymentMode === opt}
+                          onChange={() => handleInputChange("regFormPaymentMode", opt)}
+                          className="text-[var(--primary)] focus:ring-[var(--primary)]"
+                        />
+                        {opt}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {form.regFormPaymentMode === "Cheque" && (
+                    <>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Cheque / DD No</label>
+                        <input
+                          type="text"
+                          value={form.regFormChequeNo}
+                          onChange={(e) => handleInputChange("regFormChequeNo", e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Bank</label>
+                        <input
+                          type="text"
+                          value={form.regFormBank}
+                          onChange={(e) => handleInputChange("regFormBank", e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent"
+                        />
+                      </div>
+                    </>
+                  )}
+                  {(form.regFormPaymentMode === "Card" || form.regFormPaymentMode === "Online Transfer") && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Transaction ID</label>
+                      <input
+                        type="text"
+                        value={form.regFormTransactionId}
+                        onChange={(e) => handleInputChange("regFormTransactionId", e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent"
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Payment Note</label>
+                    <input
+                      type="text"
+                      value={form.regFormNote}
+                      onChange={(e) => handleInputChange("regFormNote", e.target.value)}
+                      placeholder="Optional"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between rounded-lg bg-[var(--primary-light)] px-4 py-3">
+                  <span className="text-sm font-medium text-gray-700">
+                    Amount to pay {form.regFormPaymentMode !== "Cash" && form.regFormPaymentMode !== "Cheque" ? `(${form.regFormPaymentMode})` : ""}
+                  </span>
+                  <span className="text-lg font-bold text-[var(--primary)]">
+                    ₹{Number(form.regFormAmount) || 0}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </>
   )
 
@@ -688,13 +887,14 @@ export default function AdmissionEnquiryPage() {
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Last Follow Up</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Next Follow Up</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Status</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Reg Form</th>
                 <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs uppercase print:hidden">Action</th>
               </tr>
             </thead>
             <tbody>
               {paginated.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-8 text-gray-400">No enquiries found</td>
+                  <td colSpan={10} className="text-center py-8 text-gray-400">No enquiries found</td>
                 </tr>
               ) : (
                 paginated.map((enquiry, idx) => (
@@ -711,8 +911,27 @@ export default function AdmissionEnquiryPage() {
                         {enquiry.status}
                       </span>
                     </td>
+                    <td className="px-4 py-3">
+                      {enquiry.regFormPurchased ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
+                            {enquiry.regFormStatus === "Purchased" ? "Paid" : enquiry.regFormStatus}
+                          </span>
+                          {enquiry.regFormNo && <span className="text-xs text-gray-500 font-mono">{enquiry.regFormNo}</span>}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">-</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-right print:hidden">
                       <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => handleView(enquiry.id)}
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="View"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
                         <button
                           onClick={() => handleFollowUp(enquiry.id)}
                           className="p-1.5 text-[var(--primary)] hover:bg-[var(--primary-light)] rounded-lg transition-colors"
@@ -821,9 +1040,9 @@ export default function AdmissionEnquiryPage() {
             <div className="px-6 py-4 border-t border-gray-200 flex justify-end">
               <button
                 onClick={handleAdd}
-                className="px-6 py-2 bg-[var(--primary)] text-white text-sm font-medium rounded-lg hover:bg-[var(--secondary)] transition-colors"
+                className={`px-6 py-2 text-white text-sm font-medium rounded-lg transition-colors ${form.regFormPurchased ? "bg-green-600 hover:bg-green-700" : "bg-[var(--primary)] hover:bg-[var(--secondary)]"}`}
               >
-                Save
+                {form.regFormPurchased ? "Complete Purchase & Save" : "Save"}
               </button>
             </div>
           </div>
@@ -845,9 +1064,9 @@ export default function AdmissionEnquiryPage() {
             <div className="px-6 py-4 border-t border-gray-200 flex justify-end">
               <button
                 onClick={handleUpdate}
-                className="px-6 py-2 bg-[var(--primary)] text-white text-sm font-medium rounded-lg hover:bg-[var(--secondary)] transition-colors"
+                className={`px-6 py-2 text-white text-sm font-medium rounded-lg transition-colors ${form.regFormPurchased ? "bg-green-600 hover:bg-green-700" : "bg-[var(--primary)] hover:bg-[var(--secondary)]"}`}
               >
-                Save
+                {form.regFormPurchased ? "Complete Purchase & Save" : "Save"}
               </button>
             </div>
           </div>
@@ -965,6 +1184,131 @@ export default function AdmissionEnquiryPage() {
               <button
                 onClick={() => setShowFollowUpModal(false)}
                 className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View Modal */}
+      {viewRecord && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setViewRecord(null)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
+            <div className="relative overflow-hidden bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 px-5 py-3 flex items-center gap-3 rounded-t-xl">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/20 text-white">
+                <Eye className="h-4 w-4" />
+              </span>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-bold text-white">Admission Enquiry</h3>
+                <p className="text-[11px] text-white/75 truncate">#{viewRecord.id} • {viewRecord.name}</p>
+              </div>
+              <button onClick={() => setViewRecord(null)} className="text-white/80 hover:text-white">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-3">
+              {/* Summary line */}
+              <div className="flex items-center justify-between flex-wrap gap-2 rounded-lg bg-gradient-to-br from-gray-50 to-indigo-50/50 border border-gray-200 px-3.5 py-2.5">
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-gray-900 truncate">{viewRecord.name}</p>
+                  <p className="text-xs text-gray-500 truncate">{viewRecord.phone}{viewRecord.email ? ` • ${viewRecord.email}` : ""}</p>
+                </div>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold ${statusClass(viewRecord.status)}`}>
+                    {viewRecord.status}
+                  </span>
+                  {viewRecord.regFormPurchased && (
+                    <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold bg-green-50 text-green-700 border border-green-200">
+                      {viewRecord.regFormStatus === "Purchased" ? "Reg Form Paid" : viewRecord.regFormStatus}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Enquiry information */}
+              <div className="rounded-lg border border-gray-100 overflow-hidden">
+                <p className="px-3.5 py-1.5 text-[10px] font-bold tracking-widest uppercase text-[var(--primary)] bg-gray-50/70 border-b border-gray-100">Enquiry Information</p>
+                <div className="grid grid-cols-2">
+                  {[
+                    { label: "Source", value: viewRecord.source },
+                    { label: "Class", value: viewRecord.classVal || "-" },
+                    { label: "Reference", value: viewRecord.reference || "-" },
+                    { label: "No of Child", value: String(viewRecord.noOfChild ?? 1) },
+                    { label: "Enquiry Date", value: viewRecord.enquiryDate },
+                    { label: "Last Follow Up", value: viewRecord.lastFollowUp || "-" },
+                    { label: "Next Follow Up", value: viewRecord.nextFollowUp || "-" },
+                    { label: "Assigned To", value: viewRecord.assigned || "-" },
+                  ].map((item) => (
+                    <div key={item.label} className="flex flex-col px-3.5 py-2 border-b border-gray-100 odd:border-r">
+                      <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{item.label}</span>
+                      <span className="text-xs font-medium text-gray-800 mt-0.5 break-words">{item.value}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="divide-y divide-gray-100">
+                  {[
+                    { label: "Address", value: viewRecord.address },
+                    { label: "Description", value: viewRecord.description },
+                    { label: "Note", value: viewRecord.note },
+                  ].map((item) => (
+                    <div key={item.label} className="flex flex-col px-3.5 py-2">
+                      <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{item.label}</span>
+                      <span className="text-xs text-gray-800 mt-0.5 whitespace-pre-wrap break-words">{item.value || "-"}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Registration form purchase */}
+              {viewRecord.regFormPurchased && (
+                <div className="rounded-lg border border-green-200 overflow-hidden">
+                  <p className="px-3.5 py-1.5 text-[10px] font-bold tracking-widest uppercase text-green-700 bg-green-50/70 border-b border-green-100">
+                    Registration Form Purchase
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3">
+                    {[
+                      { label: "Reg Form No", value: viewRecord.regFormNo || "-" },
+                      { label: "Amount", value: `₹${Number(viewRecord.regFormAmount) || 0}` },
+                      { label: "Payment Mode", value: viewRecord.regFormPaymentMode || "-" },
+                      { label: "Payment Date", value: viewRecord.regFormPaymentDate || "-" },
+                      { label: "Status", value: viewRecord.regFormStatus || "Pending" },
+                      { label: "Transaction Reference", value: viewRecord.regFormTransactionId || viewRecord.regFormChequeNo || "-" },
+                    ].map((item) => (
+                      <div key={item.label} className="flex flex-col px-3.5 py-2 border-green-100">
+                        <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{item.label}</span>
+                        <span className="text-xs font-medium text-gray-800 mt-0.5 break-words">{item.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {viewRecord.regFormBank && (
+                    <p className="px-3.5 py-1.5 text-[11px] text-gray-500 border-t border-green-100 bg-green-50/30">
+                      Bank: {viewRecord.regFormBank}{viewRecord.regFormNote ? ` • Note: ${viewRecord.regFormNote}` : ""}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="px-4 py-3 border-t border-gray-200 flex justify-end gap-2 bg-gray-50/50 rounded-b-xl">
+              <button
+                onClick={() => { const r = viewRecord; setViewRecord(null); if (r) handleEdit(r.id) }}
+                className="px-3 py-1.5 text-xs text-[var(--primary)] border border-[var(--primary)]/30 rounded-lg hover:bg-[var(--primary-light)]"
+              >
+                Edit
+              </button>
+              <button
+                onClick={() => { const r = viewRecord; setViewRecord(null); if (r) handleFollowUp(r.id) }}
+                className="px-3 py-1.5 text-xs text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Follow Up
+              </button>
+              <button
+                onClick={() => setViewRecord(null)}
+                className="px-4 py-1.5 bg-[var(--primary)] text-white text-xs font-medium rounded-lg hover:bg-[var(--secondary)]"
               >
                 Close
               </button>
