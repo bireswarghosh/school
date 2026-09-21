@@ -4,7 +4,8 @@ import { toast as notify } from "@/lib/toast"
 import { useState, useRef, useEffect } from "react"
 import { useApi } from "@/lib/use-api"
 import { useClassesAndSections } from "@/lib/use-classes-sections"
-import { Search, Plus, Phone, Pencil, Trash2, X, Download, Upload, Printer, ChevronDown, Users, TrendingUp, Award, Calendar, UserCheck, Clock, Eye } from "lucide-react"
+import RegFormInvoiceModal from "@/components/reg-form-invoice"
+import { Search, Plus, Phone, Pencil, Trash2, X, Download, Upload, Printer, ChevronDown, Users, TrendingUp, Award, Calendar, UserCheck, Clock, Eye, TicketCheck } from "lucide-react"
 
 type EnquiryRecord = {
   id: number
@@ -100,6 +101,7 @@ export default function AdmissionEnquiryPage() {
   const [editId, setEditId] = useState<number | null>(null)
   const [followUpId, setFollowUpId] = useState<number | null>(null)
   const [viewRecord, setViewRecord] = useState<EnquiryRecord | null>(null)
+  const [invoiceRecord, setInvoiceRecord] = useState<EnquiryRecord | null>(null)
   const [form, setForm] = useState({ ...emptyForm })
   const [filterClass, setFilterClass] = useState("")
   const [filterSource, setFilterSource] = useState("")
@@ -133,6 +135,10 @@ export default function AdmissionEnquiryPage() {
     const lost = enquiries.filter((e) => e.status.toLowerCase() === "lost").length
     return { total, active, won, lost }
   })()
+
+  const regScope = filterClass ? enquiries.filter((e) => e.classVal === filterClass) : enquiries
+  const regCount = regScope.filter((e) => e.regFormPurchased).length
+  const regValue = regCount * 1000
 
   useEffect(() => { setPage(1) }, [filterClass, filterSource, filterFromDate, filterToDate, filterStatus, enquiries.length])
 
@@ -728,7 +734,7 @@ export default function AdmissionEnquiryPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 p-4 shadow-sm">
           <div className="flex items-center justify-between"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white shadow-sm border text-blue-600"><Users className="h-4 w-4" /></span><TrendingUp className="h-4 w-4 text-blue-400" /></div>
           <p className="text-2xl font-black text-blue-700 mt-2">{stats.total}</p>
@@ -748,6 +754,13 @@ export default function AdmissionEnquiryPage() {
           <div className="flex items-center justify-between"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white shadow-sm border text-red-600"><Clock className="h-4 w-4" /></span><span className="h-2 w-2 rounded-full bg-red-500" /></div>
           <p className="text-2xl font-black text-red-700 mt-2">{stats.lost}</p>
           <p className="text-[11px] font-bold tracking-widest uppercase text-red-600/70">Lost</p>
+        </div>
+        <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-yellow-50 p-4 shadow-sm">
+          <div className="flex items-center justify-between"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white shadow-sm border text-amber-600"><TicketCheck className="h-4 w-4" /></span><span className="h-2 w-2 rounded-full bg-amber-500" /></div>
+          <p className="text-2xl font-black text-amber-700 mt-2">{regCount}</p>
+          <p className="text-[11px] font-bold tracking-widest uppercase text-amber-600/70">Registration Form Purchase</p>
+          <p className="mt-1.5 text-sm font-extrabold text-amber-700">₹{regValue.toLocaleString("en-IN")}<span className="ml-1 text-[11px] font-semibold text-amber-500/80">({regCount} × ₹1,000)</span></p>
+          {filterClass && <p className="mt-0.5 text-[10px] font-semibold text-amber-500/80">for {filterClass}</p>}
         </div>
       </div>
 
@@ -925,6 +938,15 @@ export default function AdmissionEnquiryPage() {
                     </td>
                     <td className="px-4 py-3 text-right print:hidden">
                       <div className="flex items-center justify-end gap-1">
+                        {enquiry.regFormPurchased && (
+                          <button
+                            onClick={() => setInvoiceRecord(enquiry)}
+                            className="p-1.5 text-fuchsia-600 hover:bg-fuchsia-50 rounded-lg transition-colors"
+                            title="Print Reg Form Invoice"
+                          >
+                            <Printer className="h-4 w-4" />
+                          </button>
+                        )}
                         <button
                           onClick={() => handleView(enquiry.id)}
                           className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -1014,14 +1036,14 @@ export default function AdmissionEnquiryPage() {
       {/* Print styles */}
       <style>{`
         @media print {
-          body * { visibility: hidden; }
-          .print\\:overflow-visible, .print\\:overflow-visible * { visibility: visible; }
-          .print\\:overflow-visible { position: absolute; left: 0; top: 0; width: 100%; }
+          body:not(.printing-modal-open) * { visibility: hidden; }
+          body:not(.printing-modal-open) .print\\:overflow-visible, body:not(.printing-modal-open) .print\\:overflow-visible * { visibility: visible; }
+          body:not(.printing-modal-open) .print\\:overflow-visible { position: absolute; left: 0; top: 0; width: 100%; }
           .print\\:hidden { display: none !important; }
-          .space-y-6 > *:not(:last-child) { display: none; }
-          .space-y-6 > .bg-white.rounded-xl:last-of-type { display: block !important; }
-          .bg-white.rounded-xl { border: 1px solid #ddd !important; }
-          th, td { padding: 6px 8px !important; font-size: 10px !important; }
+          body:not(.printing-modal-open) .space-y-6 > *:not(:last-child) { display: none; }
+          body:not(.printing-modal-open) .space-y-6 > .bg-white.rounded-xl:last-of-type { display: block !important; }
+          body:not(.printing-modal-open) .bg-white.rounded-xl { border: 1px solid #ddd !important; }
+          body:not(.printing-modal-open) th, body:not(.printing-modal-open) td { padding: 6px 8px !important; font-size: 10px !important; }
         }
       `}</style>
 
@@ -1354,6 +1376,11 @@ export default function AdmissionEnquiryPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Reg Form Invoice Modal */}
+      {invoiceRecord && (
+        <RegFormInvoiceModal data={invoiceRecord} onClose={() => setInvoiceRecord(null)} />
       )}
     </div>
   )

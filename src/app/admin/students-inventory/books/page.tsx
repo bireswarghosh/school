@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useRef } from "react"
+import { useState, useMemo, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Plus, Pencil, Trash2, X, BookOpen, ClipboardPaste, Upload, ChevronDown, ShoppingCart } from "lucide-react"
 import { useApi } from "@/lib/use-api"
@@ -82,8 +82,13 @@ export default function BooklistPage() {
   const [parseMsg, setParseMsg] = useState("")
   const [saveError, setSaveError] = useState("")
   const [saving, setSaving] = useState(false)
-  const [deleteId, setDeleteId] = useState<number | null>(null)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<number[]>([])
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<number[]>([])
+
+  useEffect(() => {
+    setSelectedIds([])
+  }, [selectedClass])
 
   const classBooks = useMemo(() => {
     return selectedClass
@@ -93,7 +98,28 @@ export default function BooklistPage() {
       : []
   }, [books, selectedClass])
 
+  const allSelected = classBooks.length > 0 && selectedIds.length === classBooks.length
+  const toggleSelectAll = () =>
+    setSelectedIds(allSelected ? [] : classBooks.map((b) => b.id ?? 0).filter((id) => id > 0))
+  const toggleSelect = (id: number) =>
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]))
+
   const bookCount = (id?: number) => books.filter((b) => b.classId === id).length
+
+  const classStats = useMemo(() => {
+    return classes
+      .map((c) => {
+        const clsBooks = books.filter((b) => String(b.classId ?? "") === String(c.id))
+        return {
+          id: c.id,
+          name: c.name,
+          count: clsBooks.length,
+          total: clsBooks.reduce((sum, b) => sum + (Number(b.sellingPrice) || 0), 0),
+        }
+      })
+      .filter((c) => c.count > 0)
+      .sort((a, b) => a.count - b.count)
+  }, [books, classes])
 
   const selectedClassName = classes.find((c) => String(c.id) === selectedClass)?.name || ""
 
@@ -108,11 +134,17 @@ export default function BooklistPage() {
     setShowModal(true)
   }
 
-  const openEditModal = () => {
-    if (!selectedClass) return
+  const openEditModal = (cid?: string) => {
+    const clsId = cid ?? selectedClass
+    if (!clsId) return
+    const clsName = classes.find((c) => String(c.id) === String(clsId))?.name || ""
+    const clsBooksList = books
+      .filter((b) => String(b.classId ?? "") === String(clsId))
+      .sort((a, b) => (a.sortOrder ?? 0) - (a.id ?? 0))
+    setSelectedClass(String(clsId))
     setRows(
-      classBooks.length
-        ? classBooks.map((b) => ({
+      clsBooksList.length
+        ? clsBooksList.map((b) => ({
             id: b.id ?? null,
             bookName: b.title || "",
             publisher: b.publisher || "",
@@ -120,7 +152,7 @@ export default function BooklistPage() {
           }))
         : [emptyRow()]
     )
-    setModalTitle(`Edit Booklist - ${selectedClassName}`)
+    setModalTitle(`Edit Booklist - ${clsName}`)
     setPasteText("")
     setParseMsg("")
     setSaveError("")
@@ -202,10 +234,12 @@ export default function BooklistPage() {
   }
 
   const confirmDelete = async () => {
-    if (deleteId === null) return
-    await remove(deleteId)
+    if (pendingDeleteIds.length === 0) return
+    for (const id of pendingDeleteIds) await remove(id)
     setShowDeleteModal(false)
-    setDeleteId(null)
+    setPendingDeleteIds([])
+    setSelectedIds((prev) => prev.filter((i) => !pendingDeleteIds.includes(i)))
+    refetch()
   }
 
   return (
@@ -216,6 +250,49 @@ export default function BooklistPage() {
           <p className="text-sm text-white/80 mt-1">Students Inventory / Booklist</p>
         </div>
       </div>
+
+      {classStats.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          {classStats.map((c, ci) => {
+            const accents = [
+              { bg: "from-[var(--primary)] to-orange-400", soft: "bg-orange-50 text-orange-600 border-orange-100", bar: "bg-[var(--primary)]" },
+              { bg: "from-indigo-500 to-violet-400", soft: "bg-indigo-50 text-indigo-600 border-indigo-100", bar: "bg-indigo-500" },
+              { bg: "from-emerald-500 to-teal-400", soft: "bg-emerald-50 text-emerald-600 border-emerald-100", bar: "bg-emerald-500" },
+              { bg: "from-sky-500 to-cyan-400", soft: "bg-sky-50 text-sky-600 border-sky-100", bar: "bg-sky-500" },
+              { bg: "from-rose-500 to-pink-400", soft: "bg-rose-50 text-rose-600 border-rose-100", bar: "bg-rose-500" },
+            ]
+            const a = accents[ci % accents.length]
+            return (
+              <div
+                key={c.id}
+                onClick={() => openEditModal(String(c.id))}
+                className="group cursor-pointer rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden hover:-translate-y-1 hover:shadow-lg hover:border-[var(--primary)]/40 transition-all duration-200"
+              >
+                <div className={`h-1.5 ${a.bar}`} />
+                <div className="p-4">
+                  <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold ${a.soft} border mb-3 group-hover:scale-[1.03] transition-transform`}>
+                    <BookOpen className="h-3 w-3" />
+                    Class {c.name}
+                  </div>
+                  <div className="flex items-end justify-between gap-2">
+                    <div>
+                      <p className="text-3xl font-extrabold text-gray-900 leading-none">{c.count}</p>
+                      <p className="text-[11px] text-gray-500 mt-1">{c.count === 1 ? "book" : "books"}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Total Cost</p>
+                      <p className="text-base font-bold text-gray-800 leading-none" dangerouslySetInnerHTML={{ __html: inr(c.total) }} />
+                    </div>
+                  </div>
+                  <p className="mt-3 text-[10px] font-semibold text-[var(--primary)]/0 group-hover:text-[var(--primary)] uppercase tracking-wider transition-colors flex items-center gap-1">
+                    <Pencil className="h-2.5 w-2.5" /> Click to edit booklist
+                  </p>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="px-5 py-4 border-b border-gray-200 flex flex-wrap items-end justify-between gap-3">
@@ -235,6 +312,15 @@ export default function BooklistPage() {
             </select>
           </div>
           <div className="flex items-center gap-2">
+            {selectedIds.length > 0 && (
+              <button
+                onClick={() => { setPendingDeleteIds(selectedIds); setShowDeleteModal(true) }}
+                className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg flex items-center gap-2 hover:bg-red-700"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete Selected ({selectedIds.length})
+              </button>
+            )}
             <button
               onClick={openAddModal}
               disabled={!selectedClass}
@@ -245,7 +331,7 @@ export default function BooklistPage() {
               Add Books
             </button>
             <button
-              onClick={openEditModal}
+              onClick={() => openEditModal()}
               disabled={!selectedClass}
               className={`px-4 py-2 bg-amber-500 text-white text-sm font-medium rounded-lg flex items-center gap-2 transition-colors ${selectedClass ? "hover:bg-amber-600" : "opacity-50 cursor-not-allowed"}`}
               title={selectedClass ? "Edit booklist for selected class" : "Select a class first"}
@@ -273,6 +359,14 @@ export default function BooklistPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="px-4 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleSelectAll}
+                    className="accent-[var(--primary)]"
+                  />
+                </th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Sr. No.</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Name of the Book</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Publisher</th>
@@ -283,20 +377,28 @@ export default function BooklistPage() {
             <tbody>
               {classBooks.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="text-center py-8 text-gray-400">
+                  <td colSpan={6} className="text-center py-8 text-gray-400">
                     {selectedClass ? "No books assigned to this class yet." : "Select a class to view its booklist."}
                   </td>
                 </tr>
               ) : (
                 classBooks.map((b, idx) => (
                   <tr key={b.id} className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${idx % 2 === 1 ? "bg-gray-50/50" : ""}`}>
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={b.id != null && b.id > 0 && selectedIds.includes(b.id)}
+                        onChange={() => b.id != null && b.id > 0 && toggleSelect(b.id)}
+                        className="accent-[var(--primary)]"
+                      />
+                    </td>
                     <td className="px-4 py-3 text-gray-600">{idx + 1}</td>
                     <td className="px-4 py-3 font-medium text-gray-800">{b.title}</td>
                     <td className="px-4 py-3 text-gray-600">{b.publisher || "-"}</td>
                     <td className="px-4 py-3 text-gray-600" dangerouslySetInnerHTML={{ __html: inr(b.sellingPrice) }} />
                     <td className="px-4 py-3 text-right">
                       <button
-                        onClick={() => { setDeleteId(b.id ?? null); setShowDeleteModal(true) }}
+                        onClick={() => { setPendingDeleteIds([b.id ?? 0]); setShowDeleteModal(true) }}
                         className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                         title="Remove from booklist"
                       >
@@ -312,7 +414,7 @@ export default function BooklistPage() {
         <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between text-sm text-gray-500">
           <span>Showing {classBooks.length} books for {selectedClassName || "selected class"}</span>
           {selectedClass && (
-            <button onClick={openEditModal} className="text-[var(--primary)] font-medium hover:underline flex items-center gap-1">
+            <button onClick={() => openEditModal()} className="text-[var(--primary)] font-medium hover:underline flex items-center gap-1">
               <Plus className="h-3.5 w-3.5" /> Add / Edit books
             </button>
           )}
@@ -471,12 +573,22 @@ export default function BooklistPage() {
               </button>
             </div>
             <div className="p-6">
-              <p className="text-sm text-gray-600">Are you sure you want to remove this book from the class booklist?</p>
-              {deleteId !== null && <p className="text-sm font-semibold text-gray-800 mt-1">{classBooks.find((b) => b.id === deleteId)?.title}</p>}
+              <p className="text-sm text-gray-600">
+                Are you sure you want to remove {pendingDeleteIds.length > 1 ? `these ${pendingDeleteIds.length} books` : "this book"} from the class booklist?
+              </p>
+              {pendingDeleteIds.length > 0 && (
+                <p className="text-sm font-semibold text-gray-800 mt-3 space-y-1 max-h-40 overflow-y-auto">
+                  {pendingDeleteIds.map((id) => (
+                    <span key={id} className="block">• {classBooks.find((b) => b.id === id)?.title}</span>
+                  ))}
+                </p>
+              )}
             </div>
             <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-2">
               <button onClick={() => setShowDeleteModal(false)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
-              <button onClick={confirmDelete} className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700">Remove</button>
+              <button onClick={confirmDelete} className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700">
+                Delete {pendingDeleteIds.length > 1 ? `(${pendingDeleteIds.length})` : ""}
+              </button>
             </div>
           </div>
         </div>

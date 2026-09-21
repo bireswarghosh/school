@@ -20,7 +20,8 @@ export default function SalesListPage() {
 
   const [filter, setFilter] = useState("")
   const [statusFilter, setStatusFilter] = useState("All")
-  const [deleteId, setDeleteId] = useState<number | null>(null)
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<number[]>([])
+  const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [invoiceSaleId, setInvoiceSaleId] = useState<number | null>(null)
 
@@ -170,11 +171,31 @@ export default function SalesListPage() {
     }
   }
 
+  const allSelected = filtered.length > 0 && filtered.every((s) => s.id !== undefined && selectedIds.includes(s.id!))
+  const toggleSelectAll = () =>
+    setSelectedIds(allSelected ? [] : filtered.filter((s) => s.id !== undefined).map((s) => s.id!))
+  const toggleSelect = (id: number) =>
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]))
+
+  const openDelete = (id: number) => { setPendingDeleteIds([id]); setShowDeleteModal(true) }
+  const openBulkDelete = () => { setPendingDeleteIds(selectedIds); setShowDeleteModal(true) }
+
   const confirmDelete = async () => {
-    if (deleteId === null) return
-    await remove(deleteId)
-    setShowDeleteModal(false)
-    setDeleteId(null)
+    if (pendingDeleteIds.length === 0) return
+    try {
+      if (pendingDeleteIds.length === 1) {
+        await remove(pendingDeleteIds[0])
+      } else {
+        const res = await fetch(`/api/students-inventory/sale?ids=${pendingDeleteIds.join(",")}`, { method: "DELETE" })
+        if (!res.ok) throw new Error("Failed to delete sales")
+      }
+      setShowDeleteModal(false)
+      setPendingDeleteIds([])
+      setSelectedIds((prev) => prev.filter((i) => !pendingDeleteIds.includes(i)))
+    } catch {
+      setShowDeleteModal(false)
+      setPendingDeleteIds([])
+    }
   }
 
   return (
@@ -190,6 +211,11 @@ export default function SalesListPage() {
         <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between gap-3 flex-wrap">
           <h3 className="text-sm font-semibold text-gray-700">Sales</h3>
           <div className="flex items-center gap-2">
+            {selectedIds.length > 0 && (
+              <button onClick={openBulkDelete} className="px-3 py-2 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors flex items-center gap-1.5">
+                <Trash2 className="h-3.5 w-3.5" />Delete Selected ({selectedIds.length})
+              </button>
+            )}
             <div className="relative">
               <Search className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
@@ -215,6 +241,9 @@ export default function SalesListPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="text-left px-4 py-3 w-10">
+                  <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} className="accent-[var(--primary)]" />
+                </th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">#</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Sale No</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Student</th>
@@ -229,11 +258,14 @@ export default function SalesListPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-8 text-gray-400">No sales found</td>
+                  <td colSpan={10} className="text-center py-8 text-gray-400">No sales found</td>
                 </tr>
               ) : (
                 filtered.map((s, idx) => (
                   <tr key={s.id ?? idx} className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${idx % 2 === 1 ? "bg-gray-50/50" : ""}`}>
+                    <td className="px-4 py-3">
+                      <input type="checkbox" checked={s.id !== undefined && selectedIds.includes(s.id)} onChange={() => s.id !== undefined && toggleSelect(s.id)} className="accent-[var(--primary)]" />
+                    </td>
                     <td className="px-4 py-3 text-gray-600">{idx + 1}</td>
                     <td className="px-4 py-3 font-medium text-gray-800">{s.saleNo || "-"}</td>
                     <td className="px-4 py-3 text-gray-600">{s.studentName || "-"}</td>
@@ -255,7 +287,7 @@ export default function SalesListPage() {
                         <button onClick={() => setInvoiceSaleId(s.id ?? null)} className="p-1.5 text-[var(--primary)] hover:bg-[var(--primary-light)] rounded-lg transition-colors" title="Invoice / Print">
                           <FileText className="h-4 w-4" />
                         </button>
-                        <button onClick={() => { setDeleteId(s.id ?? null); setShowDeleteModal(true) }} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
+                        <button onClick={() => s.id !== undefined && openDelete(s.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
@@ -373,12 +405,18 @@ export default function SalesListPage() {
               </button>
             </div>
             <div className="p-6">
-              <p className="text-sm text-gray-600">Are you sure you want to delete this sale?</p>
-              {deleteId !== null && <p className="text-sm font-semibold text-gray-800 mt-1">{sales.find((s) => s.id === deleteId)?.saleNo || ""}</p>}
+              <p className="text-sm text-gray-600">Are you sure you want to delete {pendingDeleteIds.length} sale{pendingDeleteIds.length === 1 ? "" : "s"}?</p>
+              {pendingDeleteIds.length > 0 && (
+                <ul className="mt-2 space-y-1 max-h-40 overflow-y-auto">
+                  {sales.filter((s) => s.id !== undefined && pendingDeleteIds.includes(s.id!)).map((s) => (
+                    <li key={s.id} className="text-sm font-semibold text-gray-800">{s.saleNo || "-"}</li>
+                  ))}
+                </ul>
+              )}
             </div>
             <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-2">
               <button onClick={() => setShowDeleteModal(false)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
-              <button onClick={confirmDelete} className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700">Delete</button>
+              <button onClick={confirmDelete} className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700">Delete{pendingDeleteIds.length > 1 ? ` (${pendingDeleteIds.length})` : ""}</button>
             </div>
           </div>
         </div>

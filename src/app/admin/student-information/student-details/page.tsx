@@ -2,7 +2,7 @@
 import { toast as notify } from "@/lib/toast"
 
 import { useState, useMemo, useEffect } from "react"
-import { Search, Eye, Pencil, Trash2, X, Download, Upload, Printer, Plus, FileText, Loader2, ChevronLeft, ChevronRight } from "lucide-react"
+import { Search, Eye, Pencil, Trash2, X, Download, Upload, Printer, Plus, FileText, Loader2, ChevronLeft, ChevronRight, Users, GraduationCap } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useApi } from "@/lib/use-api"
 import { importColumnMap, importHeaders, parseImportFile, buildStudentImportPayload, downloadSampleCSV, blankImportRow } from "@/lib/student-import"
@@ -108,8 +108,9 @@ export default function StudentDetailsPage() {
   const [showAddModal, setShowAddModal] = useState(false)
   const [addErrors, setAddErrors] = useState<Record<string, string>>({})
 
-  const [deleteId, setDeleteId] = useState<number | null>(null)
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<number[]>([])
   const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<number[]>([])
 
   const [classes, setClasses] = useState<{ id: number; name: string }[]>([])
   const [allSections, setAllSections] = useState<{ id: number; class_id: number; name: string }[]>([])
@@ -164,6 +165,30 @@ export default function StudentDetailsPage() {
     return result
   }, [students, filterClass, filterSection, keyword])
 
+  const classStudentCount = useMemo(() => {
+    if (!filterClass) return 0
+    return students.filter((s) => s.class === filterClass).length
+  }, [students, filterClass])
+
+  const classStats = useMemo(() => {
+    return classes
+      .map((c) => {
+        const inClass = students.filter((s) => s.class === c.name)
+        const secMap = new Map<string, number>()
+        inClass.forEach((s) => {
+          const sec = s.section || "No Section"
+          secMap.set(sec, (secMap.get(sec) || 0) + 1)
+        })
+        return {
+          id: c.id,
+          name: c.name,
+          count: inClass.length,
+          sections: Array.from(secMap.entries()).sort((a, b) => a[0].localeCompare(b[0])),
+        }
+      })
+      .filter((c) => c.count > 0)
+  }, [classes, students])
+
   const canShowList = searched || (Boolean(filterClass) && Boolean(filterSection)) || keyword.trim().length > 0
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / recordsPerPage))
@@ -171,6 +196,16 @@ export default function StudentDetailsPage() {
     const start = (currentPage - 1) * recordsPerPage
     return filtered.slice(start, start + recordsPerPage)
   }, [filtered, currentPage, recordsPerPage])
+
+  useEffect(() => {
+    setSelectedIds((prev) => prev.filter((id) => filtered.some((s) => s.id === id)))
+  }, [filtered])
+
+  const allSelected = paginated.length > 0 && paginated.every((s) => selectedIds.includes(s.id))
+  const toggleSelectAll = () =>
+    setSelectedIds(allSelected ? [] : paginated.map((s) => s.id))
+  const toggleSelect = (id: number) =>
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]))
 
   const initials = (first: string | undefined | null, last: string | undefined | null) => {
     return ((first?.charAt(0) || "") + (last?.charAt(0) || "")).toUpperCase() || "?"
@@ -225,16 +260,47 @@ export default function StudentDetailsPage() {
     router.push(`/admin/student-information/student-admission?edit=${record.id}`)
   }
 
-  const handleDelete = (id: number) => { setDeleteId(id); setShowDeleteModal(true) }
+  const handleDelete = (id: number) => { setPendingDeleteIds([id]); setShowDeleteModal(true) }
+  const openBulkDelete = () => { setPendingDeleteIds(selectedIds); setShowDeleteModal(true) }
   const confirmDelete = async () => {
-    if (deleteId === null) return
+    if (pendingDeleteIds.length === 0) return
     try {
-      await remove(deleteId)
-      setShowDeleteModal(false); setDeleteId(null)
+      if (pendingDeleteIds.length === 1) {
+        await remove(pendingDeleteIds[0])
+      } else {
+        const res = await fetch(`/api/student-information/student?ids=${pendingDeleteIds.join(",")}`, { method: "DELETE" })
+        if (!res.ok) throw new Error("Failed to delete students")
+      }
+      setShowDeleteModal(false)
+      setPendingDeleteIds([])
+      setSelectedIds((prev) => prev.filter((i) => !pendingDeleteIds.includes(i)))
+      refetch()
     } catch (e: any) { notify.error(e.message) }
   }
 
   const handleSearch = (e: React.FormEvent) => { e.preventDefault(); setSearched(true); setCurrentPage(1) }
+
+  const handleClassCardClick = (name: string) => {
+    if (filterClass === name && searched && !filterSection) {
+      setFilterClass("")
+      setFilterSection("")
+      setSearched(false)
+    } else {
+      setFilterClass(name)
+      setFilterSection("")
+      setSearched(true)
+      setCurrentPage(1)
+      setActiveTab("list")
+    }
+  }
+
+  const handleSectionChipClick = (className: string, sectionName: string) => {
+    setFilterClass(className)
+    setFilterSection(sectionName)
+    setSearched(true)
+    setCurrentPage(1)
+    setActiveTab("list")
+  }
 
   const exportHeaders = [
     "Adm No", "Roll No", "First Name", "Middle Name", "Last Name", "Class", "Section", "Gender", "DOB",
@@ -578,6 +644,11 @@ export default function StudentDetailsPage() {
           <p className="text-xs text-gray-500 mt-0.5">Student Information / Student Details</p>
         </div>
         <div className="flex items-center gap-2">
+          {selectedIds.length > 0 && (
+            <button onClick={openBulkDelete} className="px-4 py-2 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors shadow-sm shadow-red-200 flex items-center gap-1.5">
+              <Trash2 className="h-3.5 w-3.5" />Delete Selected ({selectedIds.length})
+            </button>
+          )}
           <button onClick={() => setShowAddModal(true)} className="px-4 py-2 text-xs font-medium text-white bg-[var(--primary)] rounded-lg hover:bg-[var(--secondary)] transition-colors shadow-sm shadow-indigo-200">+ Add Student</button>
           <div className="relative group">
             <button className="px-4 py-2 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5"><Download className="h-3.5 w-3.5" />Export</button>
@@ -592,9 +663,98 @@ export default function StudentDetailsPage() {
         </div>
       </div>
 
+      {classStats.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+              <Users className="h-4 w-4 text-[var(--primary)]" />Students by Class
+            </h3>
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold text-white bg-[var(--primary)] shadow-sm shadow-orange-200">
+              {students.length} total
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-6 gap-2.5">
+            {classStats.map((c, ci) => {
+              const accents = [
+                { soft: "bg-orange-50 text-orange-600 border-orange-100", bar: "bg-[var(--primary)]", chip: "bg-orange-50 text-orange-600 border-orange-100" },
+                { soft: "bg-indigo-50 text-indigo-600 border-indigo-100", bar: "bg-indigo-500", chip: "bg-indigo-50 text-indigo-600 border-indigo-100" },
+                { soft: "bg-emerald-50 text-emerald-600 border-emerald-100", bar: "bg-emerald-500", chip: "bg-emerald-50 text-emerald-600 border-emerald-100" },
+                { soft: "bg-sky-50 text-sky-600 border-sky-100", bar: "bg-sky-500", chip: "bg-sky-50 text-sky-600 border-sky-100" },
+                { soft: "bg-rose-50 text-rose-600 border-rose-100", bar: "bg-rose-500", chip: "bg-rose-50 text-rose-600 border-rose-100" },
+              ]
+              const a = accents[ci % accents.length]
+              const active = filterClass === c.name && searched
+              const activeSection = active ? filterSection : ""
+              return (
+                <div
+                  key={c.id}
+                  onClick={() => handleClassCardClick(String(c.name))}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleClassCardClick(String(c.name)) }}
+                  title={active && !filterSection ? "Showing all sections - click to clear" : "Click to view students of this class"}
+                  className={`group w-full text-left rounded-xl border-2 bg-white overflow-hidden flex flex-col transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg ${
+                    active
+                      ? "border-[var(--primary)] shadow-lg shadow-orange-200"
+                      : "border-gray-200 shadow-sm hover:border-[var(--primary)]/40 hover:shadow-md"
+                  } cursor-pointer`}
+                >
+                  <div className={`h-1.5 ${a.bar}`} />
+                  <div className="p-3 flex-1">
+                    <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold ${a.soft} border mb-2 group-hover:scale-[1.04] transition-transform`}>
+                      <GraduationCap className="h-3 w-3" />
+                      Class {c.name}
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-3xl font-extrabold text-gray-900 leading-none">{c.count}</p>
+                        <p className="text-[11px] font-medium text-gray-500 mt-0.5">{c.count === 1 ? "student" : "students"}</p>
+                      </div>
+                      <div className="flex flex-wrap gap-1 justify-end max-w-[55%]">
+                        {c.sections.map(([sec, n]) => {
+                          const chipActive = activeSection === sec
+                          return (
+                            <button
+                              key={sec}
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); handleSectionChipClick(String(c.name), sec) }}
+                              title={`Show only ${c.name} - ${sec} students`}
+                              className={`inline-flex items-center px-2.5 py-1 rounded-lg text-sm font-bold border transition-all ${
+                                chipActive
+                                  ? "bg-[var(--primary)] text-white border-[var(--primary)] shadow-sm"
+                                  : `${a.chip} hover:ring-2 hover:ring-[var(--primary)]/30 hover:brightness-95`
+                              }`}
+                            >
+                              {sec}: {n}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                  <div className={`flex items-center justify-center py-1 border-t transition-colors ${
+                    active && !filterSection ? "bg-[var(--primary)] border-[var(--primary)]" : "bg-gray-50/70 border-gray-100 group-hover:bg-[var(--primary)]/5 group-hover:border-[var(--primary)]/20"
+                  }`}>
+                    <Eye className={`h-3 w-3 transition-colors ${active && !filterSection ? "text-white" : "text-gray-400 group-hover:text-[var(--primary)]"}`} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
         <div className="px-5 py-3 border-b border-gray-200">
-          <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2"><Search className="h-4 w-4" />Select Criteria</h3>
+          <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+            <Search className="h-4 w-4" />Select Criteria
+            {filterClass && classStudentCount > 0 && (
+              <span className="ml-auto inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-[var(--primary)] rounded-full px-3 py-1 shadow-sm shadow-orange-200">
+                {classStudentCount} student{classStudentCount === 1 ? "" : "s"}
+                {filterSection ? ` in ${filterClass} · ${filterSection}` : ` in ${filterClass}`}
+              </span>
+            )}
+          </h3>
         </div>
         <form onSubmit={handleSearch} className="p-5">
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
@@ -632,6 +792,9 @@ export default function StudentDetailsPage() {
                 <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gradient-to-r from-gray-50 to-gray-100/50 border-b border-gray-200">
+                  <th className="px-4 py-2.5 w-10">
+                    <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} className="accent-[var(--primary)]" />
+                  </th>
                   <th className="text-left px-4 py-2.5 font-semibold text-gray-600 text-[11px] uppercase tracking-wider">Admission No</th>
                   <th className="text-left px-4 py-2.5 font-semibold text-gray-600 text-[11px] uppercase tracking-wider">Student Name</th>
                   <th className="text-left px-4 py-2.5 font-semibold text-gray-600 text-[11px] uppercase tracking-wider">Roll No</th>
@@ -646,10 +809,13 @@ export default function StudentDetailsPage() {
               </thead>
               <tbody>
                 {paginated.length === 0 ? (
-                  <tr><td colSpan={10} className="text-center py-12 text-gray-400"><span className="text-sm">No students found</span></td></tr>
+                  <tr><td colSpan={11} className="text-center py-12 text-gray-400"><span className="text-sm">No students found</span></td></tr>
                 ) : (
                   paginated.map((s, idx) => (
                     <tr key={s.id} className={`border-b border-gray-50 hover:bg-[var(--primary-light)] transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}>
+                      <td className="px-4 py-2.5">
+                        <input type="checkbox" checked={selectedIds.includes(s.id)} onChange={() => toggleSelect(s.id)} className="accent-[var(--primary)]" />
+                      </td>
                       <td className="px-4 py-2.5 font-medium text-gray-800">{s.admissionNo}</td>
                       <td className="px-4 py-2.5 text-gray-800">{fullName(s.firstName, s.middleName, s.lastName)}</td>
                       <td className="px-4 py-2.5 text-gray-600 font-mono text-xs">{s.rollNo}</td>
@@ -1034,11 +1200,20 @@ export default function StudentDetailsPage() {
       )}
 
       <Modal title="Confirm Delete" show={showDeleteModal} onClose={() => setShowDeleteModal(false)}
-        footer={<><button onClick={() => setShowDeleteModal(false)} className="px-4 py-2 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button><button onClick={confirmDelete} className="px-5 py-2 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 shadow-sm shadow-red-200">Delete</button></>}>
+        footer={<><button onClick={() => setShowDeleteModal(false)} className="px-4 py-2 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button><button onClick={confirmDelete} className="px-5 py-2 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 shadow-sm shadow-red-200">Delete {pendingDeleteIds.length > 1 ? `(${pendingDeleteIds.length})` : ""}</button></>}>
         <div className="text-center py-2">
           <div className="mx-auto w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mb-3"><Trash2 className="h-6 w-6 text-red-500" /></div>
-          <p className="text-sm text-gray-600 mb-1">Are you sure you want to delete this student?</p>
-          {deleteId && <p className="text-sm font-semibold text-gray-800">{fullName(students.find((s) => s.id === deleteId)?.firstName, students.find((s) => s.id === deleteId)?.middleName, students.find((s) => s.id === deleteId)?.lastName)}</p>}
+          <p className="text-sm text-gray-600 mb-1">
+            Are you sure you want to delete {pendingDeleteIds.length > 1 ? `these ${pendingDeleteIds.length} students?` : "this student?"}
+          </p>
+          {pendingDeleteIds.length > 0 && (
+            <div className="text-sm font-semibold text-gray-800 space-y-0.5 max-h-40 overflow-y-auto">
+              {pendingDeleteIds.map((id) => {
+                const s = students.find((x) => x.id === id)
+                return s ? <span key={id} className="block">• {fullName(s.firstName, s.middleName, s.lastName)}</span> : null
+              })}
+            </div>
+          )}
         </div>
       </Modal>
 
@@ -1063,13 +1238,15 @@ export default function StudentDetailsPage() {
                 <p className="font-semibold text-blue-900">Instructions</p>
                 <ol className="list-decimal pl-4 space-y-1">
                   <li>Your CSV data should be in the format below. The first line of your CSV file should be the column headers as in the table example.</li>
+                  <li>Class and Section are selected above — you can leave the Class / Section columns in the CSV blank.</li>
+                  <li>Admission No, Roll No, First Name, Last Name, Gender and Mobile are required for each student.</li>
                   <li>Duplicate Admission Number (unique) rows will not be imported.</li>
                   <li>For student Gender use Male, Female value.</li>
                   <li>For student Blood Group use O+, A+, B+, AB+, O-, A-, B-, AB- value.</li>
                   <li>For RTE use Yes, No value.</li>
-                  <li>For If Guardian Is use father, mother, other value.</li>
-                  <li>Category name comes from other table so for category, enter Category Id (Category Id can be found on category page).</li>
-                  <li>Student house comes from other table so for student house, enter Student House Id (Student House Id can be found on student house page).</li>
+                  <li>For Guardian Is use Father, Mother, Other value.</li>
+                  <li>Dates accept YYYY-MM-DD, DD/MM/YYYY or MM/DD/YYYY format.</li>
+                  <li>Category and House are stored as plain text — enter the name directly (e.g. General, OBC, Blue), no ID needed.</li>
                 </ol>
               </div>
 

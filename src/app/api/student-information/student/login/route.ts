@@ -5,6 +5,7 @@ import {
   parentUsernameFromAdmissionNo,
 } from "@/lib/login-usernames"
 import { DEFAULT_STUDENT_PASSWORD, DEFAULT_PARENT_PASSWORD } from "@/lib/portal-login"
+import { studentPasswordFrom } from "@/lib/student-password"
 
 function getErrorMessage(e: unknown) {
   return e instanceof Error ? e.message : String(e)
@@ -62,7 +63,7 @@ export async function GET(req: NextRequest) {
         exists: Boolean(studentUser),
         userId: studentUser?.id ?? null,
         status: studentUser?.status ?? null,
-        defaultPassword: DEFAULT_STUDENT_PASSWORD,
+        defaultPassword: studentPasswordFrom(s.first_name, s.dob) || DEFAULT_STUDENT_PASSWORD,
       },
       parent: {
         username: parentUsername,

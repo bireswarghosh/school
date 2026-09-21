@@ -252,8 +252,12 @@ export async function PUT(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   const { searchParams } = new URL(req.url)
-  const id = parseInt(searchParams.get("id") || "0")
-  if (!id) return NextResponse.json({ error: "id required" }, { status: 400 })
-  await remove(TABLE, id)
-  return NextResponse.json({ success: true })
+  const raw = searchParams.get("ids") || searchParams.get("id") || ""
+  const ids = raw
+    .split(",")
+    .map((s) => parseInt(s.trim(), 10))
+    .filter((n) => !isNaN(n) && n > 0)
+  if (ids.length === 0) return NextResponse.json({ error: "id required" }, { status: 400 })
+  for (const id of ids) await remove(TABLE, id)
+  return NextResponse.json({ success: true, deleted: ids.length })
 }

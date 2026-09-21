@@ -1,6 +1,7 @@
 import { query } from "@/lib/db"
 import { hashPassword } from "@/lib/auth"
 import { usernameFromAdmissionNo, parentUsernameFromAdmissionNo, uniqueLoginUsername } from "@/lib/login-usernames"
+import { studentPasswordFrom } from "@/lib/student-password"
 
 export const DEFAULT_STUDENT_PASSWORD = "Stud@123"
 export const DEFAULT_PARENT_PASSWORD = "Parent@1"
@@ -78,7 +79,15 @@ export async function provisionPortalLogin(
     const ins = await query(
       `INSERT INTO users (username, name, email, password_hash, role, role_id, school_id, status)
        VALUES ($1,$2,$3,$4,$5,$6,$7,'Active') RETURNING id`,
-      [username, studentName, email, hashPassword(DEFAULT_STUDENT_PASSWORD), "student", studentRoleId, schoolId]
+      [
+        username,
+        studentName,
+        email,
+        hashPassword(studentPasswordFrom(student.first_name, student.dob) || DEFAULT_STUDENT_PASSWORD),
+        "student",
+        studentRoleId,
+        schoolId,
+      ]
     )
     result.studentUserId = Number(ins.rows[0].id)
     result.studentUsername = username

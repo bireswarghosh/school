@@ -22,6 +22,11 @@ function AdminHeader({ pageTitle, toggleDarkMode, darkMode, onMenu }: { pageTitl
   const pathname = usePathname()
   const [menuOpen, setMenuOpen] = useState(false)
 
+  useEffect(() => {
+    const title = info.name || (school?.name as string) || "Admin Panel"
+    document.title = `${title} · Admin Panel`
+  }, [info.name, school?.name])
+
   const isPosPage = pathname === "/admin/students-inventory/student-sales"
   const impersonating = Boolean(user?.origUid)
   const originIsSaas = user?.origRole === "super_admin"
@@ -79,7 +84,7 @@ function AdminHeader({ pageTitle, toggleDarkMode, darkMode, onMenu }: { pageTitl
         </button>
         <div className="min-w-0">
           <h1 className="text-[15px] lg:text-[16px] font-extrabold tracking-tight text-[var(--title-color)] capitalize leading-none truncate">{pageTitle}</h1>
-          <p className="hidden sm:block text-[11px] font-medium text-[var(--subtitle-color)] truncate">Smart School · {info.name || school?.name || "Admin"} · {new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</p>
+          <p className="hidden sm:block text-[11px] font-medium text-[var(--subtitle-color)] truncate">{info.name || school?.name || "Admin"} · {new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</p>
         </div>
       </div>
 

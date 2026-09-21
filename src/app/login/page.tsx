@@ -308,7 +308,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-xs text-[var(--subtitle-color)] mt-6">
-          Smart School · Multi-tenant School Management System
+          {brand.name || "Smart School"} · Multi-tenant School Management System
         </p>
       </div>
     </div>

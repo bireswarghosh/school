@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Search, Printer, Download, Eye, X, Save, Plus, Pencil, Trash2 } from "lucide-react"
 import { useApi } from "@/lib/use-api"
 import { useClassesAndSections } from "@/lib/use-classes-sections"
+import { useSchoolInfo } from "@/lib/use-school-info"
 
 type AdmitCardRecord = {
   id: number
@@ -61,6 +62,7 @@ type AdmitCardDesign = {
 }
 
 export default function CbseAdmitCardPage() {
+  const { info } = useSchoolInfo()
   const { classNames: classes, sectionNames } = useClassesAndSections();
   const sectionOptions = ["Select All", ...sectionNames];
   const { data: admitCards, loading } = useApi<AdmitCardRecord>("/api/cbse/admit-card")
@@ -558,7 +560,8 @@ export default function CbseAdmitCardPage() {
             <div className="px-6 py-4">
               <div className="border-2 border-gray-300 rounded-lg p-6 bg-white">
                 <div className="text-center mb-4 border-b-2 border-gray-300 pb-3">
-                  <h3 className="text-lg font-bold text-gray-900 uppercase">Smart School</h3>
+                  {info.logoSrc && <img src={info.logoSrc} alt={`${info.name} logo`} className="h-12 w-12 object-contain mx-auto mb-1" />}
+                  <h3 className="text-lg font-bold text-gray-900 uppercase">{info.name || "Smart School"}</h3>
                   <p className="text-sm text-gray-500">CBSE Affiliated School</p>
                   <h4 className="text-base font-semibold text-gray-800 mt-2">Admit Card</h4>
                   <p className="text-sm font-medium text-[var(--primary)]">{previewItem.examName}</p>

@@ -1,7 +1,7 @@
 import { query } from "@/lib/db"
 
 export function usernameFromAdmissionNo(admissionNo: string): string {
-  return String(admissionNo || "").replace(/[-._\s]+/g, "").trim()
+  return String(admissionNo || "").trim()
 }
 
 export function parentUsernameFromAdmissionNo(admissionNo: string): string {

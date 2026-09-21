@@ -13,7 +13,6 @@ import {
   Bell,
   Bot,
   Sparkles,
-  Download,
   Calendar,
   Star,
   MapPin,
@@ -294,12 +293,6 @@ export default function ExecutiveDashboard() {
                 </div>
               </div>
               <div className="flex gap-2">
-                <button
-                  onClick={() => window.print()}
-                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-full bg-[var(--title-color)] dark:bg-white text-white dark:text-slate-900 px-5 py-2.5 text-sm font-extrabold shadow hover:opacity-90 transition-opacity"
-                >
-                  <Download className="h-4 w-4" /> Export report
-                </button>
                 <Link
                   href="/admin/communicate/notice-board"
                   className="hidden sm:inline-flex items-center justify-center gap-1.5 rounded-full bg-white dark:bg-slate-800 border border-[var(--border)] px-4 py-2.5 text-sm font-bold text-[var(--title-color)] hover:bg-[var(--accent)] transition-colors"
@@ -307,17 +300,6 @@ export default function ExecutiveDashboard() {
                   <Bell className="h-4 w-4" /> Notices
                 </Link>
               </div>
-              {/* school logo preview when available */}
-              {schoolInfo.adminLogoSrc && (
-                <div className="hidden lg:flex items-center gap-2.5 rounded-xl bg-white dark:bg-slate-800 border border-[var(--border)] px-3 py-2">
-                  <img src={schoolInfo.adminLogoSrc} alt={schoolInfo.name} className="h-8 w-8 object-contain rounded-lg bg-white p-0.5 border border-[var(--border)]" />
-                  <div className="min-w-0">
-                    <p className="text-xs font-black text-[var(--title-color)] truncate">{schoolInfo.name}</p>
-                    <p className="text-[10px] font-bold tracking-wider text-[var(--subtitle-color)] uppercase">Session {sessionName}</p>
-                  </div>
-                  <span className="ml-auto h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                </div>
-              )}
             </div>
           </div>
 

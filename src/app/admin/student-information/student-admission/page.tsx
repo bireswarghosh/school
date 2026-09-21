@@ -1565,13 +1565,15 @@ export default function StudentAdmissionPage() {
                 <p className="font-semibold text-blue-900">Instructions</p>
                 <ol className="list-decimal pl-4 space-y-1">
                   <li>Your CSV data should be in the format below. The first line of your CSV file should be the column headers as in the table example.</li>
+                  <li>Class and Section are selected above — you can leave the Class / Section columns in the CSV blank.</li>
+                  <li>Admission No, Roll No, First Name, Last Name, Gender and Mobile are required for each student.</li>
                   <li>Duplicate Admission Number (unique) rows will not be imported.</li>
                   <li>For student Gender use Male, Female value.</li>
                   <li>For student Blood Group use O+, A+, B+, AB+, O-, A-, B-, AB- value.</li>
                   <li>For RTE use Yes, No value.</li>
-                  <li>For If Guardian Is use father, mother, other value.</li>
-                  <li>Category name comes from other table so for category, enter Category Id (Category Id can be found on category page).</li>
-                  <li>Student house comes from other table so for student house, enter Student House Id (Student House Id can be found on student house page).</li>
+                  <li>For Guardian Is use Father, Mother, Other value.</li>
+                  <li>Dates accept YYYY-MM-DD, DD/MM/YYYY or MM/DD/YYYY format.</li>
+                  <li>Category and House are stored as plain text — enter the name directly (e.g. General, OBC, Blue), no ID needed.</li>
                 </ol>
               </div>
 
