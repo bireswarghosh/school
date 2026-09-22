@@ -55,6 +55,9 @@ const SQL_FILES = [
    path.join(__dirname, "..", "src", "lib", "sql", "064_sidebar_menu_locked.sql"),
    path.join(__dirname, "..", "src", "lib", "sql", "065_result_card.sql"),
    path.join(__dirname, "..", "src", "lib", "sql", "066_admission_enquiry_reg_purchase.sql"),
+   path.join(__dirname, "..", "src", "lib", "sql", "067_fee_payment_log.sql"),
+   path.join(__dirname, "..", "src", "lib", "sql", "068_fee_payment_log_status_changes.sql"),
+   path.join(__dirname, "..", "src", "lib", "sql", "069_fee_payment_income.sql"),
  ];
 
 function hashPassword(password) {
@@ -97,7 +100,7 @@ const TENANT_TABLES = [
   "si_vp_products","si_vp_groups","si_vp_components","si_vp_variants","si_vp_prices","si_vp_price_history",
   "si_vp_attributes","si_vp_attribute_values","si_vp_component_attributes","si_vp_component_attribute_values",
   "si_vp_product_variations","si_vp_product_variation_values","si_vp_product_variation_prices","si_vp_product_variation_stock",
-  "networks", "student_guardians", "result_card_templates", "result_card_records",
+  "networks", "student_guardians", "result_card_templates", "result_card_records", "fee_payment_log",
 ];
 
 async function main() {

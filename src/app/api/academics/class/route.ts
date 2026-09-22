@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { query, getAll, getById, create, update, remove } from "@/lib/db"
 
 const TABLE = "classes"
-const ORDER = "id DESC"
+const ORDER = "order_number IS NULL, order_number ASC, id ASC"
 
 function getErrorMessage(e: unknown) {
   return e instanceof Error ? e.message : String(e)
@@ -89,7 +89,9 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const name = String(body.name || "").trim()
     if (!name) return NextResponse.json({ error: "Class name required" }, { status: 400 })
-    const item = (await create(TABLE, { name })) as { id: number; name: string }
+    const maxRow = await query(`SELECT MAX(order_number) AS max_order FROM classes`)
+    const order_number = (Number(maxRow.rows[0]?.max_order) || 0) + 1
+    const item = (await create(TABLE, { name, order_number })) as { id: number; name: string; order_number: number }
     const sections = parseSectionNames(body.sections ?? body.sectionNames)
     if (sections.length > 0) {
       await syncClassSections(item.id, sections)

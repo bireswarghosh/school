@@ -80,20 +80,23 @@ export default function AdminAssistant() {
   return (
     <>
       {!open && (
-        <button
-          onClick={() => { setOpen(true); setPing(false) }}
-          title="Ask school assistant"
-          className="fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full text-white shadow-xl flex items-center justify-center transition-transform hover:scale-110 active:scale-95 animate-[assistant-pop_.35s_ease-out]"
-          style={{ background: "linear-gradient(135deg, #ff7732, #b34a12)", boxShadow: "0 8px 28px rgba(255,119,50,.45)" }}
-        >
-          {ping && <span className="absolute inset-0 rounded-full animate-ping" style={{ background: "rgba(255,119,50,.35)" }} />}
-          <Bot className="h-6 w-6" />
-          <style>{`@keyframes assistant-pop { from { transform: scale(0); opacity: 0 } to { transform: scale(1); opacity: 1 } }`}</style>
-        </button>
+        <div className="fixed right-6 top-1/2 -translate-y-1/2 z-50">
+          <button
+            onClick={() => { setOpen(true); setPing(false) }}
+            title="Ask school assistant"
+            className="relative h-14 w-14 rounded-full text-white shadow-xl flex items-center justify-center transition-transform hover:scale-110 active:scale-95 animate-[assistant-pop_.35s_ease-out]"
+            style={{ background: "linear-gradient(135deg, #ff7732, #b34a12)", boxShadow: "0 8px 28px rgba(255,119,50,.45)" }}
+          >
+            {ping && <span className="absolute inset-0 rounded-full animate-ping" style={{ background: "rgba(255,119,50,.35)" }} />}
+            <Bot className="h-6 w-6" />
+            <style>{`@keyframes assistant-pop { from { transform: scale(0); opacity: 0 } to { transform: scale(1); opacity: 1 } }`}</style>
+          </button>
+        </div>
       )}
 
       {open && (
-        <div className="fixed bottom-6 right-6 z-50 w-[min(420px,calc(100vw-3rem))] h-[min(600px,calc(100vh-6rem))] flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-2xl overflow-hidden animate-[assistant-in_.25s_ease-out] origin-bottom-right">
+        <div className="fixed right-6 top-1/2 -translate-y-1/2 z-50">
+          <div className="w-[min(420px,calc(100vw-3rem))] h-[min(600px,calc(100vh-6rem))] flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-2xl overflow-hidden animate-[assistant-in_.25s_ease-out] origin-right">
           <style>{`@keyframes assistant-in { from { transform: scale(.9) translateY(16px); opacity: 0 } to { transform: scale(1) translateY(0); opacity: 1 } }`}</style>
           <div className="flex items-center gap-2.5 px-4 py-3 text-white shrink-0" style={{ background: "linear-gradient(135deg, #ff7732, #c24e0e)" }}>
             <span className="h-9 w-9 rounded-full bg-white/20 flex items-center justify-center shrink-0">
@@ -171,6 +174,7 @@ export default function AdminAssistant() {
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </button>
           </form>
+        </div>
         </div>
       )}
     </>

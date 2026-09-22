@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useCallback } from "react"
-import { Search, DollarSign, Tag } from "lucide-react"
-import { useApi } from "@/lib/use-api"
+import { useState, useCallback, useEffect } from "react"
+import Link from "next/link"
+import { Search, DollarSign, Tag, Zap } from "lucide-react"
 import { useClassesAndSections } from "@/lib/use-classes-sections"
 import { useCurrency } from "@/lib/currency-context"
 import CollectFeesModal, { type CollectStudent } from "@/components/collect-fees-modal"
@@ -60,10 +60,12 @@ export default function QuickFeesPage() {
   const classOptions = ["Select", ...classNames]
   const sectionOptions = ["Select", ...sectionNames]
 
+  const [query, setQuery] = useState("")
   const [selectedClass, setSelectedClass] = useState("")
   const [selectedSection, setSelectedSection] = useState("")
   const [students, setStudents] = useState<Student[]>([])
   const [showResults, setShowResults] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [collectStudent, setCollectStudent] = useState<CollectStudent | null>(null)
 
   const selectedClassItem = classes.find((c) => c.name === selectedClass)
@@ -82,37 +84,53 @@ export default function QuickFeesPage() {
       .reduce((sum, f) => sum + Math.max(0, num(f.amount) - num(f.discountAmount) - num(f.paidAmount)), 0)
   }
 
-  const handleSearch = useCallback(async () => {
-    const params = new URLSearchParams()
-    if (selectedClass) params.set("class", selectedClass)
-    if (selectedSection) params.set("section", selectedSection)
-    const [studentsRes, feesRes, discRes] = await Promise.all([
-      fetch(`/api/students?${params.toString()}`),
-      fetch("/api/fees/fees-payment"),
-      fetch("/api/fees/fees-discount"),
-    ])
-    const list = await studentsRes.json()
-    const feesList = await feesRes.json()
-    let discJson: any = null
-    try { discJson = await discRes.json() } catch { /* ignore */ }
-    const discounts = Array.isArray(discJson) ? discJson : []
-    const t = new Date().toISOString().split("T")[0]
-    const activeByStudent = new Map<number, any>()
-    for (const d of discounts) {
-      if (d.isActive === false || (d.expiryDate && d.expiryDate < t) || !d.studentId) continue
-      const dType = d.discountType === "Percentage" ? "Percentage" : d.discountType === "Fix" ? "Fix" : d.discountTypeKind
-      const value = dType === "Percentage" ? num(d.percentage) : num(d.amount)
-      if (!(value > 0)) continue
-      if (!activeByStudent.has(Number(d.studentId))) activeByStudent.set(Number(d.studentId), d)
+  const handleSearch = useCallback(async (q: string) => {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (q.trim()) params.set("q", q.trim())
+      if (selectedClass) params.set("class", selectedClass)
+      if (selectedSection) params.set("section", selectedSection)
+      const [studentsRes, feesRes, discRes] = await Promise.all([
+        fetch(`/api/students?${params.toString()}`),
+        fetch("/api/fees/fees-payment"),
+        fetch("/api/fees/fees-discount"),
+      ])
+      const list = await studentsRes.json()
+      const feesList = await feesRes.json()
+      let discJson: any = null
+      try { discJson = await discRes.json() } catch { /* ignore */ }
+      const discounts = Array.isArray(discJson) ? discJson : []
+      const t = new Date().toISOString().split("T")[0]
+      const activeByStudent = new Map<number, any>()
+      for (const d of discounts) {
+        if (d.isActive === false || (d.expiryDate && d.expiryDate < t) || !d.studentId) continue
+        const dType = d.discountType === "Percentage" ? "Percentage" : d.discountType === "Fix" ? "Fix" : d.discountTypeKind
+        const value = dType === "Percentage" ? num(d.percentage) : num(d.amount)
+        if (!(value > 0)) continue
+        if (!activeByStudent.has(Number(d.studentId))) activeByStudent.set(Number(d.studentId), d)
+      }
+      const rows = (Array.isArray(list) ? list : []).map((s: any) => ({
+        ...s,
+        dueAmount: computeStudentDue(Array.isArray(feesList) ? feesList : [], s.id),
+        activeDiscount: activeByStudent.get(Number(s.id)) ?? null,
+      }))
+      setStudents(rows)
+      setShowResults(true)
+    } finally {
+      setLoading(false)
     }
-    const rows = (Array.isArray(list) ? list : []).map((s: any) => ({
-      ...s,
-      dueAmount: computeStudentDue(Array.isArray(feesList) ? feesList : [], s.id),
-      activeDiscount: activeByStudent.get(Number(s.id)) ?? null,
-    }))
-    setStudents(rows)
-    setShowResults(true)
   }, [selectedClass, selectedSection])
+
+  useEffect(() => {
+    if (!query.trim() && !selectedClass && !selectedSection) {
+      setStudents([])
+      setShowResults(false)
+      return
+    }
+    const t = setTimeout(() => handleSearch(query), 300)
+    return () => clearTimeout(t)
+  }, [query, selectedClass, selectedSection, handleSearch])
 
   const openCollect = (s: Student) => {
     setCollectStudent({
@@ -128,34 +146,60 @@ export default function QuickFeesPage() {
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h2 className="text-xl font-bold text-gray-900">Quick Fees</h2>
-          <p className="text-xs text-gray-500 mt-0.5">Fees Collection / Quick Fees</p>
+        <div className="flex items-center gap-3">
+          <span className="h-10 w-10 rounded-xl bg-[var(--primary)] text-white flex items-center justify-center shadow-sm">
+            <Zap className="h-5 w-5" />
+          </span>
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">Quick Fees</h2>
+            <p className="text-xs text-gray-500 mt-0.5">Fees Collection / Quick Fees</p>
+          </div>
         </div>
+        <Link
+          href="/admin/fees-collection/fees-carry-forward"
+          className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-white rounded-lg transition-colors shadow-sm"
+          style={{ background: "linear-gradient(135deg, #ff7732, #b34a12)" }}
+        >
+          <Tag className="h-3.5 w-3.5" />
+          Fees Carry Forward
+        </Link>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200">
         <div className="bg-gradient-to-r from-indigo-600 to-indigo-500 rounded-t-xl px-5 py-3">
-          <h3 className="text-sm font-semibold text-white">Select Student</h3>
+          <h3 className="text-sm font-semibold text-white">Find Student</h3>
         </div>
         <div className="p-5">
           <div className="flex flex-wrap items-end gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Class</label>
-              <select value={selectedClass} onChange={(e) => handleClassChange(e.target.value)} className="w-40 h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] bg-white">
+              <select value={selectedClass} onChange={(e) => handleClassChange(e.target.value)} className="w-36 h-9 px-2.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] bg-white">
                 {classOptions.map((o) => <option key={o} value={o === "Select" ? "" : o}>{o}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Section</label>
-              <select value={selectedSection} onChange={(e) => setSelectedSection(e.target.value)} className="w-40 h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] bg-white">
+              <select value={selectedSection} onChange={(e) => setSelectedSection(e.target.value)} className="w-32 h-9 px-2.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] bg-white">
                 {availableSections.map((o) => <option key={o} value={o === "Select" ? "" : o}>{o}</option>)}
               </select>
             </div>
-            <button onClick={handleSearch} className="h-9 inline-flex items-center gap-1.5 px-4 bg-[var(--primary)] text-white text-sm font-medium rounded-lg hover:bg-[var(--secondary)] transition-colors">
-              <Search className="h-4 w-4" /> Search
-            </button>
+            <div className="min-w-[220px] max-w-xs flex-1">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Search Student</label>
+              <div className="relative">
+                <Search className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Name, roll no, admission no..."
+                  className="w-full h-9 pl-9 pr-8 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] outline-none bg-white"
+                />
+                {(loading) && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 border-2 border-[var(--primary)] border-t-transparent rounded-full animate-spin" />
+                )}
+              </div>
+            </div>
           </div>
+          <p className="text-xs text-gray-400 mt-2">Results filter automatically — combine class, section and any search text.</p>
         </div>
       </div>
 
@@ -163,7 +207,7 @@ export default function QuickFeesPage() {
         <>
           {students.length === 0 ? (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 px-5 py-10 text-center text-sm text-gray-500">
-              No students found for the selected class/section.
+              No students found for the selected filters.
             </div>
           ) : (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -232,7 +276,7 @@ export default function QuickFeesPage() {
         open={!!collectStudent}
         student={collectStudent}
         onClose={() => setCollectStudent(null)}
-        onSuccess={handleSearch}
+        onSuccess={() => query.trim() && handleSearch(query)}
       />
     </div>
   )

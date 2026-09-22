@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import Sidebar from "@/components/Sidebar"
-import { Menu, Search, Moon, Sun, LogOut, ChevronDown, User, Store, ArrowLeft, ShieldCheck, ShieldAlert, Lock } from "lucide-react"
+import { Menu, Search, Moon, Sun, LogOut, ChevronDown, User, Store, Wallet, ArrowLeft, ShieldCheck, ShieldAlert, Lock } from "lucide-react"
 import NotificationBell from "@/components/NotificationBell"
 import ThemeSettings from "@/components/ThemeSettings"
 import QuickLinks from "@/components/QuickLinks"
@@ -120,6 +120,14 @@ function AdminHeader({ pageTitle, toggleDarkMode, darkMode, onMenu }: { pageTitl
         >
           <Store className="h-3.5 w-3.5" />
           POS
+        </Link>
+        <Link
+          href="/admin/fees-collection/quick-fees"
+          className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-black shadow-sm transition-all hover:scale-[1.02] bg-gradient-to-br from-indigo-500 to-violet-500 text-white hover:shadow-md"
+          title="Go to Fees Collection"
+        >
+          <Wallet className="h-3.5 w-3.5" />
+          Fees
         </Link>
         <QuickLinks />
         <div className="relative hidden lg:block">

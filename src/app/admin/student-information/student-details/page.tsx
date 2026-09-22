@@ -2,7 +2,7 @@
 import { toast as notify } from "@/lib/toast"
 
 import { useState, useMemo, useEffect } from "react"
-import { Search, Eye, Pencil, Trash2, X, Download, Upload, Printer, Plus, FileText, Loader2, ChevronLeft, ChevronRight, Users, GraduationCap } from "lucide-react"
+import { Search, Eye, Pencil, Trash2, X, Download, Upload, Printer, Plus, FileText, Loader2, ChevronLeft, ChevronRight, Users, GraduationCap, GripVertical } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useApi } from "@/lib/use-api"
 import { importColumnMap, importHeaders, parseImportFile, buildStudentImportPayload, downloadSampleCSV, blankImportRow } from "@/lib/student-import"
@@ -300,14 +300,18 @@ export default function StudentDetailsPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [selectedIds, setSelectedIds] = useState<number[]>([])
 
-  const [classes, setClasses] = useState<{ id: number; name: string }[]>([])
+  const [classes, setClasses] = useState<{ id: number; name: string; order_number?: number | null }[]>([])
   const [allSections, setAllSections] = useState<{ id: number; class_id: number; name: string }[]>([])
   const [categories, setCategories] = useState<{ id: number; name: string }[]>([])
   const [houses, setHouses] = useState<{ id: number; name: string }[]>([])
+  const [reorderMode, setReorderMode] = useState(false)
+  const [dragId, setDragId] = useState<number | null>(null)
+  const [overId, setOverId] = useState<number | null>(null)
+  const [savingOrder, setSavingOrder] = useState(false)
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/academics/class").then((r) => r.json()).then((d) => { setClasses(Array.isArray(d) ? d.sort((a: any, b: any) => a.id - b.id) : []) }),
+      fetch("/api/academics/class").then((r) => r.json()).then((d) => { setClasses(Array.isArray(d) ? d.sort((a: any, b: any) => (a.order_number ?? Number.MAX_SAFE_INTEGER) - (b.order_number ?? Number.MAX_SAFE_INTEGER) || a.id - b.id) : []) }),
       fetch("/api/academics/section").then((r) => r.json()).then((d) => { setAllSections(Array.isArray(d) ? d : []) }),
       fetch("/api/student-information/student-category").then((r) => r.json()).then((d) => { setCategories(Array.isArray(d) ? d : []) }),
       fetch("/api/student-information/student-house").then((r) => r.json()).then((d) => { setHouses(Array.isArray(d) ? d : []) }),
@@ -488,6 +492,66 @@ export default function StudentDetailsPage() {
     setSearched(true)
     setCurrentPage(1)
     setActiveTab("list")
+  }
+
+  const handleClassDragStart = (id: number) => { setDragId(id) }
+
+  const handleClassDragOver = (e: React.DragEvent, id: number) => {
+    e.preventDefault()
+    if (dragId === null || dragId === id || overId === id) return
+    setOverId(id)
+    setClasses((prev) => {
+      const next = [...prev]
+      const from = next.findIndex((c) => c.id === dragId)
+      const to = next.findIndex((c) => c.id === id)
+      if (from === -1 || to === -1 || from === to) return prev
+      const [moved] = next.splice(from, 1)
+      const target = next.findIndex((c) => c.id === id)
+      next.splice(target, 0, moved)
+      return next
+    })
+  }
+
+  const handleClassDragEnd = () => { setDragId(null); setOverId(null) }
+
+  const manageOrderMode = () => {
+    setReorderMode((v) => {
+      if (v) { setDragId(null); setOverId(null) }
+      return !v
+    })
+  }
+
+  const cancelClassOrder = () => {
+    setReorderMode(false)
+    setDragId(null)
+    setOverId(null)
+    fetch("/api/academics/class").then((r) => r.json()).then((d) => {
+      setClasses(Array.isArray(d) ? d.sort((a: any, b: any) => (a.order_number ?? Number.MAX_SAFE_INTEGER) - (b.order_number ?? Number.MAX_SAFE_INTEGER) || a.id - b.id) : [])
+    })
+  }
+
+  const saveClassOrder = async () => {
+    setSavingOrder(true)
+    try {
+      const items = classes.map((c, i) => ({ id: c.id, order: i + 1 }))
+      const res = await fetch("/api/academics/class/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || "Failed to save class order")
+      }
+      notify.success("Class order saved")
+      setReorderMode(false)
+      setDragId(null)
+      setOverId(null)
+    } catch (e: any) {
+      notify.error(e.message || "Failed to save class order")
+    } finally {
+      setSavingOrder(false)
+    }
   }
 
   const exportHeaders = [
@@ -678,13 +742,32 @@ export default function StudentDetailsPage() {
 
       {classStats.length > 0 && (
         <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-              <Users className="h-4 w-4 text-[var(--primary)]" />Students by Class
-            </h3>
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold text-white bg-[var(--primary)] shadow-sm shadow-orange-200">
-              {students.length} total
-            </span>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                <Users className="h-4 w-4 text-[var(--primary)]" />Students by Class
+              </h3>
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold text-white bg-[var(--primary)] shadow-sm shadow-orange-200">
+                {students.length} total
+              </span>
+              {reorderMode && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold text-gray-600 bg-amber-100 border border-amber-200">
+                  <GripVertical className="h-3 w-3" />Drag cards to arrange
+                </span>
+              )}
+            </div>
+            {reorderMode ? (
+              <div className="flex items-center gap-2">
+                <button onClick={cancelClassOrder} className="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
+                <button onClick={saveClassOrder} disabled={savingOrder} className="px-3 py-1.5 text-xs font-medium text-white bg-[var(--primary)] rounded-lg hover:bg-[var(--secondary)] transition-colors flex items-center gap-1.5">
+                  {savingOrder ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GripVertical className="h-3.5 w-3.5" />}Save Order
+                </button>
+              </div>
+            ) : (
+              <button onClick={manageOrderMode} className="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5">
+                <GripVertical className="h-3.5 w-3.5" />Arrange Classes
+              </button>
+            )}
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-6 gap-2.5">
             {classStats.map((c, ci) => {
@@ -701,19 +784,33 @@ export default function StudentDetailsPage() {
               return (
                 <div
                   key={c.id}
-                  onClick={() => handleClassCardClick(String(c.name))}
+                  draggable={reorderMode}
+                  onDragStart={() => handleClassDragStart(c.id)}
+                  onDragOver={(e) => handleClassDragOver(e, c.id)}
+                  onDragEnd={handleClassDragEnd}
+                  onClick={() => { if (!reorderMode) handleClassCardClick(String(c.name)) }}
                   role="button"
                   tabIndex={0}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleClassCardClick(String(c.name)) }}
-                  title={active && !filterSection ? "Showing all sections - click to clear" : "Click to view students of this class"}
-                  className={`group w-full text-left rounded-xl border-2 bg-white overflow-hidden flex flex-col transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg ${
-                    active
-                      ? "border-[var(--primary)] shadow-lg shadow-orange-200"
-                      : "border-gray-200 shadow-sm hover:border-[var(--primary)]/40 hover:shadow-md"
-                  } cursor-pointer`}
+                  onKeyDown={(e) => { if (!reorderMode && (e.key === "Enter" || e.key === " ")) handleClassCardClick(String(c.name)) }}
+                  title={reorderMode ? "Drag this card to reorder classes" : (active && !filterSection ? "Showing all sections - click to clear" : "Click to view students of this class")}
+                  className={`group w-full text-left rounded-xl border-2 bg-white overflow-hidden flex flex-col transition-all duration-200 ${
+                    reorderMode
+                      ? dragId === c.id
+                        ? "border-[var(--primary)] shadow-lg shadow-orange-200 opacity-70 cursor-grabbing scale-95"
+                        : "border-dashed border-gray-300 shadow-sm hover:border-[var(--primary)]/50 cursor-grab hover:shadow-md"
+                      : active
+                        ? "border-[var(--primary)] shadow-lg shadow-orange-200 hover:-translate-y-0.5 hover:shadow-lg"
+                        : "border-gray-200 shadow-sm hover:border-[var(--primary)]/40 hover:shadow-md hover:-translate-y-0.5"
+                  } ${reorderMode ? "" : "cursor-pointer"}`}
                 >
-                  <div className={`h-1.5 ${a.bar}`} />
+                  <div className={`h-1.5 ${a.bar} ${reorderMode && overId === c.id && dragId !== c.id ? "!h-2.5" : ""}`} />
                   <div className="p-3 flex-1">
+                    {reorderMode && (
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1"><GripVertical className="h-3 w-3 text-[var(--primary)]" />#{c.id}</span>
+                        <span className="text-[10px] text-gray-300">{classes.findIndex((cl) => cl.id === c.id) + 1}</span>
+                      </div>
+                    )}
                     <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold ${a.soft} border mb-2 group-hover:scale-[1.04] transition-transform`}>
                       <GraduationCap className="h-3 w-3" />
                       Class {c.name}

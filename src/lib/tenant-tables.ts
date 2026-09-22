@@ -20,6 +20,7 @@ export const TENANT_TABLES = new Set<string>([
   "item_issues", "item_sub_categories", "brands", "units", "product_variants", "purchase_orders", "purchase_order_items",
   "discounts", "inventory_adjustments", "stock_transfers", "fees_masters", "fees_groups", "fees_types", "fees_discounts",
   "fees_payments", "fees_carry_forward", "fees_reminders", "offline_payments", "income_heads", "incomes", "expense_heads",
+  "fee_payment_log",
   "expenses", "payroll", "teachers_ratings", "disabled_staff", "staff_id_cards", "certificate_templates", "certificates",
   "student_id_cards", "front_events", "gallery_items", "news_items", "media_items", "cms_pages", "cms_menus", "banners",
   "notices", "email_templates", "sms_templates", "scheduled_logs", "events", "holiday_types", "course_categories", "courses",

@@ -1,9 +1,10 @@
 "use client"
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { Search, DollarSign, Loader2 } from "lucide-react"
+import { Search, DollarSign, Loader2, History, RefreshCw } from "lucide-react"
 import { useApi } from "@/lib/use-api"
 import { useClassesAndSections } from "@/lib/use-classes-sections"
+import { useCurrency } from "@/lib/currency-context"
 
 type StudentRecord = {
   id: number
@@ -17,12 +18,59 @@ type StudentRecord = {
   mobile: string
 }
 
+type PaymentLogEntry = {
+  id: number
+  studentName: string | null
+  feeTypeName: string | null
+  amountPaid: number | string
+  paymentMode: string | null
+  changeKind: string | null
+  oldStatus: string | null
+  newStatus: string | null
+  paidBefore: number | string | null
+  paidAfter: number | string | null
+  paidAt: string | null
+  createdBy: string | null
+  ipAddress: string | null
+  note: string | null
+}
+
+const num = (v: unknown) => {
+  const n = Number(v)
+  return isNaN(n) ? 0 : n
+}
+
+const fmtDateTime = (dt?: string | null) => {
+  if (!dt) return "-"
+  const d = new Date(dt)
+  if (isNaN(d.getTime())) return "-"
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+const money = (symbol: string, v: number) => `${symbol}${v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
 export default function CollectFeesPage() {
   const router = useRouter()
+  const { symbol } = useCurrency()
   const { classNames, sectionNames, classes, sectionsOf } = useClassesAndSections()
   const [filterClass, setFilterClass] = useState("")
   const [filterSection, setFilterSection] = useState("")
   const [keyword, setKeyword] = useState("")
+
+  const [logEntries, setLogEntries] = useState<PaymentLogEntry[]>([])
+  const [logLoading, setLogLoading] = useState(true)
+
+  const loadLog = useCallback(() => {
+    setLogLoading(true)
+    fetch("/api/fees/fees-payment-log")
+      .then((r) => r.json())
+      .then((d) => setLogEntries(Array.isArray(d) ? d : []))
+      .catch(() => setLogEntries([]))
+      .finally(() => setLogLoading(false))
+  }, [])
+
+  useEffect(() => { loadLog() }, [loadLog])
 
   const selectedClass = classes.find((c) => c.name === filterClass)
   const sectionOptions = useMemo(() => {
@@ -207,6 +255,103 @@ export default function CollectFeesPage() {
         </div>
         <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between text-sm text-gray-500 bg-gray-50/50">
           <span>Showing {filtered.length} of {(students || []).length} records</span>
+        </div>
+      </div>
+
+      {/* Payment Change Log */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-200 bg-gradient-to-r from-amber-50/60 to-white flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+            <History className="h-4 w-4 text-amber-600" />
+            Payment Change Log
+          </h3>
+          <button
+            onClick={loadLog}
+            disabled={logLoading}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${logLoading ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Date &amp; Time</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Student</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Fee Type</th>
+                <th className="text-center px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Type</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Status Change</th>
+                <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Paid Amount</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">User</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">IP Address</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {logLoading ? (
+                <tr>
+                  <td colSpan={9} className="text-center py-10 text-gray-400">
+                    <Loader2 className="h-4 w-4 animate-spin inline-block mr-2" />
+                    Loading log...
+                  </td>
+                </tr>
+              ) : logEntries.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="text-center py-10 text-gray-400">No payment changes recorded yet</td>
+                </tr>
+              ) : (
+                logEntries.map((entry, idx) => {
+                  const isStatus = entry.changeKind === "status"
+                  const before = entry.paidBefore !== null ? num(entry.paidBefore) : null
+                  const after = entry.paidAfter !== null ? num(entry.paidAfter) : null
+                  return (
+                    <tr key={entry.id} className={`border-b border-gray-100 hover:bg-[var(--primary-light)]/30 transition-colors ${idx % 2 === 1 ? "bg-gray-50/40" : ""}`}>
+                      <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{fmtDateTime(entry.paidAt)}</td>
+                      <td className="px-4 py-3 font-medium text-gray-800">{entry.studentName || "-"}</td>
+                      <td className="px-4 py-3 text-gray-600">{entry.feeTypeName || "-"}</td>
+                      <td className="px-4 py-3 text-center">
+                        {isStatus ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700">Status Change</span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-green-100 text-green-700">Payment</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {isStatus ? (
+                          <span className="text-sm font-medium text-gray-800">
+                            {entry.oldStatus || "-"} <span className="text-gray-400">→</span> {entry.newStatus || "-"}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-gray-600">{entry.newStatus || entry.paymentMode || "-"}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {isStatus && before !== null ? (
+                          <span className="font-medium text-gray-800">
+                            {money(symbol, before)} <span className="text-gray-400">→</span> <span className="text-red-600">{money(symbol, after ?? 0)}</span>
+                          </span>
+                        ) : (
+                          <span className="font-medium text-green-600">{money(symbol, num(entry.amountPaid))}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">{entry.createdBy || "-"}</td>
+                      <td className="px-4 py-3 text-gray-500 font-mono text-xs">{entry.ipAddress || "-"}</td>
+                      <td className="px-4 py-3 text-gray-600 max-w-[260px]">
+                        <p className="truncate" title={entry.note || ""}>{entry.note || "-"}</p>
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between text-sm text-gray-500 bg-gray-50/50">
+          <span>
+            {logLoading ? "Loading..." : `${logEntries.length} record(s) — payments and status changes are logged with date, time, user and IP`}
+          </span>
         </div>
       </div>
     </div>

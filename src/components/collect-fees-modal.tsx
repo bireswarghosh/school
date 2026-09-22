@@ -1,12 +1,13 @@
 "use client"
 
-import { useState, useEffect, useMemo, useRef } from "react"
-import { Loader2, Printer, CreditCard, Banknote, Building2, X, FileText, Tag } from "lucide-react"
+import { useState, useEffect, useMemo, useRef, useCallback } from "react"
+import { Loader2, Printer, CreditCard, Banknote, Building2, X, FileText, Tag, History } from "lucide-react"
 import { useApi } from "@/lib/use-api"
 import { useCurrency } from "@/lib/currency-context"
 import { useSchoolInfo } from "@/lib/use-school-info"
 import { toast } from "@/lib/toast"
 import { buildReceiptHtml, type FeeReceiptData, type FeeReceiptLine } from "@/lib/fee-receipt"
+import { incomeHeadForGroup } from "@/lib/income-mapping"
 
 type FeeRecord = {
   id: number
@@ -62,6 +63,8 @@ type CurrentUser = {
   role: string
 }
 
+type IncomeHead = { id: number; name: string }
+
 type AppliedFee = ResolvedFee & {
   appliedDiscount: number
   appliedDiscountId: number | null
@@ -75,6 +78,22 @@ export type CollectStudent = {
   rollNo?: string
   className: string
   section: string
+}
+
+type PaymentLogEntry = {
+  id: number
+  studentId: number
+  feePaymentId: number | null
+  feeTypeId: number | null
+  feeGroupId: number | null
+  amountPaid: number | string
+  paymentMode: string | null
+  transactionId: string | null
+  bankName: string | null
+  chequeNo: string | null
+  note: string | null
+  paidAt: string | null
+  createdBy: string | null
 }
 
 const num = (v: unknown) => {
@@ -120,8 +139,10 @@ export default function CollectFeesModal({
 
   const [feeGroups, setFeeGroups] = useState<Record<number, string>>({})
   const [feeTypes, setFeeTypes] = useState<Record<number, { name: string; group: string }>>({})
+  const [incomeHeads, setIncomeHeads] = useState<IncomeHead[]>([])
   const [selectedFeeIds, setSelectedFeeIds] = useState<number[]>([])
-  const [partialAmounts, setPartialAmounts] = useState<Record<number, number>>({})
+  const [amountToPay, setAmountToPay] = useState("")
+  const [paymentLog, setPaymentLog] = useState<PaymentLogEntry[]>([])
   const [payment, setPayment] = useState<PaymentFormData>({
     method: "Cash", chequeNo: "", bank: "", transactionId: "", note: "",
   })
@@ -146,6 +167,18 @@ export default function CollectFeesModal({
       .catch(() => setStudentDiscounts([]))
   }, [student])
 
+  const refetchPaymentLog = useCallback(() => {
+    if (!student) return
+    fetch(`/api/fees/fees-payment-log?studentId=${student.id}`)
+      .then((r) => r.json())
+      .then((d) => setPaymentLog(Array.isArray(d) ? d : []))
+      .catch(() => setPaymentLog([]))
+  }, [student])
+
+  useEffect(() => {
+    if (open && student) refetchPaymentLog()
+  }, [open, student, refetchPaymentLog])
+
   useEffect(() => {
     Promise.all([
       fetch("/api/fees/fees-group").then((r) => r.json()).then((d) => {
@@ -158,13 +191,16 @@ export default function CollectFeesModal({
         ;(Array.isArray(d) ? d : []).forEach((t: any) => { map[Number(t.id)] = { name: t.name, group: t.feesGroup } })
         setFeeTypes(map)
       }),
+      fetch("/api/income/head").then((r) => r.json()).then((d) => {
+        setIncomeHeads(Array.isArray(d) ? d : [])
+      }).catch(() => {}),
     ]).catch(() => {})
   }, [])
 
   useEffect(() => {
     if (!open) return
     setSelectedFeeIds([])
-    setPartialAmounts({})
+    setAmountToPay("")
     setPayment({ method: "Cash", chequeNo: "", bank: "", transactionId: "", note: "" })
     setReceipt(null)
     setPaying(false)
@@ -268,22 +304,35 @@ export default function CollectFeesModal({
     )
   }
 
-  const handlePartialAmount = (feeId: number, value: string) => {
-    const n = parseFloat(value) || 0
-    setPartialAmounts((prev) => ({ ...prev, [feeId]: n }))
-  }
-
   const selectedFees = resolvedFees.filter((f) => selectedFeeIds.includes(f.id))
-  const totalAmount = selectedFees.reduce((sum, f) => {
-    const entered = partialAmounts[f.id]
-    return sum + (entered !== undefined && entered > 0 ? Math.min(entered, f.balance) : f.balance)
-  }, 0)
+  const totalDue = round2(selectedFees.reduce((sum, f) => sum + f.balance, 0))
+
+  const amountToPayNum = amountToPay.trim() === "" ? null : Number(amountToPay)
+  const payingAmount = amountToPayNum === null || isNaN(amountToPayNum)
+    ? totalDue
+    : round2(Math.min(Math.max(0, amountToPayNum), totalDue))
+  const remaining = round2(totalDue - payingAmount)
+
+  const allocation = useMemo<Record<number, number>>(() => {
+    const out: Record<number, number> = {}
+    let left = payingAmount
+    for (const f of selectedFees) {
+      if (left <= 0) {
+        out[f.id] = 0
+        continue
+      }
+      const p = round2(Math.min(f.balance, left))
+      out[f.id] = p
+      left = round2(left - p)
+    }
+    return out
+  }, [selectedFees, payingAmount])
+  const amountPaidTotal = Object.values(allocation).reduce((s, v) => s + v, 0)
 
   const buildReceipt = (countAs: AppliedFee[]): FeeReceiptData | null => {
     if (!student || countAs.length === 0) return null
     const lines: FeeReceiptLine[] = countAs.map((f, i) => {
-      const entered = partialAmounts[f.id]
-      const paid = entered !== undefined && entered > 0 ? Math.min(entered, f.balance) : f.balance
+      const paid = allocation[f.id] ?? f.balance
       return { sno: i + 1, group: f.groupName, feeType: f.feeTypeName, amount: f.amount, discount: f.discount, fine: f.fine, paid }
     })
     const methodDetail =
@@ -324,16 +373,17 @@ export default function CollectFeesModal({
     if (!student || selectedFeeIds.length === 0) return
     setPaying(true)
     const today = new Date().toISOString().split("T")[0]
-    const paidFees = resolvedFees.filter((f) => selectedFeeIds.includes(f.id))
+    const paidFees = resolvedFees.filter((f) => selectedFeeIds.includes(f.id) && (allocation[f.id] ?? 0) > 0)
     const note = approvalNote(paidFees)
+    const paidAt = new Date().toISOString()
     try {
+      const logRows: any[] = []
       for (const f of resolvedFees) {
         if (!selectedFeeIds.includes(f.id)) continue
-        const entered = partialAmounts[f.id]
-        const pay = entered !== undefined && entered > 0 ? Math.min(entered, f.balance) : f.balance
+        const pay = allocation[f.id] ?? 0
         if (pay <= 0) continue
         const newPaid = f.paid + pay
-        const status = newPaid >= f.amount ? "Paid" : newPaid > 0 ? "Partial" : "Unpaid"
+        const status = newPaid >= f.amount ? "Paid" : "Partial"
         await updateFee(f.id, {
           paidAmount: newPaid,
           status,
@@ -345,9 +395,56 @@ export default function CollectFeesModal({
           note: note || null,
           ...(f.hasAppliedNew && f.appliedDiscount > 0 ? { discountId: f.appliedDiscountId, discountAmount: f.appliedDiscount } : {}),
         })
+        const incomeHeadId = incomeHeadForGroup(f.groupName, incomeHeads)
+        if (incomeHeadId) {
+          await fetch("/api/income", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              incomeHeadId,
+              name: student.name,
+              date: today,
+              amount: pay,
+              description: `${f.feeTypeName} (${f.groupName})`,
+              paymentMode: payment.method,
+              note: note || "",
+              feePaymentId: f.id,
+              studentId: student.id,
+            }),
+          }).catch(() => {})
+        }
+        logRows.push({
+          studentId: student.id,
+          feePaymentId: f.id,
+          feeTypeId: f.feesType ?? null,
+          feeGroupId: f.feesGroup ?? null,
+          amountPaid: pay,
+          paymentMode: payment.method,
+          transactionId: payment.transactionId || null,
+          bankName: payment.method === "Cheque" ? (payment.bank || null) : null,
+          chequeNo: payment.method === "Cheque" ? (payment.chequeNo || null) : null,
+          note: note || null,
+          paidAt,
+          createdBy: currentUser?.name || "Admin",
+          changeKind: "payment",
+          oldStatus: f.status,
+          newStatus: status,
+          paidBefore: f.paid,
+          paidAfter: newPaid,
+          studentName: student.name,
+          feeTypeName: f.feeTypeName,
+        })
+      }
+      if (logRows.length > 0) {
+        await fetch("/api/fees/fees-payment-log", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(logRows),
+        })
       }
       await refetchFees()
-      toast.success(`Payment of ${money(symbol, totalAmount)} collected successfully!`)
+      refetchPaymentLog()
+      toast.success(`Payment of ${money(symbol, amountPaidTotal)} collected successfully!`)
       const r = buildReceipt(paidFees)
       if (r) setReceipt(r)
       await onSuccess?.()
@@ -441,13 +538,11 @@ export default function CollectFeesModal({
                           <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wider">Amount</th>
                           <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wider">Discount</th>
                           <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wider">Balance</th>
-                          <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wider">Amount Paid</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
                         {resolvedFees.map((fee) => {
                           const isSelected = selectedFeeIds.includes(fee.id)
-                          const entered = partialAmounts[fee.id]
                           return (
                             <tr key={fee.id} className={isSelected ? "bg-[var(--primary-light)]" : "bg-white"}>
                               <td className="px-3 py-2.5">
@@ -471,21 +566,6 @@ export default function CollectFeesModal({
                                 )}
                               </td>
                               <td className={`px-3 py-2.5 text-right font-medium ${fee.balance > 0 ? "text-red-600" : "text-green-600"}`}>{money(symbol, fee.balance)}</td>
-                              <td className="px-3 py-2.5 text-right">
-                                {isSelected && fee.balance > 0 ? (
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    max={fee.balance}
-                                    value={entered ?? ""}
-                                    onChange={(e) => handlePartialAmount(fee.id, e.target.value)}
-                                    placeholder={`${fee.balance}`}
-                                    className="w-24 px-2 py-1 border border-gray-300 rounded text-xs text-right focus:ring-1 focus:ring-[var(--primary)]"
-                                  />
-                                ) : (
-                                  <span className="text-gray-400 text-xs">-</span>
-                                )}
-                              </td>
                             </tr>
                           )
                         })}
@@ -509,7 +589,7 @@ export default function CollectFeesModal({
                     </div>
                   )}
 
-                  <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                     <div>
                       <p className="block text-xs font-medium text-gray-600 mb-2">Payment Method</p>
                       <div className="space-y-2">
@@ -583,13 +663,69 @@ export default function CollectFeesModal({
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent resize-none"
                       />
                     </div>
+                  </div>
 
-                    <div className="bg-[var(--primary-light)] rounded-xl p-4 flex flex-col justify-center">
-                      <p className="text-xs font-medium text-[var(--primary)] uppercase tracking-wider">Total Amount</p>
-                      <p className="text-2xl font-bold text-[var(--primary)] mt-1">{money(symbol, totalAmount)}</p>
-                      <p className="text-xs text-[var(--primary)] mt-0.5">{selectedFees.length} fee(s) selected</p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-[var(--primary-light)] rounded-xl p-4">
+                    <div>
+                      <p className="text-xs font-medium text-[var(--primary)] uppercase tracking-wider">Total Due</p>
+                      <p className="text-2xl font-bold text-gray-800 mt-1">{money(symbol, totalDue)}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">{selectedFees.length} fee(s) selected</p>
+                    </div>
+                    <div>
+                      <p className="block text-xs font-medium text-gray-600 mb-1">Amount to Pay</p>
+                      <input
+                        type="number"
+                        min={0}
+                        max={totalDue}
+                        value={amountToPay}
+                        onChange={(e) => setAmountToPay(e.target.value)}
+                        placeholder={money(symbol, totalDue)}
+                        className="w-full h-12 px-3 text-lg font-bold text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white"
+                      />
+                      <p className="text-[11px] text-gray-400 mt-1">Leave blank to pay full amount.</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wider text-gray-600">Remaining Due</p>
+                      <p className={`text-2xl font-bold mt-1 ${remaining > 0 ? "text-red-600" : "text-green-600"}`}>{money(symbol, remaining)}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">{remaining > 0 ? "Balance payable later" : "Settled"}</p>
                     </div>
                   </div>
+
+                  {paymentLog.length > 0 && (
+                    <div className="rounded-xl border border-gray-200 overflow-hidden">
+                      <div className="bg-gray-100/80 px-4 py-2.5 flex items-center gap-2">
+                        <History className="h-4 w-4 text-[var(--primary)]" />
+                        <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wider">Payment History</h4>
+                      </div>
+                      <div className="divide-y divide-gray-100 max-h-56 overflow-auto">
+                        {paymentLog.map((entry) => {
+                          const typeName = entry.feeTypeId
+                            ? (feeTypes[Number(entry.feeTypeId)]?.name ?? `Type ${entry.feeTypeId}`)
+                            : ""
+                          const groupName = entry.feeGroupId
+                            ? (feeGroups[Number(entry.feeGroupId)] ?? `Group ${entry.feeGroupId}`)
+                            : ""
+                          return (
+                            <div key={entry.id} className="px-4 py-3 flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-gray-800 truncate">
+                                  {typeName || "Fees"} {groupName ? <span className="text-gray-400 font-normal">· {groupName}</span> : null}
+                                </p>
+                                <p className="text-[11px] text-gray-500">Paid on {fmtDateTime(entry.paidAt)}</p>
+                              </div>
+                              <div className="text-right flex-shrink-0">
+                                <p className="text-sm font-bold text-green-600">{money(symbol, num(entry.amountPaid))}</p>
+                                <p className="text-[11px] text-gray-500 capitalize">
+                                  {entry.paymentMode || "Cash"}
+                                  {entry.createdBy ? ` · ${entry.createdBy}` : ""}
+                                </p>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -605,11 +741,11 @@ export default function CollectFeesModal({
                 </button>
                 <button
                   onClick={handlePayNow}
-                  disabled={selectedFeeIds.length === 0 || totalAmount <= 0 || paying}
+                  disabled={selectedFeeIds.length === 0 || payingAmount <= 0 || paying}
                   className="px-5 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm shadow-green-200"
                 >
                   {paying ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-                  {paying ? "Processing..." : `Collect ${money(symbol, totalAmount)}`}
+                  {paying ? "Processing..." : `Collect ${money(symbol, payingAmount)}`}
                 </button>
               </div>
             )}

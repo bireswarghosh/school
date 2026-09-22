@@ -69,6 +69,7 @@ export const menuData: MenuCategory[] = [
       { label: "Fees Discount", path: "/admin/fees-collection/fees-discount" },
       { label: "Fees Carry Forward", path: "/admin/fees-collection/fees-carry-forward" },
       { label: "Fees Reminder", path: "/admin/fees-collection/fees-reminder" },
+      { label: "Payment Change Log", path: "/admin/fees-collection/payment-change-log" },
     ],
   },
   {

@@ -6,7 +6,8 @@ import { useParams, useRouter } from "next/navigation"
 import { useApi } from "@/lib/use-api"
 import { useCurrency } from "@/lib/currency-context"
 import { useSchoolInfo, type SchoolInfo } from "@/lib/use-school-info"
-import { ArrowLeft, Loader2, Printer, CreditCard, Banknote, Building2, X, Check, Trash2, FileText, Tag } from "lucide-react"
+import { ArrowLeft, Loader2, Printer, CreditCard, Banknote, Building2, X, Check, Trash2, FileText, Tag, RotateCcw, CalendarDays } from "lucide-react"
+import { incomeHeadForGroup } from "@/lib/income-mapping"
 
 type StudentRecord = {
   id: number
@@ -83,7 +84,10 @@ type PaymentFormData = {
   bank: string
   transactionId: string
   note: string
+  date: string
 }
+
+type IncomeHead = { id: number; name: string }
 
 const num = (v: unknown) => {
   const n = Number(v)
@@ -267,6 +271,7 @@ export default function AddFeePage() {
   const [feeTypes, setFeeTypes] = useState<Record<number, { name: string; group: string }>>({})
   const [masterDueDates, setMasterDueDates] = useState<Record<string, string>>({})
   const [masterDueDays, setMasterDueDays] = useState<Record<string, number>>({})
+  const [incomeHeads, setIncomeHeads] = useState<IncomeHead[]>([])
 
   const feesApi = useMemo(() => `/api/fees/fees-payment?studentId=${id}`, [id])
   const { data: fees, update, refetch } = useApi<FeeRecord>(feesApi)
@@ -275,9 +280,14 @@ export default function AddFeePage() {
   const [payAmount, setPayAmount] = useState("")
   const [payment, setPayment] = useState<PaymentFormData>({
     method: "Cash", chequeNo: "", bank: "", transactionId: "", note: "",
+    date: new Date().toISOString().split("T")[0],
   })
   const [paying, setPaying] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<FeeRecord | null>(null)
+  const [statusTargets, setStatusTargets] = useState<ResolvedFee[] | null>(null)
+  const [statusSelection, setStatusSelection] = useState<Set<number>>(new Set())
+  const [statusNote, setStatusNote] = useState("")
+  const [savingStatus, setSavingStatus] = useState(false)
   const { info: schoolInfo } = useSchoolInfo()
   const [receipt, setReceipt] = useState<ReceiptData | null>(null)
   const [receiptOpen, setReceiptOpen] = useState(false)
@@ -298,7 +308,7 @@ export default function AddFeePage() {
     const appliedNote = coverMeta.discountUsed > 0 && activeDiscount ? discountNote() : ""
     return {
       receiptNo: `RC-${Date.now().toString().slice(-8)}`,
-      date: new Date().toISOString().split("T")[0],
+      date: payment.date || new Date().toISOString().split("T")[0],
       method: payment.method,
       methodDetail,
       note: [payment.note, appliedNote].filter(Boolean).join(" | "),
@@ -374,6 +384,9 @@ export default function AddFeePage() {
         ;(Array.isArray(d) ? d : []).forEach((t: any) => { map[Number(t.id)] = { name: t.name, group: t.feesGroup } })
         setFeeTypes(map)
       }),
+      fetch("/api/income/head").then((r) => r.json()).then((d) => {
+        setIncomeHeads(Array.isArray(d) ? d : [])
+      }).catch(() => {}),
       fetch("/api/fees/fees-master").then((r) => r.json()).then((d) => {
         const map: Record<string, string> = {}
         const dayMap: Record<string, number> = {}
@@ -497,8 +510,9 @@ const resolved: ResolvedFee[] = useMemo(() => {
   const handlePayNow = async () => {
     if (coverMeta.coverage.length === 0) return
     setPaying(true)
-    const today = new Date().toISOString().split("T")[0]
+    const paymentDate = payment.date || new Date().toISOString().split("T")[0]
     const note = discountNote()
+    const studentName = student ? fullName(student.firstName, student.middleName, student.lastName) : ""
     try {
       for (const c of coverMeta.coverage) {
         const f = resolved.find((r) => r.id === c.id)!
@@ -508,7 +522,7 @@ const resolved: ResolvedFee[] = useMemo(() => {
           paidAmount: newPaid,
           status,
           paymentMode: payment.method,
-          paymentDate: today,
+          paymentDate,
           transactionId: payment.transactionId || null,
           bankName: payment.method === "Cheque" ? (payment.bank || null) : null,
           chequeNo: payment.method === "Cheque" ? (payment.chequeNo || null) : null,
@@ -516,6 +530,24 @@ const resolved: ResolvedFee[] = useMemo(() => {
           discountAmount: c.discount > 0 ? c.discount : null,
           note: c.discount > 0 && note ? [payment.note || "", note].filter(Boolean).join(" | ") : payment.note || null,
         })
+        const incomeHeadId = incomeHeadForGroup(f.groupName, incomeHeads)
+        if (incomeHeadId) {
+          await fetch("/api/income", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              incomeHeadId,
+              name: studentName,
+              date: paymentDate,
+              amount: c.paid,
+              description: `${f.feeTypeName} (${f.groupName})`,
+              paymentMode: payment.method,
+              note: c.discount > 0 && note ? [payment.note || "", note].filter(Boolean).join(" | ") : payment.note || "",
+              feePaymentId: c.id,
+              studentId: Number(id),
+            }),
+          })
+        }
       }
       setToast(`Payment of ${money(symbol, coverMeta.netPayable)} collected successfully!`)
       const r = buildReceipt()
@@ -555,6 +587,87 @@ const resolved: ResolvedFee[] = useMemo(() => {
     const t = setTimeout(() => setToast(null), 3000)
     return () => clearTimeout(t)
   }, [toast])
+
+  const openStatusChange = (fee: ResolvedFee) => {
+    setStatusTargets([fee])
+    setStatusNote("")
+  }
+
+  const openBulkStatusChange = () => {
+    const targets = resolved.filter((f) => statusSelection.has(f.id) && (f.status === "Paid" || f.status === "paid" || f.status === "Partial" || f.paid > 0))
+    if (targets.length === 0) return
+    setStatusTargets(targets)
+    setStatusNote("")
+  }
+
+  const toggleStatusSelection = (fee: ResolvedFee) => {
+    const selectable = fee.status === "Paid" || fee.status === "paid" || fee.status === "Partial" || fee.paid > 0
+    if (!selectable) return
+    setStatusSelection((prev) => {
+      const next = new Set(prev)
+      if (next.has(fee.id)) next.delete(fee.id)
+      else next.add(fee.id)
+      return next
+    })
+  }
+
+  const clearStatusSelection = () => setStatusSelection(new Set())
+
+  const confirmStatusChange = async () => {
+    if (!statusTargets || statusTargets.length === 0) return
+    const reason = statusNote.trim()
+    if (!reason) {
+      notify.error("Please provide a reason for changing the payment status")
+      return
+    }
+    setSavingStatus(true)
+    try {
+      for (const target of statusTargets) {
+        const before = target.paid
+        await update(target.id, {
+          status: "Unpaid",
+          paidAmount: 0,
+          paymentDate: null,
+          transactionId: null,
+          bankName: null,
+          chequeNo: null,
+          note: reason,
+        })
+        await fetch(`/api/income?feePaymentId=${target.id}`, { method: "DELETE" }).catch(() => {})
+        await fetch("/api/fees/fees-payment-log", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            studentId: Number(id),
+            feePaymentId: target.id,
+            feeTypeId: target.feesType ?? null,
+            feeGroupId: target.feesGroup ?? null,
+            amountPaid: 0,
+            paidBefore: before,
+            paidAfter: 0,
+            paymentMode: target.paymentMode || null,
+            changeKind: "status",
+            oldStatus: target.status,
+            newStatus: "Unpaid",
+            studentName: student ? fullName(student.firstName, student.middleName, student.lastName) : "",
+            feeTypeName: target.feeTypeName,
+            note: reason,
+            createdBy: currentUser?.name || "Admin",
+            paidAt: new Date().toISOString(),
+          }),
+        })
+      }
+      notify.success(`${statusTargets.length} payment status${statusTargets.length > 1 ? "es" : ""} changed to Not Paid (Due)`)
+      setStatusTargets(null)
+      setStatusSelection(new Set())
+      setStatusNote("")
+      await refetch()
+    } catch (e: any) {
+      notify.error(e.message || "Failed to change payment status")
+    } finally {
+      setSavingStatus(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -662,6 +775,29 @@ const resolved: ResolvedFee[] = useMemo(() => {
 
             {/* Right Panel - Fees Table */}
             <div className="lg:col-span-2 overflow-x-auto">
+              {statusSelection.size > 0 && (
+                <div className="flex items-center justify-between flex-wrap gap-3 mb-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5">
+                  <span className="text-xs font-medium text-amber-800">
+                    <RotateCcw className="h-3.5 w-3.5 inline-block mr-1 -mt-0.5" />
+                    {statusSelection.size} fee record{statusSelection.size !== 1 ? "s" : ""} selected to change payment status
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={clearStatusSelection}
+                      className="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-white transition-colors"
+                    >
+                      Clear
+                    </button>
+                    <button
+                      onClick={openBulkStatusChange}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-amber-600 rounded-lg hover:bg-amber-700 transition-colors shadow-sm"
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                      Change to Not Paid
+                    </button>
+                  </div>
+                </div>
+              )}
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
@@ -674,18 +810,21 @@ const resolved: ResolvedFee[] = useMemo(() => {
                     <th className="text-right px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Fine</th>
                     <th className="text-right px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Paid</th>
                     <th className="text-right px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Balance</th>
+                    <th className="text-center px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Status</th>
+                    <th className="text-center px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase" title="Select fees to change their payment status">Not Paid?</th>
                     <th className="text-center px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {resolved.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="text-center py-12 text-gray-400">No fee records found for this student</td>
+                      <td colSpan={12} className="text-center py-12 text-gray-400">No fee records found for this student</td>
                     </tr>
                   ) : (
                     resolved.map((fee, idx) => {
                       const isSelected = selectedFeeIds.includes(fee.id)
                       const isPaid = fee.status === "Paid" || fee.status === "paid"
+                      const hasPayment = isPaid || fee.status === "Partial" || fee.paid > 0
                       return (
                         <tr key={fee.id} className={`border-b border-gray-100 hover:bg-[var(--primary-light)]/20 transition-colors ${idx % 2 === 1 ? "bg-gray-50/30" : ""}`}>
                           <td className="px-3 py-2.5">
@@ -710,8 +849,39 @@ const resolved: ResolvedFee[] = useMemo(() => {
                           <td className="px-3 py-2.5 text-right text-green-600">{fee.paid > 0 ? money(symbol, fee.paid) : "-"}</td>
                           <td className={`px-3 py-2.5 text-right font-medium ${fee.balance > 0 ? "text-red-600" : "text-green-600"}`}>{money(symbol, fee.balance)}</td>
                           <td className="px-3 py-2.5 text-center">
+                            {isPaid ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-green-100 text-green-700">Paid</span>
+                            ) : fee.status === "Partial" || fee.paid > 0 ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700">Partial</span>
+                            ) : (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-red-100 text-red-700">Unpaid</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2.5 text-center">
+                            {hasPayment ? (
+                              <input
+                                type="checkbox"
+                                checked={statusSelection.has(fee.id)}
+                                onChange={() => toggleStatusSelection(fee)}
+                                title="Mark as Not Paid (select multiple allowed)"
+                                className="w-4 h-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                              />
+                            ) : (
+                              <span className="text-gray-300 text-xs">—</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2.5 text-center">
                             <div className="flex items-center justify-center gap-1">
-                              {!isPaid && (
+                              {hasPayment ? (
+                                <button
+                                    onClick={() => openStatusChange(fee)}
+                                    className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors"
+                                    title="Mark as Not Paid / Due (revert payment)"
+                                  >
+                                    <RotateCcw className="h-3 w-3" />
+                                    Change
+                                  </button>
+                              ) : (
                                 <button
                                   onClick={() => handleDeleteFee(fee)}
                                   className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
@@ -783,6 +953,19 @@ const resolved: ResolvedFee[] = useMemo(() => {
 
             {/* Dynamic Fields */}
             <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Received Payment Date</label>
+                <div className="flex items-center gap-2">
+                  <CalendarDays className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                  <input
+                    type="date"
+                    value={payment.date}
+                    max={new Date().toISOString().split("T")[0]}
+                    onChange={(e) => setPayment((prev) => ({ ...prev, date: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent"
+                  />
+                </div>
+              </div>
               {payment.method === "Cheque" && (
                 <>
                   <div>
@@ -922,6 +1105,102 @@ const resolved: ResolvedFee[] = useMemo(() => {
                 className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700"
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Change Payment Status Modal */}
+      {statusTargets && statusTargets.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => !savingStatus && setStatusTargets(null)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md z-10">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <div className="flex items-center gap-2">
+                <RotateCcw className="h-5 w-5 text-amber-600" />
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800">Change Payment Status</h3>
+                  <p className="text-xs text-gray-500">
+                    {statusTargets.length > 1 ? `${statusTargets.length} fee records selected` : `${statusTargets[0].feeTypeName} · ${student.admissionNo}`}
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => !savingStatus && setStatusTargets(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 space-y-2">
+                {statusTargets.length > 1 ? (
+                  <div className="max-h-48 overflow-y-auto space-y-2">
+                    <div className="flex justify-between text-sm pb-1 border-b border-amber-200">
+                      <span className="text-gray-500 font-medium">Fee</span>
+                      <span className="text-gray-500 font-medium">Status · Paid</span>
+                    </div>
+                    {statusTargets.map((t) => (
+                      <div key={t.id} className="flex justify-between text-sm">
+                        <span className="text-gray-800 font-medium">{t.feeTypeName}</span>
+                        <span className="text-gray-600">
+                          {t.status} · {money(symbol, t.paid)}
+                        </span>
+                      </div>
+                    ))}
+                    <div className="flex justify-between text-sm pt-1 border-t border-amber-200">
+                      <span className="text-gray-500">Total marked Not Paid</span>
+                      <span className="font-semibold text-amber-700">All {statusTargets.length} → Not Paid (Due)</span>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Current Status</span>
+                      <span className="font-semibold text-gray-800">{statusTargets[0].status}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Amount Paid</span>
+                      <span className="font-semibold text-gray-800">{money(symbol, statusTargets[0].paid)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">New Status</span>
+                      <span className="font-semibold text-amber-700">Not Paid (Due)</span>
+                    </div>
+                  </>
+                )}
+              </div>
+              <p className="text-xs text-gray-500">
+                This will revert the paid amount{statusTargets.length > 1 ? "s" : ""} to{" "}
+                <strong>{money(symbol, 0)}</strong> so the payment{statusTargets.length > 1 ? "s can" : " can"} be
+                collected again. Every change is recorded in the Payment Change Log.
+              </p>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Reason for change <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={statusNote}
+                  onChange={(e) => setStatusNote(e.target.value)}
+                  rows={3}
+                  placeholder="Why are you changing this payment status? e.g. wrong payment recorded, cheque bounced..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent resize-none"
+                />
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-2">
+              <button
+                onClick={() => setStatusTargets(null)}
+                disabled={savingStatus}
+                className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmStatusChange}
+                disabled={savingStatus || !statusNote.trim()}
+                className="px-4 py-2 bg-amber-600 text-white text-sm font-medium rounded-lg hover:bg-amber-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                {savingStatus ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                Mark as Not Paid
               </button>
             </div>
           </div>

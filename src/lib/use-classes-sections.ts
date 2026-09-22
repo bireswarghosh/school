@@ -3,7 +3,7 @@
 import { useMemo } from "react"
 import { useApi } from "@/lib/use-api"
 
-export type ClassItem = { id: number; name: string }
+export type ClassItem = { id: number; name: string; order_number?: number | null }
 export type SectionItem = { id: number; name: string; class_id?: number | null }
 
 const ROMAN: Record<string, number> = { x: 10, ix: 9, viii: 8, vii: 7, vi: 6, v: 5, iv: 4, iii: 3, ii: 2, i: 1 }
@@ -28,7 +28,12 @@ export function useClassesAndSections() {
   const { data: sections, loading: sectionsLoading, error: sectionsError, refetch: refetchSections } = useApi<SectionItem>("/api/academics/section")
 
   const sortedClasses = useMemo(() =>
-    [...classes].sort((a, b) => classRank(a.name) - classRank(b.name) || a.id - b.id),
+    [...classes].sort((a, b) => {
+      const ao = a.order_number ?? Number.MAX_SAFE_INTEGER
+      const bo = b.order_number ?? Number.MAX_SAFE_INTEGER
+      if (ao !== bo) return ao - bo
+      return classRank(a.name) - classRank(b.name) || a.id - b.id
+    }),
     [classes]
   )
 

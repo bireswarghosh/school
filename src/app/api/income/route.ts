@@ -63,6 +63,12 @@ export async function PUT(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
+    const feePaymentId = parseInt(searchParams.get("feePaymentId") || "0")
+    if (feePaymentId) {
+      // Delete every income row linked to a fee payment (used when a payment is reversed)
+      await query(`DELETE FROM incomes WHERE fee_payment_id = $1`, [feePaymentId])
+      return NextResponse.json({ success: true })
+    }
     const id = parseInt(searchParams.get("id") || "0")
     if (!id) return NextResponse.json({ error: "id required" }, { status: 400 })
     await remove("incomes", id)
