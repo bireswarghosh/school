@@ -8,7 +8,7 @@ import { SessionPill } from "@/components/SessionSwitcher"
 import { iconMap } from "@/lib/menu-icons"
 import { useAuth } from "@/lib/auth-context"
 import { useSchoolInfo } from "@/lib/use-school-info"
-import { canViewPermission, legacyCategoryVisible } from "@/lib/permissions"
+import { hasActionPermission, legacyCategoryVisible } from "@/lib/permissions"
 import {
   ChevronDown,
   ChevronRight,
@@ -178,7 +178,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
   const permittedItems = (category: MenuCategory): SubMenuItem[] => {
     if (!restricted) return category.items
     if (legacyCategoryVisible(userPerms, category.label)) return category.items
-    return category.items.filter((item) => canViewPermission(userPerms, item.path))
+    return category.items.filter((item) => hasActionPermission(userPerms, item.path, "view"))
   }
 
   const isActive = (path: string) => pathname === path

@@ -68,6 +68,31 @@ export default function PermissionMatrixModal({ title, subtitle, initialPermissi
     })
   }
 
+  const allFilteredOn = () => filteredItems.length > 0 && filteredItems.every((i) => itemAllOn(permMap[i.code]))
+
+  const toggleAllFiltered = () => {
+    setPermMap((prev) => {
+      if (!prev) return prev
+      const val = !(filteredItems.length > 0 && filteredItems.every((i) => itemAllOn(prev[i.code])))
+      const next = { ...prev }
+      for (const i of filteredItems) next[i.code] = { view: val, add: val, edit: val, delete: val }
+      return next
+    })
+  }
+
+  const colAllOn = (action: (typeof PERM_ACTIONS)[number]) =>
+    filteredItems.length > 0 && filteredItems.every((i) => permMap[i.code][action])
+
+  const toggleColumn = (action: (typeof PERM_ACTIONS)[number]) => {
+    setPermMap((prev) => {
+      if (!prev) return prev
+      const val = !(filteredItems.length > 0 && filteredItems.every((i) => prev[i.code][action]))
+      const next = { ...prev }
+      for (const i of filteredItems) next[i.code] = { ...next[i.code], [action]: val }
+      return next
+    })
+  }
+
   const catEnabledCount = (cat: PermCategory): number => {
     if (!permMap) return 0
     return cat.items.filter((i) => Object.values(permMap[i.code] || {}).some(Boolean)).length
@@ -137,6 +162,36 @@ export default function PermissionMatrixModal({ title, subtitle, initialPermissi
                 />
               </div>
               <span className="text-xs text-gray-500">{filteredItems.length} items</span>
+            </div>
+
+            <div className="px-5 pb-1 flex items-center">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <button
+                  onClick={toggleAllFiltered}
+                  disabled={filteredItems.length === 0}
+                  title="Select / deselect all menu items below"
+                  className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 transition-colors ${allFilteredOn() ? "bg-[var(--primary)] border-[var(--primary)] text-white" : "border-gray-300"} disabled:opacity-40`}
+                >
+                  {allFilteredOn() && <Check className="h-3 w-3" />}
+                </button>
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Item</span>
+              </div>
+              <div className="flex items-center gap-4 shrink-0 ml-4">
+                {PERM_ACTIONS.map((action) => (
+                  <button
+                    key={action}
+                    onClick={() => toggleColumn(action)}
+                    disabled={filteredItems.length === 0}
+                    title={`Grant "${ACTION_LABELS[action]}" to all menu items below`}
+                    className={`flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide transition-colors disabled:opacity-40 ${colAllOn(action) ? "text-[var(--primary)]" : "text-gray-500 hover:text-gray-700"}`}
+                  >
+                    <span className={`h-4 w-4 rounded border flex items-center justify-center transition-colors ${colAllOn(action) ? "bg-[var(--primary)] border-[var(--primary)] text-white" : "border-gray-300"}`}>
+                      {colAllOn(action) && <Check className="h-3 w-3" />}
+                    </span>
+                    All {ACTION_LABELS[action]}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="overflow-y-auto p-4 space-y-2">

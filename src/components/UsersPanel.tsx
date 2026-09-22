@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, Pencil, Trash2, X, Save, Check, Filter, Shield, LogIn, Ban, CheckCircle } from "lucide-react"
+import { Plus, Pencil, Trash2, X, Save, Check, Filter, Shield, LogIn, Ban, CheckCircle, Loader2 } from "lucide-react"
 import { useApi } from "@/lib/use-api"
 import { useAuth } from "@/lib/auth-context"
 import { enabledPermissionCount } from "@/lib/permissions"
@@ -25,7 +25,7 @@ const emptyForm = { username: "", password: "", confirmPassword: "", name: "", e
 
 export default function UsersPanel() {
   const router = useRouter()
-  const { user: currentUser } = useAuth()
+  const { user: currentUser, refresh: refreshUser } = useAuth()
   const { data: users, add, update, remove, loading } = useApi<User>("/api/system-setting/user")
   const [filterRole, setFilterRole] = useState("All")
   const [showModal, setShowModal] = useState(false)
@@ -36,6 +36,7 @@ export default function UsersPanel() {
   const [form, setForm] = useState(emptyForm)
   const [success, setSuccess] = useState("")
   const [selectedIds, setSelectedIds] = useState<number[]>([])
+  const [loginAsId, setLoginAsId] = useState<number | null>(null)
   const [confirmAction, setConfirmAction] = useState<{ type: "disable" | "enable" | "bulk-disable" | "bulk-enable"; userId?: number } | null>(null)
 
   const showSuccess = (msg: string) => {
@@ -107,10 +108,14 @@ export default function UsersPanel() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Auto-login failed")
+      setLoginAsId(userId)
+      await refreshUser()
       router.push(data.redirect || "/admin")
       router.refresh()
     } catch (e) {
       showSuccess(e instanceof Error ? e.message : "Auto-login failed")
+    } finally {
+      setLoginAsId(null)
     }
   }
 
@@ -280,8 +285,8 @@ export default function UsersPanel() {
                             <Trash2 className="h-4 w-4" />
                           </button>
                           {canImpersonate && (
-                            <button onClick={() => handleAutoLogin(u.id)} className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Login as this user">
-                              <LogIn className="h-4 w-4" />
+                            <button onClick={() => handleAutoLogin(u.id)} disabled={loginAsId === u.id} className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50" title="Login as this user">
+                              {loginAsId === u.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
                             </button>
                           )}
                         </div>

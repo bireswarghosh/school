@@ -71,7 +71,8 @@ export async function POST(req: NextRequest) {
     })
 
     let redirect = "/admin"
-    if (target.role === "student" || target.role === "parent" || target.role === "teacher") {
+    const targetRole = (target.role || "").toLowerCase()
+    if (targetRole === "student" || targetRole === "parent" || targetRole === "teacher") {
       redirect = "/portal"
     }
 

@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Pencil, Trash2, X, Save, Check, Filter, LogIn, Ban, CheckCircle } from "lucide-react"
+import { Pencil, Trash2, X, Save, Check, Filter, LogIn, Ban, CheckCircle, Loader2 } from "lucide-react"
 import { useApi } from "@/lib/use-api"
 import { useAuth } from "@/lib/auth-context"
 
@@ -27,7 +27,7 @@ type StudentUser = {
 
 export default function StudentsPanel() {
   const router = useRouter()
-  const { user: currentUser } = useAuth()
+  const { user: currentUser, refresh: refreshUser } = useAuth()
   const { data: students, loading, update, remove } = useApi<StudentUser>("/api/system-setting/student-users")
   const [filterStatus, setFilterStatus] = useState("All")
   const [search, setSearch] = useState("")
@@ -38,6 +38,7 @@ export default function StudentsPanel() {
   const [success, setSuccess] = useState("")
   const [form, setForm] = useState({ name: "", email: "", status: true })
   const [selectedIds, setSelectedIds] = useState<number[]>([])
+  const [loginAsId, setLoginAsId] = useState<number | null>(null)
   const [confirmAction, setConfirmAction] = useState<{ type: "disable" | "enable" | "bulk-disable" | "bulk-enable"; userId?: number } | null>(null)
 
   const canImpersonate = currentUser?.role === "admin" || currentUser?.role === "super_admin"
@@ -96,10 +97,14 @@ export default function StudentsPanel() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Auto-login failed")
+      setLoginAsId(userId)
+      await refreshUser()
       router.push(data.redirect || "/admin")
       router.refresh()
     } catch (e) {
       showSuccess(e instanceof Error ? e.message : "Auto-login failed")
+    } finally {
+      setLoginAsId(null)
     }
   }
 
@@ -252,8 +257,8 @@ export default function StudentsPanel() {
                             <Trash2 className="h-4 w-4" />
                           </button>
                           {canImpersonate && (
-                            <button onClick={() => handleAutoLogin(s.id)} className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Login as this student">
-                              <LogIn className="h-4 w-4" />
+                            <button onClick={() => handleAutoLogin(s.id)} disabled={loginAsId === s.id} className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50" title="Login as this student">
+                              {loginAsId === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
                             </button>
                           )}
                         </div>

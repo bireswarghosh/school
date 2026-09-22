@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import Sidebar from "@/components/Sidebar"
-import { Menu, Search, Moon, Sun, LogOut, ChevronDown, User, Store, ArrowLeft, ShieldCheck } from "lucide-react"
+import { Menu, Search, Moon, Sun, LogOut, ChevronDown, User, Store, ArrowLeft, ShieldCheck, ShieldAlert, Lock } from "lucide-react"
 import NotificationBell from "@/components/NotificationBell"
 import ThemeSettings from "@/components/ThemeSettings"
 import QuickLinks from "@/components/QuickLinks"
@@ -14,9 +14,10 @@ import { AuthProvider, useAuth } from "@/lib/auth-context"
 import { useSchoolInfo } from "@/lib/use-school-info"
 import AdminThemeProvider from "@/components/AdminThemeProvider"
 import AdminAssistant from "@/components/admin-assistant"
+import { canViewSection } from "@/lib/permissions"
 
 function AdminHeader({ pageTitle, toggleDarkMode, darkMode, onMenu }: { pageTitle: string; toggleDarkMode: () => void; darkMode: boolean; onMenu: () => void }) {
-  const { user, school, logout } = useAuth()
+  const { user, school, logout, refresh: refreshUser } = useAuth()
   const { info } = useSchoolInfo()
   const router = useRouter()
   const pathname = usePathname()
@@ -42,6 +43,7 @@ function AdminHeader({ pageTitle, toggleDarkMode, darkMode, onMenu }: { pageTitl
       const res = await fetch("/api/auth/impersonate/back", { method: "POST" })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Failed to return to admin")
+      await refreshUser()
       router.push(data.redirect || "/admin")
       router.refresh()
     } catch {
@@ -201,6 +203,39 @@ function AdminHeader({ pageTitle, toggleDarkMode, darkMode, onMenu }: { pageTitl
   )
 }
 
+function AdminRouteGuard({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth()
+  const pathname = usePathname()
+
+  const denied = useMemo(() => {
+    if (loading || !user) return false
+    if (user.role === "super_admin" || user.role === "admin") return false
+    return !canViewSection(user.permissions || [], pathname)
+  }, [user, loading, pathname])
+
+  if (denied) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh] p-4 relative">
+        <div className="w-full max-w-md rounded-2xl border border-[var(--border)] bg-white dark:bg-slate-900/80 backdrop-blur shadow-xl p-8 text-center">
+          <div className="mx-auto mb-4 h-14 w-14 rounded-2xl bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center">
+            <ShieldAlert className="h-7 w-7 text-rose-500" />
+          </div>
+          <h2 className="text-lg font-extrabold text-[var(--title-color)]">Access Denied</h2>
+          <p className="mt-1.5 text-sm text-[var(--subtitle-color)]">
+            You don&apos;t have permission to view this section. Contact your administrator to request access.
+          </p>
+          <div className="mt-5 inline-flex items-center gap-1.5 rounded-full bg-[var(--accent)] border border-[var(--border)] px-3 py-1.5 text-xs font-semibold text-[var(--subtitle-color)]">
+            <Lock className="h-3.5 w-3.5 text-[var(--primary)]" />
+            Section locked
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return <>{children}</>
+}
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -256,7 +291,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             )}
 
             <main className="flex-1 overflow-y-auto p-4 lg:p-6 relative">
-              <CurrencyProvider>{children}</CurrencyProvider>
+              <CurrencyProvider>
+                <AdminRouteGuard>{children}</AdminRouteGuard>
+              </CurrencyProvider>
             </main>
             <AdminAssistant />
           </div>

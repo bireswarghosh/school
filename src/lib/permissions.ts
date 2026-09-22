@@ -93,6 +93,41 @@ export function canViewPermission(perms: string[] | undefined | null, path: stri
   })
 }
 
+export function hasActionPermission(perms: string[] | undefined | null, path: string, action: PermAction): boolean {
+  if (!Array.isArray(perms) || perms.length === 0) return false
+  if (perms.includes("*")) return true
+  const code = baseCode(path)
+  return perms.some((p) => {
+    if (typeof p !== "string") return false
+    const sep = p.indexOf(":")
+    const pCode = sep === -1 ? p : p.slice(0, sep)
+    const pAction = sep === -1 ? "" : p.slice(sep + 1)
+    if (pCode !== code) return false
+    return pAction === "" || pAction === action
+  })
+}
+
+export function matchMenuPath(pathname: string): string | null {
+  let best: string | null = null
+  for (const cat of menuData) {
+    for (const item of cat.items) {
+      const p = item.path
+      if (p !== "/admin" && pathname.startsWith(p) && (!best || p.length > best.length)) best = p
+    }
+  }
+  return best
+}
+
+export function canViewSection(perms: string[] | undefined | null, pathname: string): boolean {
+  if (!Array.isArray(perms) || perms.length === 0) return false
+  if (perms.includes("*")) return true
+  const itemPath = matchMenuPath(pathname)
+  if (!itemPath) return true
+  const cat = menuData.find((c) => c.items.some((i) => i.path === itemPath))
+  if (cat && legacyCategoryVisible(perms, cat.label)) return true
+  return hasActionPermission(perms, itemPath, "view")
+}
+
 const LEGACY_CATEGORY_PERMS: Record<string, string> = {
   front_office: "Front Office",
   student_view: "Student Information",
