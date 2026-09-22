@@ -5,6 +5,7 @@ import { useState, useEffect, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useCurrency } from "@/lib/currency-context"
 import { useAuth } from "@/lib/auth-context"
+import { useSchoolInfo } from "@/lib/use-school-info"
 import { ArrowLeft, Loader2, Key, Ban, X, Eye, Plus, Pencil, Trash2, Camera, Printer, FileDown, LogIn, Link2 } from "lucide-react"
 
 type StudentRecord = {
@@ -115,6 +116,7 @@ export default function StudentProfilePage() {
   const id = params?.id as string
   const { symbol } = useCurrency()
   const { school } = useAuth()
+  const { info: schoolInfo } = useSchoolInfo()
 
   const [student, setStudent] = useState<StudentRecord | null>(null)
   const [loading, setLoading] = useState(true)
@@ -408,62 +410,90 @@ export default function StudentProfilePage() {
 
   const buildProfileHtml = (): string => {
     if (!student) return ""
-    const esc = (v: string | undefined | null) => escapeHtml(v?.trim() || "-")
-    const val = (v: string | undefined | null) => (v?.trim() ? escapeHtml(v.trim()) : "-")
-    const sName = esc(school?.name || "Smart School")
+    const esc = (v: unknown) => {
+      const s = typeof v === "string" ? v : v == null ? "" : String(v)
+      return escapeHtml(s.trim() || "-")
+    }
+    const val = (v: unknown) => {
+      const s = typeof v === "string" ? v : v == null ? "" : String(v)
+      const t = s.trim()
+      return t ? escapeHtml(t) : "-"
+    }
+    const dt = (v: unknown) => (v == null || v === "" ? "-" : escapeHtml(fmtDate(String(v))))
+    const sName = escapeHtml((schoolInfo.name || school?.name || "Smart School").trim())
     const sTagline = school?.tagline ? escapeHtml(school.tagline) : ""
-    const sAddress = school?.address ? escapeHtml(school.address) : ""
-    const sPhone = school?.phone ? escapeHtml(school.phone) : ""
-    const sEmail = school?.email ? escapeHtml(school.email) : ""
+    const sAddress = schoolInfo.address || school?.address ? escapeHtml(schoolInfo.address || school?.address || "") : ""
+    const contactRaw = [schoolInfo.phone || school?.phone, schoolInfo.email || school?.email, schoolInfo.website]
+      .map((c) => (c || "").trim())
+      .filter(Boolean)
+      .join("  •  ")
+    const sContact = contactRaw ? escapeHtml(contactRaw) : ""
+    const logo = schoolInfo.logoSrc ? `<img src="${escapeHtml(schoolInfo.logoSrc)}" alt="logo" />` : ""
     const name = fullName(student.firstName, student.middleName, student.lastName)
     const init = initials(student.firstName, student.lastName)
     const photo = student.studentPhoto
-      ? `<img src="${escapeHtml(student.studentPhoto)}" onerror="this.style.display='none'" style="width:90px;height:90px;border-radius:9999px;object-fit:cover;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.18);" />`
-      : `<div style="width:90px;height:90px;border-radius:9999px;background:#ff7732;color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;">${escapeHtml(init)}</div>`
+      ? `<img src="${escapeHtml(student.studentPhoto)}" onerror="this.style.display='none'" style="width:56px;height:56px;border-radius:9999px;object-fit:cover;border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.18);" />`
+      : `<div style="width:56px;height:56px;border-radius:9999px;background:#ff7732;color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;">${escapeHtml(init)}</div>`
     const row = (label: string, value: string) =>
       value === "-" || value === "<span>-</span>"
         ? ""
         : `<tr><td class="lbl">${label}</td><td class="v">${value}</td></tr>`
-    const section = (title: string, rows: string) => (rows ? `<h3>${title}</h3><table class="kv">${rows}</table>` : "")
+    const section = (title: string, rows: string) =>
+      rows ? `<div class="card"><h3>${title}</h3><table class="kv">${rows}</table></div>` : ""
     const genDate = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })
     const status = student.status || "Active"
     const statusColor = status === "Active" ? "#059669" : status === "Disabled" ? "#dc2626" : "#6b7280"
+    const fileName = `Student-Profile-${(student.admissionNo || String(student.id)).replace(/[^\w-]+/g, "")}`
 
     return `<!doctype html>
 <html>
 <head>
 <meta charset="utf-8" />
-<title>Student Profile - ${escapeHtml(name)}</title>
+<title>${fileName}</title>
 <style>
+  @page { size: A4; margin: 9mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, Helvetica, sans-serif; color: #1f2937; font-size: 12px; padding: 32px; }
-  .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #ff7732; padding-bottom: 14px; margin-bottom: 18px; }
-  .head h1 { font-size: 21px; color: #111827; }
-  .head .tag { color: #ff7732; font-size: 12px; margin-top: 2px; }
-  .head .meta { text-align: right; font-size: 12px; color: #4b5563; line-height: 1.6; }
-  .head .meta .doc-title { font-size: 14px; font-weight: 700; color: #111827; }
-  .identity { display: flex; align-items: center; gap: 14px; padding: 14px; border: 1px solid #e5e7eb; border-left: 4px solid #ff7732; border-radius: 8px; margin-bottom: 18px; }
-  .identity h2 { font-size: 18px; color: #111827; }
-  .identity .sub { color: #4b5563; font-size: 12px; margin-top: 3px; }
-  .identity .badges { margin-top: 6px; font-size: 11px; color: #4b5563; }
-  .identity .status { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; color: ${statusColor}; border: 1px solid ${statusColor}; }
-  h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #ff7732; margin: 16px 0 8px; border-bottom: 1px solid #f3f4f6; padding-bottom: 4px; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #1f2937; font-size: 10px; line-height: 1.35; background: #fff; padding: 14px; }
+  .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; border-bottom: 2px solid #ff7732; padding-bottom: 6px; margin-bottom: 8px; }
+  .brand { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .brand img { width: 40px; height: 40px; object-fit: contain; }
+  .head h1 { font-size: 15px; color: #111827; line-height: 1.2; }
+  .head .tag { color: #ff7732; font-size: 9.5px; margin-top: 1px; }
+  .head .contact { font-size: 9px; color: #4b5563; margin-top: 1px; }
+  .meta { text-align: right; font-size: 9px; color: #4b5563; line-height: 1.5; white-space: nowrap; }
+  .meta .doc-title { font-size: 12px; font-weight: 700; color: #ff7732; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 1px; }
+  .identity { display: flex; align-items: center; gap: 10px; padding: 6px 9px; border: 1px solid #e5e7eb; border-left: 4px solid #ff7732; border-radius: 8px; margin-bottom: 8px; background: #fffaf6; break-inside: avoid; page-break-inside: avoid; }
+  .identity h2 { font-size: 13px; color: #111827; }
+  .identity .sub { color: #4b5563; font-size: 10px; margin-top: 1px; }
+  .badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .pill { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 8.5px; font-weight: 700; background: #f3f4f6; color: #374151; border: 1px solid #e5e7eb; }
+  .pill.status { color: ${statusColor}; border-color: ${statusColor}; background: #fff; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .card { border: 1px solid #e5e7eb; border-radius: 6px; padding: 5px 8px 2px; background: #fff; break-inside: avoid; page-break-inside: avoid; }
+  .card.full { grid-column: 1 / -1; }
+  h3 { font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.8px; color: #ff7732; margin-bottom: 2px; border-bottom: 1px solid #f3f4f6; padding-bottom: 2px; }
   table.kv { width: 100%; border-collapse: collapse; }
-  table.kv td { padding: 5px 8px; border-bottom: 1px solid #f3f4f6; }
+  table.kv tr:nth-child(even) td { background: #fafafa; }
+  table.kv td { padding: 1px 4px; border-bottom: 1px solid #f3f4f6; vertical-align: top; font-size: 9px; }
   table.kv tr:last-child td { border-bottom: 0; }
-  table.kv td.lbl { width: 42%; color: #6b7280; font-size: 11px; }
-  table.kv td.v { color: #111827; font-weight: 500; }
-  .note { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 10px 12px; margin-top: 8px; line-height: 1.6; }
-  .foot { margin-top: 26px; text-align: center; color: #6b7280; font-size: 11px; border-top: 1px solid #e5e7eb; padding-top: 12px; }
+  table.kv td.lbl { width: 46%; color: #6b7280; white-space: nowrap; }
+  table.kv td.v { color: #111827; font-weight: 500; word-break: break-word; }
+  .note { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 5px; padding: 4px 6px; line-height: 1.5; font-size: 9px; }
+  .foot { margin-top: 6px; text-align: center; color: #6b7280; font-size: 8.5px; border-top: 1px solid #e5e7eb; padding-top: 4px; }
+  @media print { body { padding: 0; } }
 </style>
 </head>
 <body>
   <div class="head">
-    <div>
-      <h1>${sName}</h1>
-      ${sTagline ? `<div class="tag">${sTagline}</div>` : ""}
-      ${sAddress ? `<div style="font-size:11px;color:#4b5563;margin-top:3px;">${sAddress}</div>` : ""}
-      ${sPhone || sEmail ? `<div style="font-size:11px;color:#4b5563;margin-top:2px;">${[sPhone, sEmail].filter(Boolean).join(" | ")}</div>` : ""}
+    <div class="brand">
+      ${logo}
+      <div>
+        <h1>${sName}</h1>
+        ${sTagline ? `<div class="tag">${sTagline}</div>` : ""}
+        ${sAddress ? `<div class="contact">${sAddress}</div>` : ""}
+        ${sContact ? `<div class="contact">${sContact}</div>` : ""}
+      </div>
     </div>
     <div class="meta">
       <div class="doc-title">Student Profile</div>
@@ -476,87 +506,110 @@ export default function StudentProfilePage() {
     ${photo}
     <div>
       <h2>${escapeHtml(name)}</h2>
-      <div class="sub">Class ${escapeHtml(student.class || "-")}${student.section ? ` - ${escapeHtml(student.section)}` : ""} · Roll No: ${esc(student.rollNo)}</div>
-      <div class="badges"><span class="status">${status}</span>${student.gender ? ` &nbsp;·&nbsp; ${escapeHtml(student.gender)}` : ""}${student.category ? ` &nbsp;·&nbsp; ${escapeHtml(student.category)}` : ""}${student.bloodGroup ? ` &nbsp;·&nbsp; Blood Group ${escapeHtml(student.bloodGroup)}` : ""}</div>
+      <div class="sub">Class ${esc(student.class)}${student.section ? ` - ${esc(student.section)}` : ""} &nbsp;·&nbsp; Roll No: ${esc(student.rollNo)} &nbsp;·&nbsp; Admission No: ${esc(student.admissionNo)}</div>
+      <div class="badges">
+        <span class="pill status">${escapeHtml(status)}</span>
+        ${student.gender ? `<span class="pill">${escapeHtml(student.gender)}</span>` : ""}
+        ${student.category ? `<span class="pill">${escapeHtml(student.category)}</span>` : ""}
+        ${student.bloodGroup ? `<span class="pill">Blood Group: ${escapeHtml(student.bloodGroup)}</span>` : ""}
+        ${student.dob ? `<span class="pill">DOB: ${dt(student.dob)}</span>` : ""}
+      </div>
     </div>
   </div>
 
-  ${section("Personal Details", [
-    ["Admission No", esc(student.admissionNo)],
-    ["Roll No", esc(student.rollNo)],
-    ["First Name", val(student.firstName)],
-    ["Middle Name", val(student.middleName)],
-    ["Last Name", val(student.lastName)],
-    ["Class", esc(student.class)],
-    ["Section", val(student.section)],
-["Date of Birth", fmtDate(student.dob)],
-    ["Blood Group", val(student.bloodGroup)],
-    ["Height", val(student.height)],
-    ["Weight", val(student.weight)],
-    ["Measurement Date", fmtDate(student.measurementDate)],
-  ].map(([l, v]) => row(l, v)).join(""))}
+  <div class="grid">
+    ${section("Personal Details", [
+      ["Admission No", esc(student.admissionNo)],
+      ["Roll No", esc(student.rollNo)],
+      ["First Name", val(student.firstName)],
+      ["Middle Name", val(student.middleName)],
+      ["Last Name", val(student.lastName)],
+      ["Class", esc(student.class)],
+      ["Section", val(student.section)],
+      ["Date of Birth", dt(student.dob)],
+      ["Blood Group", val(student.bloodGroup)],
+      ["Height", val(student.height)],
+      ["Weight", val(student.weight)],
+      ["Measurement Date", dt(student.measurementDate)],
+    ].map(([l, v]) => row(l, v)).join(""))}
 
-  ${section("Contact & Other Details", [
-    ["Mobile", val(student.mobile)],
-    ["Email", val(student.email)],
-    ["Address", val(student.address)],
-    ["Religion", val(student.religion)],
-    ["Caste", val(student.caste)],
-    ["Category", val(student.category)],
-    ["House", val(student.house)],
-    ["Admission Date", fmtDate(student.admissionDate)],
-    ["Previous School", val(student.previousSchool)],
-  ].map(([l, v]) => row(l, v)).join(""))}
+    ${section("Contact & Other Details", [
+      ["Mobile", val(student.mobile)],
+      ["Email", val(student.email)],
+      ["Address", val(student.address)],
+      ["Religion", val(student.religion)],
+      ["Caste", val(student.caste)],
+      ["Category", val(student.category)],
+      ["House", val(student.house)],
+      ["Admission Date", dt(student.admissionDate)],
+      ["Previous School", val(student.previousSchool)],
+    ].map(([l, v]) => row(l, v)).join(""))}
 
-  ${section("Parent Details", [
-    ["Father Name", val(student.fatherName)],
-    ["Father Phone", val(student.fatherPhone)],
-    ["Father Occupation", val(student.fatherOccupation)],
-    ["Mother Name", val(student.motherName)],
-    ["Mother Phone", val(student.motherPhone)],
-    ["Mother Occupation", val(student.motherOccupation)],
-  ].map(([l, v]) => row(l, v)).join(""))}
+    ${section("Parent Details", [
+      ["Father Name", val(student.fatherName)],
+      ["Father Phone", val(student.fatherPhone)],
+      ["Father Occupation", val(student.fatherOccupation)],
+      ["Mother Name", val(student.motherName)],
+      ["Mother Phone", val(student.motherPhone)],
+      ["Mother Occupation", val(student.motherOccupation)],
+    ].map(([l, v]) => row(l, v)).join(""))}
 
-  ${section("Guardian Details", [
-    ["Guardian Is", val(student.guardianIs)],
-    ["Guardian Name", val(student.guardianName)],
-    ["Guardian Relation", val(student.guardianRelation)],
-    ["Guardian Email", val(student.guardianEmail)],
-    ["Guardian Phone", val(student.guardianPhone)],
-    ["Guardian Occupation", val(student.guardianOccupation)],
-    ["Guardian Address", val(student.guardianAddress)],
-  ].map(([l, v]) => row(l, v)).join(""))}
+    ${section("Guardian Details", [
+      ["Guardian Is", val(student.guardianIs)],
+      ["Guardian Name", val(student.guardianName)],
+      ["Guardian Relation", val(student.guardianRelation)],
+      ["Guardian Email", val(student.guardianEmail)],
+      ["Guardian Phone", val(student.guardianPhone)],
+      ["Guardian Occupation", val(student.guardianOccupation)],
+      ["Guardian Address", val(student.guardianAddress)],
+    ].map(([l, v]) => row(l, v)).join(""))}
 
-  ${section("Addresses", [
-    ["Current Address", val(student.currentAddress)],
-    ["Permanent Address", val(student.permanentAddress)],
-  ].map(([l, v]) => row(l, v)).join(""))}
+    ${section("Addresses", [
+      ["Current Address", val(student.currentAddress)],
+      ["Permanent Address", val(student.permanentAddress)],
+    ].map(([l, v]) => row(l, v)).join(""))}
 
-  ${section("Bank & Identification", [
-    ["Bank Account No", val(student.bankAccount)],
-    ["Bank Name", val(student.bankName)],
-    ["IFSC Code", val(student.ifscCode)],
-    ["National Identification No", val(student.nationalId)],
-    ["Local Identification No", val(student.localId)],
-    ["RTE", val(student.rte)],
-  ].map(([l, v]) => row(l, v)).join(""))}
+    ${section("Bank & Identification", [
+      ["Bank Account No", val(student.bankAccount)],
+      ["Bank Name", val(student.bankName)],
+      ["IFSC Code", val(student.ifscCode)],
+      ["National Identification No", val(student.nationalId)],
+      ["Local Identification No", val(student.localId)],
+      ["RTE", val(student.rte)],
+    ].map(([l, v]) => row(l, v)).join(""))}
 
-  ${student.note ? `<h3>Note</h3><div class="note">${escapeHtml(student.note)}</div>` : ""}
+    ${student.note ? `<div class="card full"><h3>Note</h3><div class="note">${escapeHtml(student.note)}</div></div>` : ""}
+  </div>
 
-  <div class="foot">This is a computer-generated student profile report. Generated on ${genDate}.</div>
+  <div class="foot">This is a computer-generated student profile report · ${sName} · Generated on ${genDate}</div>
 </body>
 </html>`
   }
 
-  const printProfile = () => {
-    const frame = document.getElementById("student-report-frame") as HTMLIFrameElement | null
-    if (!frame) return
-    frame.onload = () => {
-      frame.contentWindow?.focus()
-      frame.contentWindow?.print()
+  const openProfileDoc = (mode: "download" | "print") => {
+    const html = buildProfileHtml()
+    if (!html) return
+    const w = window.open("", "_blank")
+    if (!w) {
+      notify.error("Pop-up blocked — please allow pop-ups to download/print the student profile")
+      return
     }
-    frame.srcdoc = buildProfileHtml()
+    w.document.open()
+    w.document.write(html)
+    w.document.close()
+    const fire = () => {
+      if (mode === "print") {
+        w.onafterprint = () => {
+          try { w.close() } catch { /* window already gone */ }
+        }
+      }
+      w.focus()
+      w.print()
+    }
+    if (w.document.readyState === "complete") setTimeout(fire, 150)
+    else w.onload = () => setTimeout(fire, 150)
   }
+
 
   if (loading) {
     return (
@@ -629,13 +682,13 @@ export default function StudentProfilePage() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={printProfile}
+              onClick={() => openProfileDoc("download")}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white/20 hover:bg-white/30 border border-white/40 text-white text-xs font-medium transition-colors"
             >
               <FileDown className="h-4 w-4" /> Download PDF
             </button>
             <button
-              onClick={printProfile}
+              onClick={() => openProfileDoc("print")}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white text-[var(--primary)] text-xs font-semibold shadow-sm hover:bg-white/90 transition-colors"
             >
               <Printer className="h-4 w-4" /> Print
@@ -1508,11 +1561,6 @@ export default function StudentProfilePage() {
         </div>
       </Modal>
 
-      <iframe
-        id="student-report-frame"
-        title="Student profile print frame"
-        style={{ position: "fixed", left: -9999, top: 0, width: 820, height: 1100, border: 0 }}
-      />
     </div>
   )
 }

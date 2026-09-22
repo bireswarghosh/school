@@ -305,7 +305,10 @@ export default function StudentAdmissionPage() {
   })
 
   useEffect(() => {
-    generateAdmissionNo().then((admissionNo) => setForm((prev) => ({ ...prev, admissionNo })))
+    const editing = new URLSearchParams(window.location.search).get("edit")
+    if (!editing) {
+      generateAdmissionNo().then((admissionNo) => setForm((prev) => ({ ...prev, admissionNo })))
+    }
     fetch("/api/system-setting/custom-field")
       .then((r) => r.json())
       .then((data: CustomField[]) => setCustomFields(data.filter((f) => f.module === "Student")))
@@ -777,8 +780,9 @@ export default function StudentAdmissionPage() {
                   <input
                     type="text"
                     value={form.admissionNo}
-                    readOnly
-                    className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg bg-gray-50 text-gray-500"
+                    onChange={(e) => handleInputChange("admissionNo", e.target.value)}
+                    className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent"
+                    placeholder="Auto-generated"
                   />
                 </div>
                 <div>

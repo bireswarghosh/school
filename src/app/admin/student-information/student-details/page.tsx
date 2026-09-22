@@ -80,6 +80,194 @@ const emptyForm = {
   address: "", previousSchool: "", note: "",
 }
 
+type AddForm = typeof emptyForm
+type OptionItem = { id: number; name: string }
+
+const SectionLabel = ({ text }: { text: string }) => (
+  <h5 className="text-xs font-semibold text-[var(--primary)] uppercase tracking-wider border-b border-gray-100 pb-1.5">{text}</h5>
+)
+
+const FormFields = ({
+  form, errors, onChange, classes, filteredSections, categories, houses,
+}: {
+  form: AddForm
+  errors: Record<string, string>
+  onChange: (f: string, v: string) => void
+  classes: OptionItem[]
+  filteredSections: OptionItem[]
+  categories: OptionItem[]
+  houses: OptionItem[]
+}) => (
+  <div className="space-y-4">
+    <SectionLabel text="Basic Information" />
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Admission No <span className="text-red-500">*</span></label>
+        <input type="text" value={form.admissionNo} onChange={(e) => onChange("admissionNo", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent" />
+        {errors.admissionNo && <p className="text-red-500 text-xs mt-0.5">{errors.admissionNo}</p>}</div>
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Roll No <span className="text-red-500">*</span></label>
+        <input type="text" value={form.rollNo} onChange={(e) => onChange("rollNo", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent" />
+        {errors.rollNo && <p className="text-red-500 text-xs mt-0.5">{errors.rollNo}</p>}</div>
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Class <span className="text-red-500">*</span></label>
+        <select value={form.class} onChange={(e) => { onChange("class", e.target.value); onChange("section", "") }} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] bg-white">
+          <option value="">Select</option>{classes.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+        </select>{errors.class && <p className="text-red-500 text-xs mt-0.5">{errors.class}</p>}</div>
+    </div>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">First Name <span className="text-red-500">*</span></label>
+        <input type="text" value={form.firstName} onChange={(e) => onChange("firstName", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent" />
+        {errors.firstName && <p className="text-red-500 text-xs mt-0.5">{errors.firstName}</p>}</div>
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Middle Name</label>
+        <input type="text" value={form.middleName} onChange={(e) => onChange("middleName", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent" /></div>
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Last Name <span className="text-red-500">*</span></label>
+        <input type="text" value={form.lastName} onChange={(e) => onChange("lastName", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent" />
+        {errors.lastName && <p className="text-red-500 text-xs mt-0.5">{errors.lastName}</p>}</div>
+    </div>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Section</label>
+        <select value={form.section} onChange={(e) => onChange("section", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] bg-white">
+          <option value="">Select</option>{filteredSections.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
+        </select></div>
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Gender <span className="text-red-500">*</span></label>
+        <select value={form.gender} onChange={(e) => onChange("gender", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] bg-white">
+          <option value="">Select</option>{genderOptions.map((o) => <option key={o} value={o}>{o}</option>)}
+        </select>{errors.gender && <p className="text-red-500 text-xs mt-0.5">{errors.gender}</p>}</div>
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Date of Birth</label>
+        <input type="date" value={form.dob} onChange={(e) => onChange("dob", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+    </div>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Category</label>
+        <select value={form.category} onChange={(e) => onChange("category", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] bg-white">
+          <option value="">Select</option>{categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+        </select></div>
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Religion</label>
+        <input type="text" value={form.religion} onChange={(e) => onChange("religion", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Caste</label>
+        <input type="text" value={form.caste} onChange={(e) => onChange("caste", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+    </div>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Mobile <span className="text-red-500">*</span></label>
+        <input type="text" value={form.mobile} onChange={(e) => onChange("mobile", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" />
+        {errors.mobile && <p className="text-red-500 text-xs mt-0.5">{errors.mobile}</p>}</div>
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
+        <input type="text" value={form.email} onChange={(e) => onChange("email", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Admission Date</label>
+        <input type="date" value={form.admissionDate} onChange={(e) => onChange("admissionDate", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+    </div>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Blood Group</label>
+        <select value={form.bloodGroup} onChange={(e) => onChange("bloodGroup", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] bg-white">
+          <option value="">Select</option>{bloodGroupOptions.map((o) => <option key={o} value={o}>{o}</option>)}
+        </select></div>
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">House</label>
+        <select value={form.house} onChange={(e) => onChange("house", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] bg-white">
+          <option value="">Select</option>{houses.map((h) => <option key={h.id} value={h.name}>{h.name}</option>)}
+        </select></div>
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Previous School</label>
+        <input type="text" value={form.previousSchool} onChange={(e) => onChange("previousSchool", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+    </div>
+
+    <SectionLabel text="Measurements" />
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Height</label>
+        <input type="text" value={form.height} onChange={(e) => onChange("height", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Weight</label>
+        <input type="text" value={form.weight} onChange={(e) => onChange("weight", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Measurement Date</label>
+        <input type="date" value={form.measurementDate} onChange={(e) => onChange("measurementDate", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+    </div>
+
+    <SectionLabel text="Parent Details" />
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Father Name</label>
+        <input type="text" value={form.fatherName} onChange={(e) => onChange("fatherName", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Father Phone</label>
+        <input type="text" value={form.fatherPhone} onChange={(e) => onChange("fatherPhone", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Father Occupation</label>
+        <input type="text" value={form.fatherOccupation} onChange={(e) => onChange("fatherOccupation", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+    </div>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Mother Name</label>
+        <input type="text" value={form.motherName} onChange={(e) => onChange("motherName", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Mother Phone</label>
+        <input type="text" value={form.motherPhone} onChange={(e) => onChange("motherPhone", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Mother Occupation</label>
+        <input type="text" value={form.motherOccupation} onChange={(e) => onChange("motherOccupation", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+    </div>
+
+    <SectionLabel text="Guardian Details" />
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Guardian Is</label>
+        <select value={form.guardianIs} onChange={(e) => onChange("guardianIs", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] bg-white">
+          <option value="">Select</option>{guardianIsOptions.map((o) => <option key={o} value={o}>{o}</option>)}
+        </select></div>
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Guardian Name</label>
+        <input type="text" value={form.guardianName} onChange={(e) => onChange("guardianName", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Guardian Relation</label>
+        <input type="text" value={form.guardianRelation} onChange={(e) => onChange("guardianRelation", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+    </div>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Guardian Email</label>
+        <input type="text" value={form.guardianEmail} onChange={(e) => onChange("guardianEmail", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Guardian Phone</label>
+        <input type="text" value={form.guardianPhone} onChange={(e) => onChange("guardianPhone", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Guardian Occupation</label>
+        <input type="text" value={form.guardianOccupation} onChange={(e) => onChange("guardianOccupation", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+    </div>
+    <div><label className="block text-xs font-medium text-gray-600 mb-1">Guardian Address</label>
+      <textarea value={form.guardianAddress} onChange={(e) => onChange("guardianAddress", e.target.value)} rows={2} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+
+    <SectionLabel text="Addresses" />
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Current Address</label>
+        <textarea value={form.currentAddress} onChange={(e) => onChange("currentAddress", e.target.value)} rows={2} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Permanent Address</label>
+        <textarea value={form.permanentAddress} onChange={(e) => onChange("permanentAddress", e.target.value)} rows={2} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+    </div>
+
+    <SectionLabel text="Bank & Identification" />
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Bank Account No</label>
+        <input type="text" value={form.bankAccount} onChange={(e) => onChange("bankAccount", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Bank Name</label>
+        <input type="text" value={form.bankName} onChange={(e) => onChange("bankName", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">IFSC Code</label>
+        <input type="text" value={form.ifscCode} onChange={(e) => onChange("ifscCode", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+    </div>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">National Identification No</label>
+        <input type="text" value={form.nationalId} onChange={(e) => onChange("nationalId", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">Local Identification No</label>
+        <input type="text" value={form.localId} onChange={(e) => onChange("localId", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+      <div><label className="block text-xs font-medium text-gray-600 mb-1">RTE</label>
+        <select value={form.rte} onChange={(e) => onChange("rte", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] bg-white">
+          <option value="">Select</option>{yesNoOptions.map((o) => <option key={o} value={o}>{o}</option>)}
+        </select></div>
+    </div>
+
+    <div><label className="block text-xs font-medium text-gray-600 mb-1">Address</label>
+      <textarea value={form.address} onChange={(e) => onChange("address", e.target.value)} rows={2} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+    <div><label className="block text-xs font-medium text-gray-600 mb-1">Note</label>
+      <textarea value={form.note} onChange={(e) => onChange("note", e.target.value)} rows={2} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
+  </div>
+)
+
+const Modal = ({ title, show, onClose, children, footer }: { title: string; show: boolean; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode }) => {
+  if (!show) return null
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto z-10">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 sticky top-0 bg-white z-10 rounded-t-xl">
+          <h3 className="text-base font-semibold text-gray-800">{title}</h3>
+          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="p-5">{children}</div>
+        {footer && <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2 sticky bottom-0 bg-white rounded-b-xl">{footer}</div>}
+      </div>
+    </div>
+  )
+}
+
 export default function StudentDetailsPage() {
   const router = useRouter()
   const { data: students, add, remove, loading, refetch } = useApi<StudentRecord>("/api/student-information/student")
@@ -461,181 +649,6 @@ export default function StudentDetailsPage() {
     return pages
   }, [totalPages, currentPage])
 
-  const SectionLabel = ({ text }: { text: string }) => (
-    <h5 className="text-xs font-semibold text-[var(--primary)] uppercase tracking-wider border-b border-gray-100 pb-1.5">{text}</h5>
-  )
-
-  const FormFields = ({ form, errors, onChange }: { form: typeof emptyForm; errors: Record<string, string>; onChange: (f: string, v: string) => void }) => (
-    <div className="space-y-4">
-      <SectionLabel text="Basic Information" />
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Admission No <span className="text-red-500">*</span></label>
-          <input type="text" value={form.admissionNo} onChange={(e) => onChange("admissionNo", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent" />
-          {errors.admissionNo && <p className="text-red-500 text-xs mt-0.5">{errors.admissionNo}</p>}</div>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Roll No <span className="text-red-500">*</span></label>
-          <input type="text" value={form.rollNo} onChange={(e) => onChange("rollNo", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent" />
-          {errors.rollNo && <p className="text-red-500 text-xs mt-0.5">{errors.rollNo}</p>}</div>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Class <span className="text-red-500">*</span></label>
-          <select value={form.class} onChange={(e) => { onChange("class", e.target.value); onChange("section", "") }} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] bg-white">
-            <option value="">Select</option>{classes.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
-          </select>{errors.class && <p className="text-red-500 text-xs mt-0.5">{errors.class}</p>}</div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">First Name <span className="text-red-500">*</span></label>
-          <input type="text" value={form.firstName} onChange={(e) => onChange("firstName", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent" />
-          {errors.firstName && <p className="text-red-500 text-xs mt-0.5">{errors.firstName}</p>}</div>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Middle Name</label>
-          <input type="text" value={form.middleName} onChange={(e) => onChange("middleName", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent" /></div>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Last Name <span className="text-red-500">*</span></label>
-          <input type="text" value={form.lastName} onChange={(e) => onChange("lastName", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent" />
-          {errors.lastName && <p className="text-red-500 text-xs mt-0.5">{errors.lastName}</p>}</div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Section</label>
-          <select value={form.section} onChange={(e) => onChange("section", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] bg-white">
-            <option value="">Select</option>{filteredSections.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
-          </select></div>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Gender <span className="text-red-500">*</span></label>
-          <select value={form.gender} onChange={(e) => onChange("gender", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] bg-white">
-            <option value="">Select</option>{genderOptions.map((o) => <option key={o} value={o}>{o}</option>)}
-          </select>{errors.gender && <p className="text-red-500 text-xs mt-0.5">{errors.gender}</p>}</div>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Date of Birth</label>
-          <input type="date" value={form.dob} onChange={(e) => onChange("dob", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Category</label>
-          <select value={form.category} onChange={(e) => onChange("category", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] bg-white">
-            <option value="">Select</option>{categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
-          </select></div>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Religion</label>
-          <input type="text" value={form.religion} onChange={(e) => onChange("religion", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Caste</label>
-          <input type="text" value={form.caste} onChange={(e) => onChange("caste", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Mobile <span className="text-red-500">*</span></label>
-          <input type="text" value={form.mobile} onChange={(e) => onChange("mobile", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" />
-          {errors.mobile && <p className="text-red-500 text-xs mt-0.5">{errors.mobile}</p>}</div>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
-          <input type="text" value={form.email} onChange={(e) => onChange("email", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Admission Date</label>
-          <input type="date" value={form.admissionDate} onChange={(e) => onChange("admissionDate", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Blood Group</label>
-          <select value={form.bloodGroup} onChange={(e) => onChange("bloodGroup", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] bg-white">
-            <option value="">Select</option>{bloodGroupOptions.map((o) => <option key={o} value={o}>{o}</option>)}
-          </select></div>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">House</label>
-          <select value={form.house} onChange={(e) => onChange("house", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] bg-white">
-            <option value="">Select</option>{houses.map((h) => <option key={h.id} value={h.name}>{h.name}</option>)}
-          </select></div>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Previous School</label>
-          <input type="text" value={form.previousSchool} onChange={(e) => onChange("previousSchool", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-      </div>
-
-      <SectionLabel text="Measurements" />
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Height</label>
-          <input type="text" value={form.height} onChange={(e) => onChange("height", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Weight</label>
-          <input type="text" value={form.weight} onChange={(e) => onChange("weight", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Measurement Date</label>
-          <input type="date" value={form.measurementDate} onChange={(e) => onChange("measurementDate", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-      </div>
-
-      <SectionLabel text="Parent Details" />
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Father Name</label>
-          <input type="text" value={form.fatherName} onChange={(e) => onChange("fatherName", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Father Phone</label>
-          <input type="text" value={form.fatherPhone} onChange={(e) => onChange("fatherPhone", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Father Occupation</label>
-          <input type="text" value={form.fatherOccupation} onChange={(e) => onChange("fatherOccupation", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Mother Name</label>
-          <input type="text" value={form.motherName} onChange={(e) => onChange("motherName", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Mother Phone</label>
-          <input type="text" value={form.motherPhone} onChange={(e) => onChange("motherPhone", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Mother Occupation</label>
-          <input type="text" value={form.motherOccupation} onChange={(e) => onChange("motherOccupation", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-      </div>
-
-      <SectionLabel text="Guardian Details" />
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Guardian Is</label>
-          <select value={form.guardianIs} onChange={(e) => onChange("guardianIs", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] bg-white">
-            <option value="">Select</option>{guardianIsOptions.map((o) => <option key={o} value={o}>{o}</option>)}
-          </select></div>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Guardian Name</label>
-          <input type="text" value={form.guardianName} onChange={(e) => onChange("guardianName", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Guardian Relation</label>
-          <input type="text" value={form.guardianRelation} onChange={(e) => onChange("guardianRelation", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Guardian Email</label>
-          <input type="text" value={form.guardianEmail} onChange={(e) => onChange("guardianEmail", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Guardian Phone</label>
-          <input type="text" value={form.guardianPhone} onChange={(e) => onChange("guardianPhone", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Guardian Occupation</label>
-          <input type="text" value={form.guardianOccupation} onChange={(e) => onChange("guardianOccupation", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-      </div>
-      <div><label className="block text-xs font-medium text-gray-600 mb-1">Guardian Address</label>
-        <textarea value={form.guardianAddress} onChange={(e) => onChange("guardianAddress", e.target.value)} rows={2} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-
-      <SectionLabel text="Addresses" />
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Current Address</label>
-          <textarea value={form.currentAddress} onChange={(e) => onChange("currentAddress", e.target.value)} rows={2} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Permanent Address</label>
-          <textarea value={form.permanentAddress} onChange={(e) => onChange("permanentAddress", e.target.value)} rows={2} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-      </div>
-
-      <SectionLabel text="Bank & Identification" />
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Bank Account No</label>
-          <input type="text" value={form.bankAccount} onChange={(e) => onChange("bankAccount", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Bank Name</label>
-          <input type="text" value={form.bankName} onChange={(e) => onChange("bankName", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">IFSC Code</label>
-          <input type="text" value={form.ifscCode} onChange={(e) => onChange("ifscCode", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">National Identification No</label>
-          <input type="text" value={form.nationalId} onChange={(e) => onChange("nationalId", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Local Identification No</label>
-          <input type="text" value={form.localId} onChange={(e) => onChange("localId", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">RTE</label>
-          <select value={form.rte} onChange={(e) => onChange("rte", e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] bg-white">
-            <option value="">Select</option>{yesNoOptions.map((o) => <option key={o} value={o}>{o}</option>)}
-          </select></div>
-      </div>
-
-      <div><label className="block text-xs font-medium text-gray-600 mb-1">Address</label>
-        <textarea value={form.address} onChange={(e) => onChange("address", e.target.value)} rows={2} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-      <div><label className="block text-xs font-medium text-gray-600 mb-1">Note</label>
-        <textarea value={form.note} onChange={(e) => onChange("note", e.target.value)} rows={2} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]" /></div>
-    </div>
-  )
-
-  const Modal = ({ title, show, onClose, children, footer }: { title: string; show: boolean; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode }) => {
-    if (!show) return null
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-        <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto z-10">
-          <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 sticky top-0 bg-white z-10 rounded-t-xl">
-            <h3 className="text-base font-semibold text-gray-800">{title}</h3>
-            <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"><X className="h-4 w-4" /></button>
-          </div>
-          <div className="p-5">{children}</div>
-          {footer && <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2 sticky bottom-0 bg-white rounded-b-xl">{footer}</div>}
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -898,7 +911,15 @@ export default function StudentDetailsPage() {
 
       <Modal title="Add Student" show={showAddModal} onClose={() => { setShowAddModal(false); setAddErrors({}) }}
         footer={<><button onClick={() => { setShowAddModal(false); setAddErrors({}) }} className="px-4 py-2 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button><button onClick={handleAdd} className="px-5 py-2 text-xs font-medium text-white bg-[var(--primary)] rounded-lg hover:bg-[var(--secondary)] shadow-sm shadow-indigo-200">Save</button></>}>
-        {FormFields({ form: addForm, errors: addErrors, onChange: (f, v) => { setAddForm((p) => ({ ...p, [f]: v })); if (addErrors[f]) setAddErrors((p) => ({ ...p, [f]: "" })) } })}
+        <FormFields
+          form={addForm}
+          errors={addErrors}
+          onChange={(f, v) => { setAddForm((p) => ({ ...p, [f]: v })); if (addErrors[f]) setAddErrors((p) => ({ ...p, [f]: "" })) }}
+          classes={classes}
+          filteredSections={filteredSections}
+          categories={categories}
+          houses={houses}
+        />
       </Modal>
 
       {showViewModal && viewRecord && (
