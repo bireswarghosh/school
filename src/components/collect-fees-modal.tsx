@@ -254,9 +254,11 @@ export default function CollectFeesModal({
       appliedDiscountId: null,
       hasAppliedNew: false,
     }))
-    if (!activeDiscount || pendingFees.length === 0) return entries
+    if (!activeDiscount || selectedFeeIds.length === 0) return entries
     const map = new Map(entries.map((e) => [e.id, e]))
-    const eligible = pendingFees.filter((f) => num(f.discountAmount) <= 0 && f.amount - f.paid > 0)
+    const eligible = pendingFees.filter(
+      (f) => selectedFeeIds.includes(f.id) && num(f.discountAmount) <= 0 && f.amount - f.paid > 0
+    )
     if (eligible.length === 0) return entries
 
     const applyTo = (f: ResolvedFee, raw: number) => {
@@ -272,40 +274,48 @@ export default function CollectFeesModal({
     }
 
     if (activeDiscount.discountType === "Percentage") {
-      for (const f of eligible) applyTo(f, (f.amount * num(activeDiscount.percentage)) / 100)
-    } else {
-      const totalAmount = eligible.reduce((s, f) => s + f.amount, 0)
-      const maxPool = eligible.reduce((s, f) => s + (f.amount - f.paid), 0)
-      const totalDiscount = Math.min(num(activeDiscount.amount), maxPool)
-      if (totalAmount > 0) {
-        const rows = eligible.map((f) => ({ f, share: (f.amount / totalAmount) * totalDiscount }))
-        let allocated = 0
-        for (const e of rows) {
-          const head = round2(e.f.amount - e.f.paid - (map.get(e.f.id)?.appliedDiscount || 0))
-          const give = round2(Math.min(e.share, Math.max(0, head)))
-          if (give > 0) applyTo(e.f, give)
-          allocated = round2(allocated + give)
-        }
-        let leftover = round2(totalDiscount - allocated)
-        let guard = 0
-        while (leftover > 0.005 && guard < 30) {
-          guard++
-          let gave = 0
-          for (const e of rows) {
-            if (leftover <= 0) break
-            const head = round2(e.f.amount - e.f.paid - (map.get(e.f.id)?.appliedDiscount || 0))
-            if (head <= 0) continue
-            const give = round2(Math.min(leftover, head))
-            applyTo(e.f, give)
-            gave = round2(gave + give)
-            leftover = round2(leftover - give)
-          }
-          if (gave <= 0) break
-        }
-      }
+      for (const f of eligible) applyTo(f, round2((f.amount * num(activeDiscount.percentage)) / 100))
+      return Array.from(map.values())
     }
+
+    // Fix discount — distributed over the SELECTED fees only. Uses integer
+    // paise so the applied total is EXACTLY the coupon value (never more,
+    // never less), capped by the selected fees' total headroom.
+    const paise = (n: number) => Math.round(n * 100)
+    const totalAmountPaise = eligible.reduce((s, f) => s + paise(f.amount), 0)
+    const totalHeadPaise = eligible.reduce((s, f) => s + paise(f.amount - f.paid), 0)
+    const poolPaise = Math.min(paise(num(activeDiscount.amount)), totalHeadPaise)
+    if (totalAmountPaise <= 0 || poolPaise <= 0) return entries
+
+    const alloc: number[] = []
+    let used = 0
+    for (const f of eligible) {
+      let p = Math.floor((poolPaise * paise(f.amount)) / totalAmountPaise)
+      const head = paise(f.amount - f.paid)
+      if (p > head) p = head
+      alloc.push(p)
+      used += p
+    }
+    let rem = poolPaise - used
+    let guard = 0
+    let cursor = 0
+    while (rem > 0 && guard < eligible.length * 2000 + 2000) {
+      guard++
+      const idx = cursor % eligible.length
+      const head = paise(eligible[idx].amount - eligible[idx].paid)
+      if (alloc[idx] < head) {
+        alloc[idx]++
+        rem--
+      }
+      cursor++
+    }
+    eligible.forEach((f, idx) => {
+      if (alloc[idx] <= 0) return
+      applyTo(f, alloc[idx] / 100)
+    })
+
     return Array.from(map.values())
-  }, [pendingFees, activeDiscount])
+  }, [pendingFees, activeDiscount, selectedFeeIds])
 
   const approvalNote = (fees: AppliedFee[]) => {
     if (!activeDiscount || !fees.some((f) => f.hasAppliedNew)) return payment.note || ""
