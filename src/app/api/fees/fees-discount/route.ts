@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { query, getAll, getById, create, update, remove } from "@/lib/db"
+import { query, getById, create, update, remove } from "@/lib/db"
 import { camelToSnake, mapResponse } from "@/lib/field-mapping"
 import { getCurrentSession } from "@/lib/auth"
 
@@ -8,7 +8,6 @@ function getErrorMessage(e: unknown) {
 }
 
 const TABLE = "fees_discounts"
-const ORDER = "id DESC"
 const fieldMap: Record<string, string> = {
   discountCode: "code",
   discountType: "type",
@@ -51,12 +50,17 @@ export async function GET(req: NextRequest) {
     const item = await getById(TABLE, parseInt(id))
     return NextResponse.json(mapResponse(item, fieldMap) || { error: "Not found" }, { status: item ? 200 : 404 })
   }
-  if (studentId) {
-    const items = await getAll(TABLE, ORDER, "student_id = $1", [parseInt(studentId, 10)])
-    return NextResponse.json(mapResponse(items, fieldMap))
-  }
-  const items = await getAll(TABLE, ORDER)
-  return NextResponse.json(mapResponse(items, fieldMap))
+  const where = studentId ? `WHERE fd.student_id = ${parseInt(studentId, 10)}` : ""
+  const result = await query(`
+    SELECT fd.*,
+      s.first_name AS "firstName", s.middle_name AS "middleName", s.last_name AS "lastName",
+      s.admission_no AS "admissionNo", s.roll_no AS "rollNo"
+    FROM ${TABLE} fd
+    LEFT JOIN students s ON s.id = fd.student_id
+    ${where}
+    ORDER BY fd.id DESC
+  `)
+  return NextResponse.json(mapResponse(result.rows, fieldMap))
 }
 
 export async function POST(req: NextRequest) {

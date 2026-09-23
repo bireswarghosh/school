@@ -7,13 +7,14 @@ import { useApi } from "@/lib/use-api"
 import { useCurrency } from "@/lib/currency-context"
 
 type DiscountType = "Percentage" | "Fix"
-type FeesDiscount = { id: number; name: string; discountCode: string; discountType: DiscountType; percentage: number | null; amount: number | null; useCount: number; expiryDate: string; description: string; studentId?: number | null; isActive?: boolean | null; approvedBy?: string | null; approvedAt?: string | null }
+type FeesDiscount = { id: number; name: string; discountCode: string; discountType: DiscountType; percentage: number | null; amount: number | null; useCount: number; expiryDate: string; description: string; studentId?: number | null; isActive?: boolean | null; approvedBy?: string | null; approvedAt?: string | null; firstName?: string | null; middleName?: string | null; lastName?: string | null; admissionNo?: string | null; rollNo?: string | number | null }
 
 type StudentRef = {
   id: number
   admissionNo: string
   rollNo: string | number | null
   firstName: string
+  middleName: string
   lastName: string
   class: string
   section: string
@@ -30,6 +31,7 @@ type SelectedStudent = {
 }
 
 const today = () => new Date().toISOString().split("T")[0]
+const fullName = (s: { firstName?: string | null; middleName?: string | null; lastName?: string | null }) => `${s.firstName || ""} ${s.middleName || ""} ${s.lastName || ""}`.replace(/\s+/g, " ").trim()
 
 export default function FeesDiscountPage() {
   const { symbol } = useCurrency()
@@ -70,7 +72,7 @@ export default function FeesDiscountPage() {
     if (!q) return []
     return students
       .filter((s) =>
-        [s.firstName, s.lastName, s.admissionNo, String(s.rollNo ?? ""), s.class, s.section]
+        [s.firstName, s.middleName, s.lastName, s.admissionNo, String(s.rollNo ?? ""), s.class, s.section]
           .join(" ").toLowerCase().includes(q)
       )
       .slice(0, 10)
@@ -84,7 +86,7 @@ export default function FeesDiscountPage() {
   }
 
   const selectStudent = (s: StudentRef) => {
-    setSelectedStudent({ id: s.id, name: `${s.firstName} ${s.lastName}`.trim(), rollNo: String(s.rollNo ?? ""), className: s.class, admissionNo: s.admissionNo, section: s.section })
+    setSelectedStudent({ id: s.id, name: fullName(s), rollNo: String(s.rollNo ?? ""), className: s.class, admissionNo: s.admissionNo, section: s.section })
     setStudSearchOpen(false)
     setStudKeyword("")
     loadStudentDiscounts(s.id)
@@ -320,7 +322,7 @@ export default function FeesDiscountPage() {
                             onClick={() => selectStudent(r)}
                             className="px-4 py-2.5 hover:bg-[var(--primary-light)] transition-colors border-b border-gray-100 last:border-0 cursor-pointer"
                           >
-                            <div className="text-sm font-medium text-gray-800">{r.firstName} {r.lastName}</div>
+                            <div className="text-sm font-medium text-gray-800">{fullName(r)}</div>
                             <div className="text-xs text-gray-500">
                               Admission ID: {r.admissionNo || "—"} · Roll: {r.rollNo ?? "-"} · Class: {r.class || "-"}{r.section ? ` - ${r.section}` : ""}
                             </div>
@@ -437,7 +439,7 @@ export default function FeesDiscountPage() {
                   ) : (
                     paginated.map((d, idx) => (
                       <tr key={d.id} className={`border-b border-gray-50 hover:bg-[var(--primary-light)] transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}>
-                        <td className="px-4 py-2.5 font-medium text-gray-800">{d.name}</td>
+                        <td className="px-4 py-2.5 font-medium text-gray-800">{d.firstName ? fullName(d) : d.name}</td>
                         <td className="px-4 py-2.5 text-gray-600 font-mono text-xs">{d.discountCode}</td>
                         <td className="px-4 py-2.5 text-gray-600">{d.discountType === "Percentage" ? `${d.percentage}%` : <span className="text-gray-300">-</span>}</td>
                         <td className="px-4 py-2.5 text-gray-600">{d.discountType === "Fix" ? `${symbol}${d.amount}` : <span className="text-gray-300">-</span>}</td>

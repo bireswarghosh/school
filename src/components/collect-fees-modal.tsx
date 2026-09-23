@@ -33,6 +33,7 @@ type ResolvedFee = FeeRecord & {
   fine: number
   paid: number
   balance: number
+  rawBalance: number
 }
 
 type PaymentFormData = {
@@ -216,9 +217,10 @@ export default function CollectFeesModal({
           const fine = num(f.fineAmount)
           const paid = num(f.paidAmount)
           const balance = amount - discount - paid
+          const rawBalance = round2(amount - paid)
           const groupName = f.feesGroup ? (feeGroups[Number(f.feesGroup)] ?? `Group ${f.feesGroup}`) : "-"
           const feeTypeName = f.feesType ? (feeTypes[Number(f.feesType)]?.name ?? `Type ${f.feesType}`) : "-"
-          return { ...f, feeTypeName, groupName, amount, discount, fine, paid, balance }
+          return { ...f, feeTypeName, groupName, amount, discount, fine, paid, balance, rawBalance }
         })
         .filter((r) => r.balance > 0 && (groupSet.size === 0 || groupSet.has(Number(r.feesGroup)))),
     [fees, feeGroups, feeTypes, groupSet]
@@ -257,31 +259,48 @@ export default function CollectFeesModal({
     if (eligible.length === 0) return entries
 
     const applyTo = (f: ResolvedFee, raw: number) => {
-      const capped = Math.max(0, Math.min(round2(raw), f.amount - f.paid))
-      if (capped <= 0) return
       const row = map.get(f.id)!
-      row.appliedDiscount = capped
+      const head = round2(f.amount - f.paid - row.appliedDiscount)
+      const capped = round2(Math.min(raw, head))
+      if (capped <= 0) return
+      row.appliedDiscount = round2(row.appliedDiscount + capped)
       row.appliedDiscountId = activeDiscount.id
       row.hasAppliedNew = true
-      row.discount = round2(f.discount + capped)
+      row.discount = round2(f.discount + row.appliedDiscount)
       row.balance = round2(f.amount - row.discount - f.paid)
     }
 
     if (activeDiscount.discountType === "Percentage") {
       for (const f of eligible) applyTo(f, (f.amount * num(activeDiscount.percentage)) / 100)
     } else {
-      const totalPool = eligible.reduce((s, f) => s + f.amount, 0)
-      if (totalPool > 0) {
-        let remaining = num(activeDiscount.amount)
-        eligible.forEach((f, i) => {
-          if (i === eligible.length - 1) {
-            applyTo(f, remaining)
-          } else {
-            const share = round2((remaining * f.amount) / totalPool)
-            remaining -= share
-            applyTo(f, share)
+      const totalAmount = eligible.reduce((s, f) => s + f.amount, 0)
+      const maxPool = eligible.reduce((s, f) => s + (f.amount - f.paid), 0)
+      const totalDiscount = Math.min(num(activeDiscount.amount), maxPool)
+      if (totalAmount > 0) {
+        const rows = eligible.map((f) => ({ f, share: (f.amount / totalAmount) * totalDiscount }))
+        let allocated = 0
+        for (const e of rows) {
+          const head = round2(e.f.amount - e.f.paid - (map.get(e.f.id)?.appliedDiscount || 0))
+          const give = round2(Math.min(e.share, Math.max(0, head)))
+          if (give > 0) applyTo(e.f, give)
+          allocated = round2(allocated + give)
+        }
+        let leftover = round2(totalDiscount - allocated)
+        let guard = 0
+        while (leftover > 0.005 && guard < 30) {
+          guard++
+          let gave = 0
+          for (const e of rows) {
+            if (leftover <= 0) break
+            const head = round2(e.f.amount - e.f.paid - (map.get(e.f.id)?.appliedDiscount || 0))
+            if (head <= 0) continue
+            const give = round2(Math.min(leftover, head))
+            applyTo(e.f, give)
+            gave = round2(gave + give)
+            leftover = round2(leftover - give)
           }
-        })
+          if (gave <= 0) break
+        }
       }
     }
     return Array.from(map.values())
@@ -312,6 +331,10 @@ export default function CollectFeesModal({
     ? totalDue
     : round2(Math.min(Math.max(0, amountToPayNum), totalDue))
   const remaining = round2(totalDue - payingAmount)
+
+  const selectedGross = round2(selectedFees.reduce((s, f) => s + f.amount, 0))
+  const selectedPriorPaid = round2(selectedFees.reduce((s, f) => s + f.paid, 0))
+  const selectedDiscount = round2(selectedFees.reduce((s, f) => s + (f.hasAppliedNew ? f.appliedDiscount : 0), 0))
 
   const allocation = useMemo<Record<number, number>>(() => {
     const out: Record<number, number> = {}
@@ -381,9 +404,11 @@ export default function CollectFeesModal({
       for (const f of resolvedFees) {
         if (!selectedFeeIds.includes(f.id)) continue
         const pay = allocation[f.id] ?? 0
-        if (pay <= 0) continue
+        const fullyDiscounted = pay <= 0 && f.hasAppliedNew && f.appliedDiscount > 0 && f.balance <= 0
+        if (pay <= 0 && !fullyDiscounted) continue
         const newPaid = f.paid + pay
-        const status = newPaid >= f.amount ? "Paid" : "Partial"
+        const settled = round2(newPaid + f.discount) >= round2(f.amount)
+        const status = settled ? "Paid" : "Partial"
         await updateFee(f.id, {
           paidAmount: newPaid,
           status,
@@ -395,6 +420,7 @@ export default function CollectFeesModal({
           note: note || null,
           ...(f.hasAppliedNew && f.appliedDiscount > 0 ? { discountId: f.appliedDiscountId, discountAmount: f.appliedDiscount } : {}),
         })
+        if (pay <= 0) continue
         const incomeHeadId = incomeHeadForGroup(f.groupName, incomeHeads)
         if (incomeHeadId) {
           await fetch("/api/income", {
@@ -536,7 +562,6 @@ export default function CollectFeesModal({
                           </th>
                           <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wider">Fee Type</th>
                           <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wider">Amount</th>
-                          <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wider">Discount</th>
                           <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wider">Balance</th>
                         </tr>
                       </thead>
@@ -558,14 +583,7 @@ export default function CollectFeesModal({
                                 <div className="text-xs text-gray-500">{fee.groupName}</div>
                               </td>
                               <td className="px-3 py-2.5 text-right text-gray-800">{money(symbol, fee.amount)}</td>
-                              <td className="px-3 py-2.5 text-right">
-                                {fee.discount > 0 ? (
-                                  <span className="text-[var(--primary)] font-medium">{money(symbol, fee.discount)}</span>
-                                ) : (
-                                  <span className="text-gray-300">-</span>
-                                )}
-                              </td>
-                              <td className={`px-3 py-2.5 text-right font-medium ${fee.balance > 0 ? "text-red-600" : "text-green-600"}`}>{money(symbol, fee.balance)}</td>
+                              <td className={`px-3 py-2.5 text-right font-medium ${fee.rawBalance > 0 ? "text-red-600" : "text-green-600"}`}>{money(symbol, fee.rawBalance)}</td>
                             </tr>
                           )
                         })}
@@ -579,7 +597,8 @@ export default function CollectFeesModal({
                       <span>
                         <span className="font-semibold text-gray-800">Student discount applied</span> — coupon{" "}
                         <span className="font-mono font-medium text-[var(--primary)]">{activeDiscount.discountCode}</span>{" "}
-                        reduces the balance above.
+                        ({activeDiscount.discountType === "Percentage" ? `${activeDiscount.percentage}%` : money(symbol, num(activeDiscount.amount))}){" "}
+                        reduces the total payable below.
                         {activeDiscount.approvedBy
                           ? ` Approved by ${activeDiscount.approvedBy}${fmtDateTime(activeDiscount.approvedAt) ? " on " + fmtDateTime(activeDiscount.approvedAt) : ""}.`
                           : " Approved."}
@@ -665,29 +684,50 @@ export default function CollectFeesModal({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-[var(--primary-light)] rounded-xl p-4">
-                    <div>
-                      <p className="text-xs font-medium text-[var(--primary)] uppercase tracking-wider">Total Due</p>
-                      <p className="text-2xl font-bold text-gray-800 mt-1">{money(symbol, totalDue)}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">{selectedFees.length} fee(s) selected</p>
+                  <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+                    <div className="bg-[var(--primary-light)] px-4 py-2.5 flex items-center justify-between">
+                      <h4 className="text-xs font-semibold text-[var(--primary)] uppercase tracking-wider">Amount Summary</h4>
+                      <span className="text-[11px] text-gray-500">{selectedFees.length} fee(s) selected</span>
                     </div>
-                    <div>
-                      <p className="block text-xs font-medium text-gray-600 mb-1">Amount to Pay</p>
-                      <input
-                        type="number"
-                        min={0}
-                        max={totalDue}
-                        value={amountToPay}
-                        onChange={(e) => setAmountToPay(e.target.value)}
-                        placeholder={money(symbol, totalDue)}
-                        className="w-full h-12 px-3 text-lg font-bold text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white"
-                      />
-                      <p className="text-[11px] text-gray-400 mt-1">Leave blank to pay full amount.</p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wider text-gray-600">Remaining Due</p>
-                      <p className={`text-2xl font-bold mt-1 ${remaining > 0 ? "text-red-600" : "text-green-600"}`}>{money(symbol, remaining)}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">{remaining > 0 ? "Balance payable later" : "Settled"}</p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-gray-200">
+                      <div className="bg-white px-4 py-3">
+                        <p className="text-[11px] font-medium text-gray-500">Selected Total Amount</p>
+                        <p className="text-lg font-bold text-gray-900 mt-0.5">{money(symbol, selectedGross)}</p>
+                      </div>
+                      {selectedPriorPaid > 0 && (
+                        <div className="bg-white px-4 py-3">
+                          <p className="text-[11px] font-medium text-gray-500">Prior Paid</p>
+                          <p className="text-lg font-bold text-gray-900 mt-0.5">{money(symbol, selectedPriorPaid)}</p>
+                        </div>
+                      )}
+                      {selectedDiscount > 0 && (
+                        <div className="bg-white px-4 py-3">
+                          <p className="text-[11px] font-medium text-[var(--primary)]">Discount Applied</p>
+                          <p className="text-lg font-bold text-[var(--primary)] mt-0.5">−{money(symbol, selectedDiscount)}</p>
+                        </div>
+                      )}
+                      <div className="bg-white px-4 py-3">
+                        <p className="text-[11px] font-medium text-gray-500">Total Payable</p>
+                        <p className="text-lg font-bold text-gray-900 mt-0.5">{money(symbol, totalDue)}</p>
+                      </div>
+                      <div className="bg-white px-4 py-3">
+                        <p className="block text-[11px] font-medium text-gray-600 mb-1">Amount to Pay</p>
+                        <input
+                          type="number"
+                          min={0}
+                          max={totalDue}
+                          value={amountToPay}
+                          onChange={(e) => setAmountToPay(e.target.value)}
+                          placeholder={money(symbol, totalDue)}
+                          className="w-full h-9 px-3 text-base font-bold text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white"
+                        />
+                        <p className="text-[11px] text-gray-400 mt-1">Leave blank to pay full amount.</p>
+                      </div>
+                      <div className="bg-white px-4 py-3">
+                        <p className="text-[11px] font-medium text-gray-500">Left Amount (Due)</p>
+                        <p className={`text-lg font-bold mt-0.5 ${remaining > 0 ? "text-red-600" : "text-green-600"}`}>{money(symbol, remaining)}</p>
+                        <p className="text-[11px] text-gray-400 mt-0.5">{remaining > 0 ? "Balance payable later" : "Settled after discount"}</p>
+                      </div>
                     </div>
                   </div>
 

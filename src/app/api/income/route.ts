@@ -10,9 +10,13 @@ const fieldMap: Record<string, string> = {
 }
 
 const SELECT = `
-  SELECT i.*, h.name AS income_head
+  SELECT i.*, h.name AS income_head,
+    COALESCE(fp.amount, 0) AS original_amount,
+    COALESCE(fp.discount_amount, 0) AS discount_amount_total,
+    COALESCE(fp.paid_amount, 0) AS paid_amount_total
   FROM incomes i
   LEFT JOIN income_heads h ON h.id = i.income_head_id
+  LEFT JOIN fees_payments fp ON fp.id = i.fee_payment_id
 `
 
 export async function GET(req: NextRequest) {
