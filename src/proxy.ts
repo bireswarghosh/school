@@ -12,6 +12,11 @@ const PUBLIC_API_PREFIXES = [
   "/api/students/lookup",
   "/api/online-exam/public-link",
   "/api/online-admission/public",
+  "/api/online-admission/registration/config",
+  "/api/online-admission/registration/order",
+  "/api/online-admission/registration/verify",
+  "/api/online-admission/registration/lookup",
+  "/api/online-admission/registration/form",
   "/api/students-inventory/sale/invoice",
   "/api/settings/public",
 ]

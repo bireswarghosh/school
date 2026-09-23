@@ -58,7 +58,12 @@ const SQL_FILES = [
    path.join(__dirname, "..", "src", "lib", "sql", "067_fee_payment_log.sql"),
    path.join(__dirname, "..", "src", "lib", "sql", "068_fee_payment_log_status_changes.sql"),
    path.join(__dirname, "..", "src", "lib", "sql", "069_fee_payment_income.sql"),
- ];
+path.join(__dirname, "..", "src", "lib", "sql", "070_online_admission_registration.sql"),
+   path.join(__dirname, "..", "src", "lib", "sql", "071_registration_form_fields.sql"),
+   path.join(__dirname, "..", "src", "lib", "sql", "072_registration_admission.sql"),
+   path.join(__dirname, "..", "src", "lib", "sql", "073_student_cvs.sql"),
+   path.join(__dirname, "..", "src", "lib", "sql", "074_variation_stock.sql"),
+  ];
 
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString("hex");
@@ -69,6 +74,7 @@ function hashPassword(password) {
 const TENANT_TABLES = [
   "classes","sections","subjects","subject_groups","departments","designations","staff","students",
   "sessions","student_categories","student_houses","disable_reasons","student_promotions","online_admissions",
+  "online_admission_registrations",
   "alumni","alumni_events","alumni_attendance","alumni_finance","class_teachers","timetable_entries","lessons",
   "topics","lesson_plans","syllabus_statuses","content_types","content_items","video_tutorials","homework",
   "attendance_types","student_attendance","student_attendance_notes","staff_attendance","leave_types","leave_requests","qr_attendance",

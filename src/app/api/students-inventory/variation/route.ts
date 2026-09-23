@@ -17,6 +17,7 @@ const fieldMap: Record<string, string> = {
   sku: "sku",
   barcode: "barcode",
   quantity: "quantity",
+  minStock: "min_stock",
 }
 
 export async function GET(req: NextRequest) {

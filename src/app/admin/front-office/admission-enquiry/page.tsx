@@ -5,7 +5,8 @@ import { useState, useRef, useEffect } from "react"
 import { useApi } from "@/lib/use-api"
 import { useClassesAndSections } from "@/lib/use-classes-sections"
 import RegFormInvoiceModal from "@/components/reg-form-invoice"
-import { Search, Plus, Phone, Pencil, Trash2, X, Download, Upload, Printer, ChevronDown, Users, TrendingUp, Award, Calendar, UserCheck, Clock, Eye, TicketCheck } from "lucide-react"
+import RegistrationForm, { EMPTY_REGISTRATION_FORM, type RegistrationFormData } from "@/components/registration-form"
+import { Search, Plus, Phone, Pencil, Trash2, X, Download, Upload, Printer, ChevronDown, Users, TrendingUp, Award, Calendar, UserCheck, Clock, Eye, TicketCheck, Link2, FilePenLine, Loader2, Save, Copy, CheckCircle2, GraduationCap } from "lucide-react"
 
 type EnquiryRecord = {
   id: number
@@ -34,6 +35,31 @@ type EnquiryRecord = {
   regFormChequeNo: string
   regFormBank: string
   regFormNote: string
+}
+
+type OnlineRegistration = {
+  id: number
+  enquiryId: number | null
+  regFormNo: string
+  token: string | null
+  name: string
+  phone: string
+  email: string
+  classVal: string
+  address: string
+  description: string
+  amount: number
+  status: string
+  paymentStatus: string
+  orderId: string | null
+  paymentId: string | null
+  paymentDate: string | null
+  createdAt: string
+  formData?: RegistrationFormData
+  formSubmittedAt?: string | null
+  admitted?: boolean
+  admittedStudentId?: number | null
+  admittedAt?: string | null
 }
 
 const sourceOptions = ["Advertisement", "Online Front Site", "Google Ads", "Admission Campaign", "Front Office"]
@@ -118,6 +144,16 @@ export default function AdmissionEnquiryPage() {
   const [fuTime, setFuTime] = useState(new Date().toTimeString().slice(0, 5))
   const [fuStatus, setFuStatus] = useState("Active")
   const [fuError, setFuError] = useState("")
+  const [activeTab, setActiveTab] = useState<"enquiries" | "registrations" | "forms">("enquiries")
+  const [registrations, setRegistrations] = useState<OnlineRegistration[]>([])
+  const [regsLoading, setRegsLoading] = useState(false)
+  const [editingReg, setEditingReg] = useState<OnlineRegistration | null>(null)
+  const [editRegForm, setEditRegForm] = useState<RegistrationFormData>(EMPTY_REGISTRATION_FORM)
+  const [editRegSaving, setEditRegSaving] = useState(false)
+  const [editRegNotice, setEditRegNotice] = useState("")
+  const [regFormLink, setRegFormLink] = useState("")
+  const [regLinkCopied, setRegLinkCopied] = useState(false)
+  const [logoSrc, setLogoSrc] = useState("")
 
   const filtered = enquiries.filter((e) => {
     if (filterClass && e.classVal !== filterClass) return false
@@ -285,6 +321,143 @@ export default function AdmissionEnquiryPage() {
     setFuStatus("Active")
     setShowFollowUpModal(true)
     await loadFollowUps(id)
+  }
+
+  const copyOnlineFormLink = async (enquiry: EnquiryRecord) => {
+    try {
+      let code = ""
+      try {
+        const res = await fetch("/api/settings/public")
+        const d = await res.json()
+        code = d.schoolCode || ""
+      } catch { /* best effort */ }
+      const qs = new URLSearchParams({ eid: String(enquiry.id) })
+      if (code) qs.set("code", code)
+      const link = `${window.location.origin}/online-admission/registration?${qs.toString()}`
+      try {
+        await navigator.clipboard.writeText(link)
+      } catch { /* clipboard unavailable */ }
+      notify.success(`Online form link copied — send it to the parent to pay ₹1000 & continue`) 
+      window.open(link, "_blank")
+    } catch {
+      notify.error("Could not generate the online form link")
+    }
+  }
+
+  const loadRegistrations = async () => {
+    setRegsLoading(true)
+    try {
+      const res = await fetch("/api/online-admission/registration")
+      const data = await res.json()
+      setRegistrations(Array.isArray(data) ? data : [])
+    } catch {
+      setRegistrations([])
+    } finally {
+      setRegsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadRegistrations()
+    loadRegFormLink()
+  }, [])
+
+  const loadRegFormLink = async () => {
+    try {
+      let code = ""
+      try {
+        const res = await fetch("/api/settings/public")
+        const d = await res.json()
+        code = d.schoolCode || ""
+        if (d.logo_printLogo || d.logo_adminLogo || d.logo_appLogo) {
+          setLogoSrc(d.logo_printLogo || d.logo_adminLogo || d.logo_appLogo)
+        }
+      } catch { /* best effort */ }
+      setRegFormLink(`${window.location.origin}/online-admission/registration${code ? `?code=${encodeURIComponent(code)}` : ""}`)
+    } catch {
+      setRegFormLink(`${window.location.origin}/online-admission/registration`)
+    }
+  }
+
+  const copyRegFormLink = async () => {
+    if (!regFormLink) return
+    try {
+      await navigator.clipboard.writeText(regFormLink)
+    } catch { /* clipboard unavailable */ }
+    setRegLinkCopied(true)
+    setTimeout(() => setRegLinkCopied(false), 2000)
+    notify.success("Registration form link copied — send it to parents to start a new registration")
+  }
+
+  const startAdmission = (r: OnlineRegistration) => {
+    window.location.href = `/admin/student-information/student-admission?reg=${r.id}`
+  }
+
+  const copyRegistrationLink = async (r: OnlineRegistration) => {
+    if (!r.token) {
+      notify.error("This form has not been paid yet — no registration link available")
+      return
+    }
+    const link = `${window.location.origin}/online-admission/register?ref=${r.token}`
+    try {
+      await navigator.clipboard.writeText(link)
+    } catch { /* clipboard unavailable */ }
+    notify.success(`Registration link copied for ${r.name}`)
+  }
+
+  const openRegistrationForm = (r: OnlineRegistration) => {
+    setEditingReg(r)
+    setEditRegForm({
+      ...EMPTY_REGISTRATION_FORM,
+      ...(r.formData || {}),
+      seekingClass: (r.formData && r.formData.seekingClass) || r.classVal || "",
+      headerRegNo: (r.formData && r.formData.headerRegNo) || r.regFormNo || "",
+      formDate: (r.formData && r.formData.formDate) || new Date().toISOString().slice(0, 10),
+    })
+    setEditRegNotice("")
+  }
+
+  const saveRegistrationForm = async () => {
+    if (!editingReg) return
+    setEditRegSaving(true)
+    setEditRegNotice("")
+    try {
+      const res = await fetch("/api/online-admission/registration", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: editingReg.id, formData: editRegForm }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.error || "Could not save the form")
+      setRegistrations((prev) =>
+        prev.map((x) => (x.id === editingReg.id ? { ...x, formData: editRegForm, formSubmittedAt: d.formSubmittedAt || x.formSubmittedAt } : x))
+      )
+      setEditRegNotice("Registration form saved.")
+      notify.success("Registration form saved")
+    } catch (e) {
+      setEditRegNotice(e instanceof Error ? e.message : "Could not save the form")
+      notify.error(e instanceof Error ? e.message : "Could not save the form")
+    } finally {
+      setEditRegSaving(false)
+    }
+  }
+
+  const printRegistrationForm = () => {
+    if (!editingReg) return
+    const wrapper = document.querySelector<HTMLElement>(".sj-reg .form-wrapper")
+    if (!wrapper) return
+    const styleText = Array.from(document.querySelectorAll("style"))
+      .map((s) => s.textContent || "")
+      .filter((t) => t.includes(".sj-reg"))
+      .join("\n")
+    const w = window.open("", "_blank", "width=900,height=1200")
+    if (!w) return
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Registration Form #${editingReg.regFormNo}</title><base href="${window.location.origin}/"><style>${styleText}</style></head><body style="margin:0;background:#e5e7eb;padding:16px;"><div class="sj-reg">${wrapper.outerHTML}</div></body></html>`)
+    w.document.close()
+    w.focus()
+    setTimeout(() => {
+      try { w.print() } catch { /* popup may be blocked when fired too early */ }
+    }, 300)
   }
 
   const loadFollowUps = async (id: number) => {
@@ -843,9 +1016,30 @@ export default function AdmissionEnquiryPage() {
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between flex-wrap gap-2">
-          <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2"><Users className="h-4 w-4 text-blue-600" /> Admission Enquiry</h3>
+        <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/50 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setActiveTab("enquiries")}
+              className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-colors ${activeTab === "enquiries" ? "bg-blue-600 text-white shadow-sm" : "text-gray-600 hover:bg-gray-100"}`}
+            >
+              Enquiries
+            </button>
+            <button
+              onClick={() => setActiveTab("registrations")}
+              className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-colors ${activeTab === "registrations" ? "bg-[var(--primary)] text-white shadow-sm" : "text-gray-600 hover:bg-gray-100"}`}
+            >
+              Online Registrations {registrations.length > 0 && <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] ${activeTab === "registrations" ? "bg-white/20 text-white" : "bg-[var(--primary-light)] text-[var(--secondary)]"}`}>{registrations.length}</span>}
+            </button>
+            <button
+              onClick={() => setActiveTab("forms")}
+              className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-colors ${activeTab === "forms" ? "bg-emerald-600 text-white shadow-sm" : "text-gray-600 hover:bg-gray-100"}`}
+            >
+              Registration Forms {registrations.length > 0 && <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] ${activeTab === "forms" ? "bg-white/20 text-white" : "bg-emerald-50 text-emerald-700"}`}>{registrations.length}</span>}
+            </button>
+          </div>
+          {activeTab === "enquiries" && (
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2"><Users className="h-4 w-4 text-blue-600" /> Admission Enquiry</h3>
             <input ref={fileRef} type="file" accept=".csv" onChange={handleImport} className="hidden" />
             <button
               onClick={() => fileRef.current?.click()}
@@ -885,9 +1079,12 @@ export default function AdmissionEnquiryPage() {
               <Plus className="h-3.5 w-3.5" />
               Add
             </button>
+            </div>
+            )}
           </div>
-        </div>
 
+        {activeTab === "enquiries" ? (
+        <>
         <div className="overflow-x-auto print:overflow-visible">
           <table className="w-full text-sm">
             <thead>
@@ -1031,6 +1228,180 @@ export default function AdmissionEnquiryPage() {
             </button>
           </div>
         </div>
+        </>
+) : activeTab === "registrations" ? (
+        <div className="overflow-x-auto">
+          {regsLoading ? (
+            <div className="text-center py-10 text-gray-400 text-sm">Loading online registrations...</div>
+          ) : registrations.length === 0 ? (
+            <div className="text-center py-10 text-gray-400 text-sm">
+              No online form submissions yet. Share the “Online Form Link” from an enquiry popup to collect ₹1,000 and start registrations.
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">#</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Reg Form No</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Name</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Phone</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Email</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Class</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Amount</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Payment</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Submitted</th>
+                  <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {registrations.map((r, idx) => (
+                  <tr key={r.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3 text-gray-400 text-xs">{idx + 1}</td>
+                    <td className="px-4 py-3 font-mono text-xs font-semibold text-[var(--secondary)]">{r.regFormNo}</td>
+                    <td className="px-4 py-3 font-medium text-gray-800">{r.name}</td>
+                    <td className="px-4 py-3 text-gray-600">{r.phone}</td>
+                    <td className="px-4 py-3 text-gray-600">{r.email || "-"}</td>
+                    <td className="px-4 py-3 text-gray-600">{r.classVal || "-"}</td>
+                    <td className="px-4 py-3 text-gray-700">₹{Number(r.amount || 0).toLocaleString("en-IN")}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${r.paymentStatus === "Paid" ? "bg-green-50 text-green-700 border border-green-200" : r.paymentStatus === "Failed" ? "bg-red-50 text-red-700 border border-red-200" : "bg-amber-50 text-amber-700 border border-amber-200"}`}>
+                        {r.paymentStatus || "Pending"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">{r.createdAt ? new Date(r.createdAt).toLocaleDateString("en-IN") : "-"}</td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="inline-flex items-center gap-1.5">
+                        <button
+                          onClick={() => openRegistrationForm(r)}
+                          className="inline-flex items-center gap-1.5 text-xs text-gray-700 px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50"
+                        >
+                          <FilePenLine className="h-3.5 w-3.5" />
+                          View / Edit
+                        </button>
+                        <button
+                          onClick={() => copyRegistrationLink(r)}
+                          className="inline-flex items-center gap-1.5 text-xs text-[var(--primary)] px-2.5 py-1.5 border border-[var(--primary)]/30 rounded-lg hover:bg-[var(--primary-light)]"
+                        >
+                          <Link2 className="h-3.5 w-3.5" />
+                          Copy Link
+                        </button>
+                        {r.admitted ? (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1.5 rounded-lg">
+                            <CheckCircle2 className="h-3.5 w-3.5" /> Admitted
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => startAdmission(r)}
+                            className="inline-flex items-center gap-1.5 text-xs text-emerald-700 px-2.5 py-1.5 border border-emerald-300 rounded-lg hover:bg-emerald-50"
+                          >
+                            <GraduationCap className="h-3.5 w-3.5" /> Admission
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      ) : (
+        <div>
+          <div className="px-5 py-4 border-b border-gray-100 bg-emerald-50/40">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="h-9 w-9 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                <Link2 className="h-4.5 w-4.5" />
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-gray-700">Registration Form Link</p>
+                <p className="text-xs text-gray-500 mt-0.5">Share this link with parents — they pay ₹1,000 and fill the registration form. All submissions are listed below.</p>
+              </div>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <input
+                  readOnly
+                  value={regFormLink}
+                  className="flex-1 sm:w-96 px-3 py-2 rounded-lg border border-gray-300 text-xs text-gray-700 bg-white focus:outline-none"
+                />
+                <button
+                  onClick={copyRegFormLink}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[var(--primary)] text-white text-xs font-semibold hover:bg-[var(--secondary)] transition-colors"
+                >
+                  {regLinkCopied ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                  {regLinkCopied ? "Copied!" : "Copy Link"}
+                </button>
+                <button
+                  onClick={() => { if (regFormLink) window.open(regFormLink, "_blank") }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-emerald-300 text-emerald-700 text-xs font-semibold hover:bg-emerald-50 transition-colors"
+                >
+                  Open
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            {regsLoading ? (
+              <div className="text-center py-10 text-gray-400 text-sm">Loading registration forms...</div>
+            ) : registrations.length === 0 ? (
+              <div className="text-center py-10 text-gray-400 text-sm">
+                No submissions yet. Share the registration form link above — once parents pay ₹1,000 and fill the form, their submissions will be listed here.
+              </div>
+            ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">#</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Reg Form No</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Student Name</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Father / Guardian</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Contact</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Class</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Payment</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Form Submitted</th>
+                  <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {registrations.map((r, idx) => (
+                  <tr key={r.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3 text-gray-400 text-xs">{idx + 1}</td>
+                    <td className="px-4 py-3 font-mono text-xs font-semibold text-[var(--secondary)]">{r.regFormNo}</td>
+                    <td className="px-4 py-3 font-medium text-gray-800">{r.formData?.studentName?.trim() || r.name}</td>
+                    <td className="px-4 py-3 text-gray-600">{r.formData?.fatherName?.trim() || (r.formData?.guardianName?.trim() || "-")}</td>
+                    <td className="px-4 py-3 text-gray-600">{r.formData?.fatherMobile?.trim() || r.phone}</td>
+                    <td className="px-4 py-3 text-gray-600">{r.formData?.seekingClass?.trim() || r.classVal || "-"}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${r.paymentStatus === "Paid" ? "bg-green-50 text-green-700 border border-green-200" : r.paymentStatus === "Failed" ? "bg-red-50 text-red-700 border border-red-200" : "bg-amber-50 text-amber-700 border border-amber-200"}`}>
+                        {r.paymentStatus || "Pending"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">
+                      {r.formSubmittedAt ? new Date(r.formSubmittedAt).toLocaleDateString("en-IN") : "-"}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                      {r.admitted && (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-lg">
+                          <CheckCircle2 className="h-3.5 w-3.5" /> Admitted
+                        </span>
+                      )}
+                      <button
+                        onClick={() => openRegistrationForm(r)}
+                        className="inline-flex items-center gap-1.5 text-xs text-gray-700 px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50"
+                      >
+                        <FilePenLine className="h-3.5 w-3.5" />
+                        View / Edit
+                      </button>
+                    </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            )}
+          </div>
+        </div>
+      )}      
       </div>
 
       {/* Print styles */}
@@ -1329,6 +1700,13 @@ export default function AdmissionEnquiryPage() {
                 Follow Up
               </button>
               <button
+                onClick={() => copyOnlineFormLink(viewRecord)}
+                className="px-3 py-1.5 text-xs text-[var(--primary)] border border-[var(--primary)]/30 rounded-lg hover:bg-[var(--primary-light)] inline-flex items-center gap-1.5"
+              >
+                <Link2 className="h-3.5 w-3.5" />
+                Online Form Link
+              </button>
+              <button
                 onClick={() => setViewRecord(null)}
                 className="px-4 py-1.5 bg-[var(--primary)] text-white text-xs font-medium rounded-lg hover:bg-[var(--secondary)]"
               >
@@ -1381,6 +1759,69 @@ export default function AdmissionEnquiryPage() {
       {/* Reg Form Invoice Modal */}
       {invoiceRecord && (
         <RegFormInvoiceModal data={invoiceRecord} onClose={() => setInvoiceRecord(null)} />
+      )}
+
+      {/* Registration Form View/Edit Modal */}
+      {editingReg && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setEditingReg(null)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto">
+            <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-white">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800">Registration Form #{editingReg.regFormNo}</h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {editingReg.name} • {editingReg.phone} • {editingReg.email || "-"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={printRegistrationForm}
+                  title="Print registration form"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  <Printer className="h-4 w-4" />
+                  Print
+                </button>
+                <button onClick={() => setEditingReg(null)} className="text-gray-400 hover:text-gray-600">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6">
+              <RegistrationForm value={editRegForm} onChange={setEditRegForm} regNo={editingReg.regFormNo} logoSrc={logoSrc} admitted={editingReg.admitted ?? false} />
+            </div>
+
+            <div className="sticky bottom-0 z-10 px-6 py-4 border-t border-gray-200 bg-white flex items-center justify-between gap-3">
+              <div className="text-sm text-gray-600">
+                {editRegNotice && (
+                  <span className={editRegNotice.includes("saved") ? "text-emerald-700 font-medium" : "text-red-600"}>
+                    {editRegNotice}
+                  </span>
+                )}
+                {!editRegNotice && editingReg.formSubmittedAt && (
+                  <span className="text-gray-400">Submitted by applicant on {new Date(editingReg.formSubmittedAt).toLocaleString("en-IN")}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setEditingReg(null)}
+                  className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={saveRegistrationForm}
+                  disabled={editRegSaving}
+                  className="inline-flex items-center gap-2 px-6 py-2 bg-[var(--primary)] text-white text-sm font-semibold rounded-lg hover:bg-[var(--secondary)] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {editRegSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  {editRegSaving ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

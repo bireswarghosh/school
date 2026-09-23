@@ -26,9 +26,29 @@ type FeeRecord = {
   paidAmount: number | string
 }
 
+type StudentDiscount = {
+  id: number
+  studentId: number | string
+  discountCode: string
+  discountType: string
+  percentage: number | null
+  amount: number | null
+  expiryDate: string | null
+  isActive: boolean | null
+  approvedBy?: string | null
+  approvedAt?: string | null
+  discountTypeKind?: string | null
+}
+
 const num = (v: unknown) => {
   const n = Number(v)
   return isNaN(n) ? 0 : n
+}
+
+const fmtDate = (s?: string | null) => {
+  if (!s) return ""
+  const [y, m, d] = s.split("-").map(Number)
+  return y && m && d ? `${String(m).padStart(2, "0")}/${String(d).padStart(2, "0")}/${y}` : ""
 }
 
 const money = (symbol: string, v: number) => `${symbol}${v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -48,6 +68,27 @@ export default function CollectFeesPage() {
       .then((d) => setFeesData(Array.isArray(d) ? d : []))
       .catch(() => setFeesData([]))
   }, [])
+
+  const [studentDiscounts, setStudentDiscounts] = useState<StudentDiscount[]>([])
+  useEffect(() => {
+    fetch("/api/fees/fees-discount")
+      .then((r) => r.json())
+      .then((d) => setStudentDiscounts(Array.isArray(d) ? d : []))
+      .catch(() => setStudentDiscounts([]))
+  }, [])
+
+  const activeDiscountByStudent = useMemo(() => {
+    const map = new Map<number, StudentDiscount>()
+    const t = new Date().toISOString().split("T")[0]
+    for (const d of studentDiscounts) {
+      if (d.isActive === false || (d.expiryDate && d.expiryDate < t) || !d.studentId) continue
+      const dType = d.discountType === "Percentage" ? "Percentage" : d.discountType === "Fix" ? "Fix" : d.discountTypeKind
+      const value = dType === "Percentage" ? num(d.percentage) : num(d.amount)
+      if (!(value > 0)) continue
+      if (!map.has(Number(d.studentId))) map.set(Number(d.studentId), d)
+    }
+    return map
+  }, [studentDiscounts])
 
   const selectedClass = classes.find((c) => c.name === filterClass)
   const sectionOptions = useMemo(() => {
@@ -263,7 +304,27 @@ export default function CollectFeesPage() {
                     <td className="px-4 py-3 text-gray-700">{student.section}</td>
                     <td className="px-4 py-3 font-medium text-gray-800">{student.admissionNo}</td>
                     <td className="px-4 py-3 text-gray-600">{student.rollNo}</td>
-                    <td className="px-4 py-3 text-gray-800 font-medium">{student.name}</td>
+                    <td className="px-4 py-3 text-gray-800 font-medium">
+                      <div className="flex items-center gap-2">
+                        <span>{student.name}</span>
+                        {(() => {
+                          const dl = activeDiscountByStudent.get(student.id)
+                          if (!dl) return null
+                          const dType = dl.discountType === "Percentage" ? "Percentage" : dl.discountType === "Fix" ? "Fix" : dl.discountTypeKind
+                          const value = dType === "Percentage" ? num(dl.percentage) : num(dl.amount)
+                          const label = dType === "Percentage" ? `${value}%` : money(symbol, value)
+                          return (
+                            <span
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[var(--primary-light)] text-[var(--secondary)] text-[11px] font-semibold cursor-help shrink-0"
+                              title={`${dl.discountCode} · ${label} discount${dl.expiryDate ? ` · valid till ${fmtDate(dl.expiryDate)}` : ""}${dl.approvedBy ? ` · approved by ${dl.approvedBy}` : ""}`}
+                            >
+                              <Tag className="h-3 w-3" />
+                              {label}
+                            </span>
+                          )
+                        })()}
+                      </div>
+                    </td>
                     <td className="px-4 py-3 text-gray-600">{student.fatherName}</td>
                     <td className="px-4 py-3 text-gray-600">{student.dob}</td>
                     <td className="px-4 py-3 text-gray-600 font-mono text-xs">{student.mobile}</td>

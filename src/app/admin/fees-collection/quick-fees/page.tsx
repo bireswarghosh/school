@@ -15,6 +15,7 @@ type Student = {
   class: string
   section: string
   dueAmount: number
+  paidAmount: number
   activeDiscount?: {
     discountCode: string
     discountType: string
@@ -84,6 +85,12 @@ export default function QuickFeesPage() {
       .reduce((sum, f) => sum + Math.max(0, num(f.amount) - num(f.discountAmount) - num(f.paidAmount)), 0)
   }
 
+  const computeStudentPaid = (fees: FeeRecord[] | undefined, studentId: number): number => {
+    return (fees || [])
+      .filter((f) => Number(f.studentId) === studentId)
+      .reduce((sum, f) => sum + num(f.paidAmount), 0)
+  }
+
   const handleSearch = useCallback(async (q: string) => {
     setLoading(true)
     try {
@@ -113,6 +120,7 @@ export default function QuickFeesPage() {
       const rows = (Array.isArray(list) ? list : []).map((s: any) => ({
         ...s,
         dueAmount: computeStudentDue(Array.isArray(feesList) ? feesList : [], s.id),
+        paidAmount: computeStudentPaid(Array.isArray(feesList) ? feesList : [], s.id),
         activeDiscount: activeByStudent.get(Number(s.id)) ?? null,
       }))
       setStudents(rows)
@@ -211,7 +219,7 @@ export default function QuickFeesPage() {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex items-center gap-3">
                   <span className="h-10 w-10 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
                     <Users className="h-5 w-5" />
@@ -237,6 +245,24 @@ export default function QuickFeesPage() {
                   <div>
                     <p className="text-xs text-gray-500">No Dues</p>
                     <p className="text-2xl font-bold text-green-600">{students.filter((s) => s.dueAmount <= 0).length}</p>
+                  </div>
+                </div>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex items-center gap-3">
+                  <span className="h-10 w-10 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+                    <Wallet className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <p className="text-xs text-gray-500">Total Pending</p>
+                    <p className="text-2xl font-bold text-amber-600">{symbol}{students.reduce((s, st) => s + st.dueAmount, 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</p>
+                  </div>
+                </div>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex items-center gap-3">
+                  <span className="h-10 w-10 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <p className="text-xs text-gray-500">Total Paid</p>
+                    <p className="text-2xl font-bold text-emerald-600">{symbol}{students.reduce((s, st) => s + st.paidAmount, 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</p>
                   </div>
                 </div>
               </div>

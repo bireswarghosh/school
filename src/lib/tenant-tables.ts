@@ -3,7 +3,7 @@
 // `school_id = ?` filtering for these tables.
 export const TENANT_TABLES = new Set<string>([
   "classes", "sections", "subjects", "subject_types", "subject_groups", "departments", "designations", "staff", "students",
-  "sessions", "student_categories", "student_houses", "disable_reasons", "student_promotions", "online_admissions",
+  "sessions", "student_categories", "student_houses", "disable_reasons", "student_promotions", "online_admissions", "online_admission_registrations",
   "alumni", "alumni_events", "alumni_attendance", "alumni_finance", "class_teachers", "timetable_entries", "lessons",
   "topics", "lesson_plans", "syllabus_statuses", "content_types", "content_items", "video_tutorials", "homework",
   "attendance_types", "student_attendance", "student_attendance_notes", "staff_attendance", "leave_types", "leave_requests", "qr_attendance",
@@ -37,6 +37,7 @@ export const TENANT_TABLES = new Set<string>([
   "school_settings",
   "uploaded_files",
   "result_card_templates", "result_card_records",
+  "student_cvs",
 ])
 
 export function isTenantTable(table: string): boolean {

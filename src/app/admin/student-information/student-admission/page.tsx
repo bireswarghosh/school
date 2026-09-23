@@ -81,7 +81,7 @@ type FormData = {
   documents: { title: string; document: string }[]
 }
 
-const genderOptions = ["Select", "Male", "Female"]
+const genderOptions = ["Select", "Male", "Female", "Others"]
 const categoryOptions = ["Select", "General", "OBC", "SC", "ST", "Special", "Physically Challenged"]
 const bloodGroupOptions = ["Select", "O+", "A+", "B+", "AB+", "O-", "A-", "B-", "AB-"]
 const houseOptions = ["Select", "Blue", "Red", "Green", "Yellow"]
@@ -227,6 +227,8 @@ export default function StudentAdmissionPage() {
 
   const [form, setForm] = useState<FormData>(() => defaultFormState())
   const [editId, setEditId] = useState<number | null>(null)
+  const [sourceRegId, setSourceRegId] = useState<number | null>(null)
+  const [regInfo, setRegInfo] = useState<{ regFormNo: string; name: string; admitted: boolean } | null>(null)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -246,6 +248,63 @@ export default function StudentAdmissionPage() {
       }
     })()
   }, [])
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const regParam = params.get("reg")
+    if (!regParam) return
+    const rid = parseInt(regParam, 10)
+    if (!Number.isFinite(rid)) return
+    setSourceRegId(rid)
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/online-admission/registration?id=${rid}`)
+        const d = await res.json()
+        if (!res.ok || d.error || !d.id) throw new Error(d.error || "Registration not found")
+        const admissionNo = await generateAdmissionNo()
+        setForm({ ...fromRegistrationData(d), admissionNo })
+        setRegInfo({ regFormNo: d.regFormNo || String(rid), name: d.name || "", admitted: !!d.admitted })
+      } catch (e: any) {
+        notify.error(e?.message || "Failed to load registration")
+      }
+    })()
+  }, [])
+
+  const fromRegistrationData = (reg: any): FormData => {
+    const fd = reg.formData || {}
+    const fullName = String(fd.studentName || reg.name || "").trim()
+    const parts = fullName.split(/\s+/).filter(Boolean)
+    const firstName = parts[0] || ""
+    const lastName = parts.length > 1 ? parts[parts.length - 1] : ""
+    const middleName = parts.length > 2 ? parts.slice(1, -1).join(" ") : ""
+    return {
+      ...defaultFormState(),
+      firstName,
+      middleName,
+      lastName,
+      classVal: reg.classVal || "",
+      gender: fd.gender || "",
+      dateOfBirth: toFormDate(fd.dob),
+      religion: fd.religion || "",
+      mobileNumber: String(fd.whatsappNo || reg.phone || "").trim(),
+      email: String(fd.studentEmail || reg.email || "").trim(),
+      admissionDate: todayStr(),
+      studentPhoto: fd.studentPhoto || "",
+      previousSchool: fd.lastSchool || "",
+      currentAddress: String(fd.residentialAddress || fd.permanentAddress || "").trim(),
+      permanentAddress: fd.permanentAddress || "",
+      fatherName: fd.fatherName || "",
+      fatherPhone: fd.fatherMobile || "",
+      fatherOccupation: fd.fatherOccupation || "",
+      motherName: fd.motherName || "",
+      motherPhone: fd.motherMobile || "",
+      motherOccupation: fd.motherOccupation || "",
+      guardianName: fd.guardianName || "",
+      guardianRelation: "Father",
+      guardianPhone: fd.guardianMobile || "",
+      guardianAddress: fd.guardianAddress || "",
+    }
+  }
 
   const toFormDate = (v: string | null | undefined) => {
     if (!v) return ""
@@ -528,6 +587,16 @@ export default function StudentAdmissionPage() {
       }
 
       notify.success(`${editId ? "Student updated" : `Student ${result.firstName || form.firstName} ${result.lastName || ""} saved successfully`}`)
+      if (sourceRegId) {
+        await fetch("/api/online-admission/registration", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: sourceRegId, admitted: true, admittedStudentId: result.id }),
+        }).catch(() => {})
+        notify.success("Admission Confirmed — student admitted to the school")
+        window.location.href = "/admin/front-office/admission-enquiry"
+        return
+      }
       if (!editId) {
         setCustomValues({})
         setForm({
@@ -766,6 +835,15 @@ export default function StudentAdmissionPage() {
           </button>
         )}
       </div>
+
+      {regInfo && (
+        <div className={`rounded-xl border px-4 py-3 text-sm ${regInfo.admitted ? "bg-emerald-50 border-emerald-200 text-emerald-800" : "bg-amber-50 border-amber-200 text-amber-800"}`}>
+          <strong>Registration #{regInfo.regFormNo}</strong> — {regInfo.name}
+          {regInfo.admitted
+            ? " is already marked as admitted. Saving will update the student record."
+            : ". Details have been pre-filled from the online registration. Review and Save to confirm admission."}
+        </div>
+      )}
 
       {/* Main Form */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">

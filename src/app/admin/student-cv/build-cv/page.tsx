@@ -24,7 +24,7 @@ interface CvData {
 }
 
 export default function BuildCvPage() {
-  const { data: cvs, add, update, remove, loading } = useApi<CvData>("/api/student-information/student")
+  const { data: cvs, add, update, remove, loading } = useApi<CvData>("/api/student-cv")
   const [showForm, setShowForm] = useState(false)
   const [previewCv, setPreviewCv] = useState<CvData | null>(null)
   const [editingCv, setEditingCv] = useState<CvData | null>(null)
@@ -39,8 +39,9 @@ export default function BuildCvPage() {
   }
 
   const openEditForm = (cv: CvData) => {
-    setEditingCv(cv)
-    setForm(JSON.parse(JSON.stringify(cv)))
+    const normalized = { ...cv, education: Array.isArray(cv.education) ? cv.education : [] }
+    setEditingCv(normalized)
+    setForm(JSON.parse(JSON.stringify(normalized)))
     setShowForm(true)
   }
 
@@ -242,7 +243,7 @@ export default function BuildCvPage() {
                 <p className="text-blue-100 text-sm mt-1">{previewCv.address}</p>
               </div>
 
-              {previewCv.education.length > 0 && (
+              {Array.isArray(previewCv.education) && previewCv.education.length > 0 && (
                 <div className="mb-6">
                   <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-3">Education</h3>
                   <div className="overflow-x-auto">
