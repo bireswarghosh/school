@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react"
 import Link from "next/link"
-import { Search, DollarSign, Tag, Zap } from "lucide-react"
+import { Search, DollarSign, Tag, Zap, Users, Wallet, CheckCircle2 } from "lucide-react"
 import { useClassesAndSections } from "@/lib/use-classes-sections"
 import { useCurrency } from "@/lib/currency-context"
 import CollectFeesModal, { type CollectStudent } from "@/components/collect-fees-modal"
@@ -210,7 +210,37 @@ export default function QuickFeesPage() {
               No students found for the selected filters.
             </div>
           ) : (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex items-center gap-3">
+                  <span className="h-10 w-10 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
+                    <Users className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <p className="text-xs text-gray-500">Students Found</p>
+                    <p className="text-2xl font-bold text-gray-800">{students.length}</p>
+                  </div>
+                </div>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex items-center gap-3">
+                  <span className="h-10 w-10 rounded-lg bg-red-100 text-red-600 flex items-center justify-center shrink-0">
+                    <Wallet className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <p className="text-xs text-gray-500">With Pending Dues</p>
+                    <p className="text-2xl font-bold text-red-600">{students.filter((s) => s.dueAmount > 0).length}</p>
+                  </div>
+                </div>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex items-center gap-3">
+                  <span className="h-10 w-10 rounded-lg bg-green-100 text-green-600 flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <p className="text-xs text-gray-500">No Dues</p>
+                    <p className="text-2xl font-bold text-green-600">{students.filter((s) => s.dueAmount <= 0).length}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="bg-gradient-to-r from-indigo-600 to-indigo-500 px-5 py-3">
                 <h3 className="text-sm font-semibold text-white">Student List</h3>
               </div>
@@ -218,6 +248,7 @@ export default function QuickFeesPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-gray-100/80">
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wider">Sr No</th>
                       <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wider">Name</th>
                       <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wider">Admission No</th>
                       <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wider">Class</th>
@@ -229,6 +260,7 @@ export default function QuickFeesPage() {
                   <tbody className="divide-y divide-gray-100">
                     {students.map((s, i) => (
                       <tr key={s.id} className={`${i % 2 === 0 ? "bg-white" : "bg-gray-50/50"} hover:bg-[var(--primary-light)] transition-colors`}>
+                        <td className="px-4 py-2.5 text-gray-500">{i + 1}</td>
                         <td className="px-4 py-2.5 text-gray-800 font-medium">{s.name}</td>
                         <td className="px-4 py-2.5 text-gray-600">{s.admissionNo}</td>
                         <td className="px-4 py-2.5 text-gray-600">{s.class}</td>
@@ -268,6 +300,7 @@ export default function QuickFeesPage() {
                 </table>
               </div>
             </div>
+            </>
           )}
         </>
       )}

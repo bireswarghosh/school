@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
       sql += ` AND (s.name ILIKE $${idx} OR CAST(s.roll_no AS text) ILIKE $${idx} OR s.admission_no ILIKE $${idx} OR c.name ILIKE $${idx} OR sec.name ILIKE $${idx})`
       params.push(`%${q}%`)
     }
-    sql += " ORDER BY s.name LIMIT 25"
+    sql += " ORDER BY s.name"
 
     const result = await query(sql, params)
     if (id) return NextResponse.json(mapResponse(result.rows[0]) || { error: "Not found" }, { status: result.rows[0] ? 200 : 404 })

@@ -6,7 +6,8 @@ import { useParams, useRouter } from "next/navigation"
 import { useCurrency } from "@/lib/currency-context"
 import { useAuth } from "@/lib/auth-context"
 import { useSchoolInfo } from "@/lib/use-school-info"
-import { ArrowLeft, Loader2, Key, Ban, X, Eye, Plus, Pencil, Trash2, Camera, Printer, FileDown, LogIn, Link2 } from "lucide-react"
+import { ArrowLeft, Loader2, Key, Ban, X, Eye, Plus, Pencil, Trash2, Camera, Printer, FileDown, FileText, LogIn, Link2 } from "lucide-react"
+import { buildReceiptHtml, type FeeReceiptData } from "@/lib/fee-receipt"
 
 type StudentRecord = {
   id: number
@@ -61,7 +62,7 @@ type StudentRecord = {
 const fullName = (first: string | undefined | null, middle: string | undefined | null, last: string | undefined | null) =>
   [first, middle, last].filter((n) => n && n.trim()).join(" ")
 
-const escapeHtml = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+const escapeHtml = (v: unknown) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
 
 const avatarColors = ["bg-blue-500", "bg-pink-500", "bg-green-500", "bg-purple-500", "bg-orange-500", "bg-teal-500", "bg-indigo-500", "bg-rose-500", "bg-cyan-500", "bg-amber-500"]
 
@@ -98,6 +99,8 @@ const num = (v: unknown) => {
   return isNaN(n) ? 0 : n
 }
 
+const round2 = (n: number) => Math.round(n * 100) / 100
+
 const money = (symbol: string, v: number) => `${symbol}${v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
@@ -108,6 +111,53 @@ function partsOf(d: string | null | undefined): { y: string; m: number; day: num
   const p = d.split("T")[0].split("-")
   if (p.length !== 3) return null
   return { y: p[0], m: parseInt(p[1], 10) - 1, day: parseInt(p[2], 10) }
+}
+
+function buildFeeStatement(feesData: any[], paymentLog: any[]) {
+  const groups: {
+    date: string
+    entries: any[]
+    paid: number
+    invoiceNo: string
+    methods: string[]
+  }[] = []
+  const byDate = new Map<string, any[]>()
+  for (const e of paymentLog) {
+    if (num(e.amountPaid) <= 0) continue
+    const d = String(e.paidAt || "").split("T")[0]
+    if (!d) continue
+    const arr = byDate.get(d) || []
+    arr.push(e)
+    byDate.set(d, arr)
+  }
+  for (const [date, entries] of Array.from(byDate.entries()).sort((a, b) => (a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0))) {
+    const feeIds = Array.from(new Set(entries.map((e) => Number(e.feePaymentId)).filter(Boolean)))
+    groups.push({
+      date,
+      entries,
+      paid: round2(entries.reduce((s, e) => s + num(e.amountPaid), 0)),
+      invoiceNo: feeIds.length ? feeIds.join("+") : "-",
+      methods: Array.from(new Set(entries.map((e) => String(e.paymentMode || "Cash").trim()).filter(Boolean))),
+    })
+  }
+  const unpaid = feesData
+    .map((f: any) => {
+      const amount = num(f.amount)
+      const discount = num(f.discountAmount)
+      const fine = num(f.fineAmount)
+      const paid = num(f.paidAmount)
+      return { ...f, amount, discount, fine, paid, balance: amount - discount + fine - paid }
+    })
+    .filter((f: any) => f.balance > 0)
+  const totalPaidFees = round2(feesData.reduce((s: number, f: any) => s + num(f.paidAmount), 0))
+  const totalPaidLog = round2(groups.reduce((s, g) => s + g.paid, 0))
+  return {
+    groups,
+    unpaid,
+    totalPaid: Math.max(totalPaidFees, totalPaidLog),
+    totalBalance: round2(unpaid.reduce((s, f: any) => s + f.balance, 0)),
+    totalInvoices: groups.length,
+  }
 }
 
 export default function StudentProfilePage() {
@@ -126,6 +176,8 @@ export default function StudentProfilePage() {
   const photoInputRef = useRef<HTMLInputElement>(null)
 
   const [feesData, setFeesData] = useState<any[]>([])
+  const [paymentLog, setPaymentLog] = useState<any[]>([])
+  const [showStatement, setShowStatement] = useState(false)
   const [feeGroups, setFeeGroups] = useState<Record<number, string>>({})
   const [feeTypes, setFeeTypes] = useState<Record<number, { name: string; group: string }>>({})
   const [masterDueDates, setMasterDueDates] = useState<Record<string, string>>({})
@@ -172,6 +224,7 @@ export default function StudentProfilePage() {
     if (!student) return
     Promise.all([
       fetch("/api/fees/fees-payment").then((r) => r.json()).then((d) => setFeesData((Array.isArray(d) ? d : []).filter((f: any) => String(f.studentId || f.student_id) === String(student.id)))),
+      fetch(`/api/fees/fees-payment-log?studentId=${student.id}`).then((r) => r.json()).then((d) => setPaymentLog(Array.isArray(d) ? d : [])),
       fetch("/api/examinations/mark").then((r) => r.json()).then((d) => setExamData(Array.isArray(d) ? d.filter((m: any) => String(m.student_id || m.studentId) === String(student.id)) : [])),
       fetch("/api/attendance/student").then((r) => r.json()).then((d) => setAttendanceData(Array.isArray(d) ? d.filter((a: any) => String(a.student_id || a.studentId) === String(student.id)) : [])),
       fetch(`/api/behaviour/incident?student_id=${student.id}`).then((r) => r.json()).then((d) => setBehaviourData(Array.isArray(d) ? d : [])),
@@ -633,7 +686,221 @@ export default function StudentProfilePage() {
     )
   }
 
-  const tabs = [
+  const statement = buildFeeStatement(feesData, paymentLog)
+
+  const feeLabel = (feeTypeId: unknown, importName?: string) =>
+    importName || (feeTypeId != null ? (feeTypes[Number(feeTypeId)]?.name ?? `Type ${feeTypeId}`) : "Fees")
+
+  const buildInvoiceHtml = (group: { date: string; entries: any[]; paid: number; invoiceNo: string; methods: string[] }): string => {
+    if (!student) return ""
+    const receipt: FeeReceiptData = {
+      receiptNo: `INV-${student.admissionNo || student.id}-${group.date.replace(/-/g, "")}`,
+      date: fmtDate(group.date),
+      method: group.methods[0] || "Cash",
+      methodDetail: group.methods.slice(1).join(", "),
+      note: `Tuition fees collected for ${group.entries.length} fee item(s) on ${fmtDate(group.date)}.`,
+      studentName: fullName(student.firstName, student.middleName, student.lastName),
+      studentClass: student.class,
+      section: student.section,
+      admissionNo: student.admissionNo,
+      rollNo: student.rollNo,
+      lines: group.entries.map((e, i) => ({
+        sno: i + 1,
+        group: e.feeGroupId != null ? (feeGroups[Number(e.feeGroupId)] ?? "") : "",
+        feeType: feeLabel(e.feeTypeId, e.feeTypeName),
+        amount: num(e.amountPaid),
+        discount: 0,
+        fine: 0,
+        paid: num(e.amountPaid),
+      })),
+      total: group.paid,
+      school: schoolInfo,
+    }
+    return buildReceiptHtml(receipt)
+  }
+
+  const buildStatementHtml = (): string => {
+    if (!student) return ""
+    const esc = escapeHtml
+    const amt = (v: number) => `\u20B9${v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    const sName = esc((schoolInfo.name || school?.name || "Smart School").trim())
+    const sTagline = school?.tagline ? esc(school.tagline) : ""
+    const sAddress = esc(schoolInfo.address || school?.address || "")
+    const sContact = esc([schoolInfo.phone || school?.phone, schoolInfo.email || school?.email, schoolInfo.website].filter(Boolean).join("  •  "))
+    const logo = schoolInfo.logoSrc ? `<img src="${esc(schoolInfo.logoSrc)}" alt="logo" />` : ""
+    const name = esc(fullName(student.firstName, student.middleName, student.lastName))
+    const klass = `${esc(student.class)}${student.section ? ` - ${esc(student.section)}` : ""}`
+    const genDate = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })
+    const invoices = statement.groups
+      .map(
+        (g) => `<div class="inv">
+      <div class="inv-head">
+        <div>
+          <div class="inv-date">${esc(fmtDate(g.date))}</div>
+          <div class="inv-no">Invoice No: ${esc(g.invoiceNo)}</div>
+        </div>
+        <div class="inv-total">${amt(g.paid)}</div>
+      </div>
+      <table>
+        <thead><tr><th class="c">#</th><th>Fee Type</th><th class="r">Amount Paid</th></tr></thead>
+        <tbody>${g.entries
+          .map(
+            (e, i) => `<tr>
+          <td class="c">${i + 1}</td>
+          <td>${esc(feeLabel(e.feeTypeId, e.feeTypeName))}${e.feeGroupId != null && feeGroups[Number(e.feeGroupId)] ? `<span class="sub">${esc(feeGroups[Number(e.feeGroupId)])}</span>` : ""}</td>
+          <td class="r strong">${amt(num(e.amountPaid))}</td>
+        </tr>`
+          )
+          .join("")}</tbody>
+      </table>
+    </div>`
+      )
+      .join("")
+    const unpaidRows = statement.unpaid
+      .map(
+        (f: any) => `<tr>
+      <td>${esc(feeLabel(f.feesType))}</td>
+      <td>${esc(f.feesGroup != null ? (feeGroups[Number(f.feesGroup)] ?? "") : "")}</td>
+      <td class="r">${amt(f.amount)}</td>
+      <td class="r">${f.discount > 0 ? amt(f.discount) : "-"}</td>
+      <td class="r">${f.paid > 0 ? amt(f.paid) : "-"}</td>
+      <td class="r strong">${amt(f.balance)}</td>
+    </tr>`
+      )
+      .join("")
+
+    return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Fees Statement ${esc(student.admissionNo)}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: Arial, Helvetica, "Segoe UI", sans-serif; color: #1f2937; font-size: 12px; line-height: 1.5; background: #fff; padding: 20px; }
+  .sheet { max-width: 760px; margin: 0 auto; }
+  .head { display: flex; justify-content: space-between; align-items: center; gap: 20px; border-bottom: 3px solid #ff7732; padding-bottom: 16px; margin-bottom: 18px; }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .brand img { width: 58px; height: 58px; object-fit: contain; }
+  .brand h1 { font-size: 21px; color: #111827; line-height: 1.2; }
+  .brand .tag { color: #ff7732; font-size: 12px; margin-top: 2px; }
+  .brand .contact { font-size: 11px; color: #4b5563; margin-top: 4px; }
+  .meta { text-align: right; font-size: 12px; color: #4b5563; line-height: 1.9; white-space: nowrap; }
+  .meta .doc { font-size: 17px; font-weight: 700; color: #ff7732; letter-spacing: 0.5px; }
+  .info { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 16px; margin-bottom: 18px; font-size: 12px; }
+  .info .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #6b7280; margin-bottom: 3px; }
+  .info .name { font-weight: 600; font-size: 14px; }
+  .sum { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+  .sum .box { flex: 1 1 150px; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 14px; }
+  .sum .box .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #6b7280; }
+  .sum .box .val { font-size: 17px; font-weight: 700; margin-top: 2px; }
+  .sum .box.paid .val { color: #059669; }
+  .sum .box.due .val { color: #dc2626; }
+  h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #ff7732; border-bottom: 1px solid #f3f4f6; padding-bottom: 5px; margin: 18px 0 8px; }
+  .inv { border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
+  .inv-head { display: flex; justify-content: space-between; align-items: center; background: #fffaf6; padding: 8px 12px; border-bottom: 1px solid #e5e7eb; }
+  .inv-date { font-weight: 700; color: #111827; }
+  .inv-no { font-size: 11px; color: #6b7280; }
+  .inv-total { font-size: 15px; font-weight: 700; color: #059669; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #f3f4f6; color: #374151; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; padding: 7px 12px; }
+  td { padding: 7px 12px; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
+  td .sub { display: block; font-size: 10px; color: #6b7280; }
+  .c { text-align: center; }
+  .r { text-align: right; }
+  .strong { font-weight: 700; }
+  .tfoot td { background: #f9fafb; font-weight: 700; }
+  .empty { color: #6b7280; font-style: italic; padding: 6px 2px; }
+  .foot { margin-top: 24px; text-align: center; color: #6b7280; font-size: 11px; border-top: 1px solid #e5e7eb; padding-top: 12px; }
+  @page { size: A4; margin: 12mm; }
+  @media print { body { padding: 0; } }
+</style>
+</head>
+<body>
+  <div class="sheet">
+    <div class="head">
+      <div class="brand">
+        ${logo}
+        <div>
+          <h1>${sName}</h1>
+          ${sTagline ? `<div class="tag">${sTagline}</div>` : ""}
+          ${sAddress ? `<div class="contact">${sAddress}</div>` : ""}
+          ${sContact ? `<div class="contact">${sContact}</div>` : ""}
+        </div>
+      </div>
+      <div class="meta">
+        <div class="doc">FEES STATEMENT</div>
+        <div>Generated: ${genDate}</div>
+        <div>Admission No: ${esc(student.admissionNo)}</div>
+      </div>
+    </div>
+
+    <div class="info">
+      <div>
+        <div class="lbl">Student</div>
+        <div class="name">${name}</div>
+        <div class="lbl" style="margin-top:6px">Class</div>
+        <div>${klass}</div>
+      </div>
+      <div>
+        <div class="lbl">Admission No</div>
+        <div class="name">${esc(student.admissionNo)}</div>
+        <div class="lbl" style="margin-top:6px">Roll No</div>
+        <div>${esc(student.rollNo)}</div>
+      </div>
+      <div>
+        <div class="lbl">Statements</div>
+        <div>${statement.totalInvoices} paid invoice(s)</div>
+        <div>${statement.unpaid.length} fee item(s) pending</div>
+      </div>
+    </div>
+
+    <div class="sum">
+      <div class="box paid"><div class="lbl">Total Paid</div><div class="val">${amt(statement.totalPaid)}</div></div>
+      <div class="box due"><div class="lbl">Total Balance</div><div class="val">${amt(statement.totalBalance)}</div></div>
+      <div class="box"><div class="lbl">Total Payable</div><div class="val">${amt(statement.totalPaid + statement.totalBalance)}</div></div>
+    </div>
+
+    <h3>Paid Invoices (grouped by date)</h3>
+    ${statement.groups.length === 0 ? `<div class="empty">No payments recorded for this student.</div>` : invoices}
+
+    <h3>Unpaid / Balance Fees</h3>
+    ${statement.unpaid.length === 0 ? `<div class="empty">No pending fees — all dues are settled.</div>` : `
+    <table>
+      <thead><tr><th>Fee Type</th><th>Group</th><th class="r">Amount</th><th class="r">Discount</th><th class="r">Paid</th><th class="r">Balance</th></tr></thead>
+      <tbody>${unpaidRows}</tbody>
+      <tfoot class="tfoot"><tr><td colspan="5">Total Balance</td><td class="r">${amt(statement.totalBalance)}</td></tr></tfoot>
+    </table>`}
+
+    <div class="foot">This is a computer-generated fees statement · ${sName} · Generated on ${genDate}</div>
+  </div>
+</body>
+</html>`
+  }
+
+  const openDoc = (html: string, mode: "print" | "download") => {
+    if (!html) return
+    const w = window.open("", "_blank")
+    if (!w) {
+      notify.error("Pop-up blocked — please allow pop-ups to view/print the statement")
+      return
+    }
+    w.document.open()
+    w.document.write(html)
+    w.document.close()
+    const fire = () => {
+      if (mode === "print") {
+        w.onafterprint = () => {
+          try { w.close() } catch { /* window already gone */ }
+        }
+      }
+      w.focus()
+      w.print()
+    }
+    if (w.document.readyState === "complete") setTimeout(fire, 150)
+    else w.onload = () => setTimeout(fire, 150)
+  }
+    const tabs = [
     { key: "profile", label: "Profile" },
     { key: "fees", label: "Fees" },
     { key: "otherPayments", label: "Other Payments" },
@@ -914,7 +1181,23 @@ export default function StudentProfilePage() {
 
             {activeTab === "fees" && (
               <div>
-                <h4 className="text-sm font-semibold text-gray-800 mb-4">Fees History</h4>
+                <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+                  <h4 className="text-sm font-semibold text-gray-800">Fees History</h4>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowStatement(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[var(--primary)] border border-[var(--primary)] rounded-lg hover:bg-[var(--primary-light)] transition-colors"
+                    >
+                      <FileText className="h-3.5 w-3.5" /> Fees Statement
+                    </button>
+                    <button
+                      onClick={() => openDoc(buildStatementHtml(), "print")}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      <Printer className="h-3.5 w-3.5" /> Print Statement
+                    </button>
+                  </div>
+                </div>
                 <div className="overflow-x-auto rounded-lg border border-gray-200">
                   <table className="w-full text-sm">
                     <thead>
@@ -1560,6 +1843,163 @@ export default function StudentProfilePage() {
           <button onClick={handleDeleteBehaviour} className="px-5 py-2 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 shadow-sm">Delete</button>
         </div>
       </Modal>
+
+      {showStatement && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowStatement(false)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-3xl z-10 flex flex-col max-h-[92vh]">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-[var(--primary)]" />
+                <div>
+                  <h3 className="text-base font-semibold text-gray-800">Fees Statement — Paid &amp; Unpaid</h3>
+                  <p className="text-xs text-gray-500">{fullName(student.firstName, student.middleName, student.lastName)} · {student.admissionNo} · {student.class}{student.section ? ` - ${student.section}` : ""}</p>
+                </div>
+              </div>
+              <button onClick={() => setShowStatement(false)} className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"><X className="h-4 w-4" /></button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="rounded-xl border border-green-200 bg-green-50/60 px-4 py-3">
+                  <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Total Paid</p>
+                  <p className="text-xl font-bold text-green-700 mt-0.5">{money(symbol, statement.totalPaid)}</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">{statement.totalInvoices} invoice(s) paid by date</p>
+                </div>
+                <div className="rounded-xl border border-red-200 bg-red-50/60 px-4 py-3">
+                  <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Total Unpaid</p>
+                  <p className="text-xl font-bold text-red-600 mt-0.5">{money(symbol, statement.totalBalance)}</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">{statement.unpaid.length} fee item(s) pending</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-gray-50/60 px-4 py-3">
+                  <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Total Recorded</p>
+                  <p className="text-xl font-bold text-gray-800 mt-0.5">{money(symbol, statement.totalPaid + statement.totalBalance)}</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">Fees payable overall</p>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">Paid Invoices (grouped by date)</h4>
+                {statement.groups.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-400">No payments recorded for this student.</div>
+                ) : (
+                  <div className="space-y-3">
+                    {statement.groups.map((g) => (
+                      <div key={g.date} className="rounded-xl border border-gray-200 overflow-hidden">
+                        <div className="flex flex-wrap items-center justify-between gap-2 bg-[var(--primary-light)] px-4 py-2.5">
+                          <div>
+                            <p className="text-sm font-semibold text-gray-800">{fmtDate(g.date)}</p>
+                            <p className="text-[11px] text-gray-500">Invoice No: {g.invoiceNo} · {g.methods.join(", ") || "Cash"}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => openDoc(buildInvoiceHtml(g), "download")}
+                              className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                            >
+                              <FileDown className="h-3.5 w-3.5" /> Download
+                            </button>
+                            <button
+                              onClick={() => openDoc(buildInvoiceHtml(g), "print")}
+                              className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-white bg-[var(--primary)] rounded-lg hover:bg-[var(--secondary)] transition-colors"
+                            >
+                              <Printer className="h-3.5 w-3.5" /> Print
+                            </button>
+                          </div>
+                        </div>
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-gray-50 border-b border-gray-100">
+                              <th className="text-left px-4 py-2 text-[11px] font-semibold text-gray-600 uppercase">#</th>
+                              <th className="text-left px-4 py-2 text-[11px] font-semibold text-gray-600 uppercase">Fee Type</th>
+                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-gray-600 uppercase">Amount Paid</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {g.entries.map((e, i) => (
+                              <tr key={`${g.date}-${i}`} className="border-b border-gray-50">
+                                <td className="px-4 py-2 text-gray-500">{i + 1}</td>
+                                <td className="px-4 py-2">
+                                  <span className="font-medium text-gray-800">{feeLabel(e.feeTypeId, e.feeTypeName)}</span>
+                                  {e.feeGroupId != null && feeGroups[Number(e.feeGroupId)] ? <span className="text-xs text-gray-500 block">{feeGroups[Number(e.feeGroupId)]}</span> : null}
+                                </td>
+                                <td className="px-4 py-2 text-right font-semibold text-green-700">{money(symbol, num(e.amountPaid))}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr className="bg-gray-50 border-t border-gray-200">
+                              <td colSpan={2} className="px-4 py-2 text-[11px] font-semibold text-gray-600 uppercase">Total paid on {fmtDate(g.date)}</td>
+                              <td className="px-4 py-2 text-right font-bold text-green-700">{money(symbol, g.paid)}</td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">Unpaid / Balance Fees</h4>
+                {statement.unpaid.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-green-300 bg-green-50/40 p-6 text-center text-sm text-gray-500">All fees are settled — no balance pending.</div>
+                ) : (
+                  <div className="overflow-x-auto rounded-xl border border-gray-200">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50">
+                          <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-gray-600 uppercase">Fee Type</th>
+                          <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-gray-600 uppercase">Group</th>
+                          <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-gray-600 uppercase">Amount</th>
+                          <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-gray-600 uppercase">Discount</th>
+                          <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-gray-600 uppercase">Paid</th>
+                          <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-gray-600 uppercase">Balance</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {statement.unpaid.map((f: any) => (
+                          <tr key={f.id} className="border-b border-gray-50">
+                            <td className="px-4 py-2.5 font-medium text-gray-800">{feeLabel(f.feesType)}</td>
+                            <td className="px-4 py-2.5 text-gray-600">{f.feesGroup != null ? feeGroups[Number(f.feesGroup)] ?? `Group ${f.feesGroup}` : "-"}</td>
+                            <td className="px-4 py-2.5 text-right text-gray-800">{money(symbol, f.amount)}</td>
+                            <td className="px-4 py-2.5 text-right text-[var(--primary)]">{f.discount > 0 ? money(symbol, f.discount) : "-"}</td>
+                            <td className="px-4 py-2.5 text-right text-gray-700">{f.paid > 0 ? money(symbol, f.paid) : "-"}</td>
+                            <td className="px-4 py-2.5 text-right font-semibold text-red-600">{money(symbol, f.balance)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="bg-gray-50 border-t border-gray-200">
+                          <td colSpan={5} className="px-4 py-2.5 text-[11px] font-semibold text-gray-600 uppercase">Total Unpaid</td>
+                          <td className="px-4 py-2.5 text-right font-bold text-red-600">{money(symbol, statement.totalBalance)}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="px-5 py-3.5 border-t border-gray-200 flex items-center justify-between gap-2">
+              <p className="text-[11px] text-gray-400">Invoices follow the standard receipt design and can be printed / downloaded individually.</p>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  onClick={() => openDoc(buildStatementHtml(), "download")}
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <FileDown className="h-3.5 w-3.5" /> Download Full
+                </button>
+                <button
+                  onClick={() => openDoc(buildStatementHtml(), "print")}
+                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-white bg-[var(--primary)] rounded-lg hover:bg-[var(--secondary)] transition-colors"
+                >
+                  <Printer className="h-3.5 w-3.5" /> Print Full Statement
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   )

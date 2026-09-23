@@ -144,6 +144,7 @@ export default function CollectFeesModal({
   const [selectedFeeIds, setSelectedFeeIds] = useState<number[]>([])
   const [amountToPay, setAmountToPay] = useState("")
   const [paymentLog, setPaymentLog] = useState<PaymentLogEntry[]>([])
+  const [showPriorHistory, setShowPriorHistory] = useState(false)
   const [payment, setPayment] = useState<PaymentFormData>({
     method: "Cash", chequeNo: "", bank: "", transactionId: "", note: "",
   })
@@ -335,6 +336,12 @@ export default function CollectFeesModal({
   const selectedGross = round2(selectedFees.reduce((s, f) => s + f.amount, 0))
   const selectedPriorPaid = round2(selectedFees.reduce((s, f) => s + f.paid, 0))
   const selectedDiscount = round2(selectedFees.reduce((s, f) => s + (f.hasAppliedNew ? f.appliedDiscount : 0), 0))
+
+  const priorEntries = useMemo(() => {
+    const ids = new Set(selectedFeeIds.map((id) => Number(id)))
+    return (paymentLog || []).filter((e) => e.feePaymentId != null && ids.has(Number(e.feePaymentId)))
+  }, [paymentLog, selectedFeeIds])
+  const priorTotal = round2(priorEntries.reduce((s, e) => s + num(e.amountPaid), 0))
 
   const allocation = useMemo<Record<number, number>>(() => {
     const out: Record<number, number> = {}
@@ -695,9 +702,16 @@ export default function CollectFeesModal({
                         <p className="text-lg font-bold text-gray-900 mt-0.5">{money(symbol, selectedGross)}</p>
                       </div>
                       {selectedPriorPaid > 0 && (
-                        <div className="bg-white px-4 py-3">
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => priorEntries.length > 0 && setShowPriorHistory(true)}
+                          onKeyDown={(e) => { if (e.key === "Enter" && priorEntries.length > 0) setShowPriorHistory(true) }}
+                          className={`bg-white px-4 py-3 ${priorEntries.length > 0 ? "cursor-pointer hover:bg-gray-50" : ""}`}
+                        >
                           <p className="text-[11px] font-medium text-gray-500">Prior Paid</p>
                           <p className="text-lg font-bold text-gray-900 mt-0.5">{money(symbol, selectedPriorPaid)}</p>
+                          {priorEntries.length > 0 && <p className="text-[11px] text-[var(--primary)] mt-0.5 underline">View history</p>}
                         </div>
                       )}
                       {selectedDiscount > 0 && (
@@ -792,6 +806,57 @@ export default function CollectFeesModal({
           </>
         )}
       </div>
+
+      {showPriorHistory && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowPriorHistory(false)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-lg z-10 flex flex-col max-h-[80vh]">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200">
+              <div className="flex items-center gap-2">
+                <History className="h-4 w-4 text-[var(--primary)]" />
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-800">Prior Payment History</h3>
+                  <p className="text-xs text-gray-500">{student.name} · {student.admissionNo}</p>
+                </div>
+              </div>
+              <button onClick={() => setShowPriorHistory(false)} className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="flex-1 overflow-auto p-4">
+              {priorEntries.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-8">No prior payments recorded for the selected fees.</p>
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {priorEntries.map((entry) => {
+                    const typeName = entry.feeTypeId ? (feeTypes[Number(entry.feeTypeId)]?.name ?? `Type ${entry.feeTypeId}`) : ""
+                    const groupName = entry.feeGroupId ? (feeGroups[Number(entry.feeGroupId)] ?? `Group ${entry.feeGroupId}`) : ""
+                    return (
+                      <div key={entry.id} className="px-1 py-3 flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-800 truncate">
+                            {typeName || "Fees"} {groupName ? <span className="text-gray-400 font-normal">· {groupName}</span> : null}
+                          </p>
+                          <p className="text-[11px] text-gray-500">Paid on {fmtDateTime(entry.paidAt)}</p>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="text-sm font-bold text-green-600">{money(symbol, num(entry.amountPaid))}</p>
+                          <p className="text-[11px] text-gray-500 capitalize">
+                            {entry.paymentMode || "Cash"}
+                            {entry.createdBy ? ` · ${entry.createdBy}` : ""}
+                          </p>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="px-5 py-3 border-t border-gray-200 flex items-center justify-between">
+              <span className="text-xs text-gray-500">Total prior paid</span>
+              <span className="text-base font-bold text-gray-900">{money(symbol, priorTotal)}</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
