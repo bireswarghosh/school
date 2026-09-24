@@ -111,7 +111,7 @@ export default function QuickFeesPage() {
       const t = new Date().toISOString().split("T")[0]
       const activeByStudent = new Map<number, any>()
       for (const d of discounts) {
-        if (d.isActive === false || (d.expiryDate && d.expiryDate < t) || !d.studentId) continue
+        if (d.isActive === false || d.used || (d.expiryDate && d.expiryDate < t) || !d.studentId) continue
         const dType = d.discountType === "Percentage" ? "Percentage" : d.discountType === "Fix" ? "Fix" : d.discountTypeKind
         const value = dType === "Percentage" ? num(d.percentage) : num(d.amount)
         if (!(value > 0)) continue

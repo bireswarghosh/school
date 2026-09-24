@@ -2,12 +2,33 @@
 import { toast as notify } from "@/lib/toast"
 
 import { useState, useMemo, useRef, useEffect } from "react"
-import { Plus, Pencil, Trash2, X, Save, Download, Upload, Printer, ChevronLeft, ChevronRight, Search, UserPlus, Tag } from "lucide-react"
+import { Plus, Pencil, Trash2, X, Save, Download, Upload, Printer, ChevronLeft, ChevronRight, Search, UserPlus, Tag, FileText } from "lucide-react"
 import { useApi } from "@/lib/use-api"
 import { useCurrency } from "@/lib/currency-context"
 
 type DiscountType = "Percentage" | "Fix"
-type FeesDiscount = { id: number; name: string; discountCode: string; discountType: DiscountType; percentage: number | null; amount: number | null; useCount: number; expiryDate: string; description: string; studentId?: number | null; isActive?: boolean | null; approvedBy?: string | null; approvedAt?: string | null; firstName?: string | null; middleName?: string | null; lastName?: string | null; admissionNo?: string | null; rollNo?: string | number | null }
+type DiscountUsage = {
+  feePaymentId?: number
+  invoiceNo?: string | null
+  incomeDate?: string | null
+  feeTypeName?: string | null
+  groupName?: string | null
+  amount?: number | string
+  discountAmount?: number | string
+  paidAmount?: number | string
+  paymentDate?: string | null
+  paymentMode?: string | null
+  paymentStatus?: string | null
+}
+type DiscountPayment = {
+  paymentDate?: string | null
+  invoiceNo?: string | null
+  paymentMode?: string | null
+  feeCount?: number
+  discountAmount?: number | string
+  paidAmount?: number | string
+}
+type FeesDiscount = { id: number; name: string; discountCode: string; discountType: DiscountType; percentage: number | null; amount: number | null; useCount: number; expiryDate: string; description: string; studentId?: number | null; isActive?: boolean | null; approvedBy?: string | null; approvedAt?: string | null; firstName?: string | null; middleName?: string | null; lastName?: string | null; admissionNo?: string | null; rollNo?: string | number | null; used?: boolean | null; usedAt?: string | null; usageCount?: number; usage?: DiscountUsage[]; payments?: DiscountPayment[] }
 
 type StudentRef = {
   id: number
@@ -31,6 +52,7 @@ type SelectedStudent = {
 }
 
 const today = () => new Date().toISOString().split("T")[0]
+const num = (v: unknown) => { const n = Number(v); return isNaN(n) ? 0 : n }
 const fullName = (s: { firstName?: string | null; middleName?: string | null; lastName?: string | null }) => `${s.firstName || ""} ${s.middleName || ""} ${s.lastName || ""}`.replace(/\s+/g, " ").trim()
 
 export default function FeesDiscountPage() {
@@ -59,6 +81,7 @@ export default function FeesDiscountPage() {
   const [sdErrors, setSdErrors] = useState<Record<string, string>>({})
   const [sdForm, setSdForm] = useState({ name: "", discountCode: "", discountType: "Fix" as DiscountType, percentage: "", amount: "", useCount: "0", expiryDate: "", description: "" })
   const [confirmSdDeleteId, setConfirmSdDeleteId] = useState<number | null>(null)
+  const [usageView, setUsageView] = useState<FeesDiscount | null>(null)
 
   useEffect(() => {
     fetch("/api/student-information/student")
@@ -184,7 +207,7 @@ export default function FeesDiscountPage() {
   const openDelete = (id: number) => { setDeleteId(id); setShowDeleteModal(true) }
   const confirmDelete = async () => { if (deleteId === null) return; await remove(deleteId); setShowDeleteModal(false); setDeleteId(null); showToast("Discount deleted successfully") }
 
-  const formatDate = (date: string) => {
+  const formatDate = (date?: string | null) => {
     if (!date) return "-"
     const [y, m, d] = date.split("-")
     return `${m}/${d}/${y}`
@@ -360,7 +383,18 @@ export default function FeesDiscountPage() {
                             {d.expiryDate ? ` · Valid till ${formatDate(d.expiryDate)}` : " · No expiry"}
                           </p>
                           <p className="text-[11px]">
-                            {d.isActive === false || !d.isActive ? <span className="text-red-500">Inactive</span> : <span className="text-emerald-600">✓ Approved by {d.approvedBy || "—"} on {formatDateTime(d.approvedAt)}</span>}
+                            {d.used ? (
+                              <>
+                                <button onClick={() => setUsageView(d)} className="text-red-600 font-medium hover:underline">
+                                  Used on {formatDate(d.usedAt)}
+                                </button>
+                                {d.usageCount ? <span className="text-gray-500"> · {d.usageCount} fee(s)</span> : null}
+                              </>
+                            ) : d.isActive === false || !d.isActive ? (
+                              <span className="text-red-500">Inactive</span>
+                            ) : (
+                              <span className="text-emerald-600">✓ Approved by {d.approvedBy || "—"} on {formatDateTime(d.approvedAt)} · <span className="text-gray-500">Not used yet</span></span>
+                            )}
                           </p>
                         </div>
                         <button onClick={() => setConfirmSdDeleteId(d.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg flex-shrink-0" title="Remove discount"><Trash2 className="h-3.5 w-3.5" /></button>
@@ -383,6 +417,7 @@ export default function FeesDiscountPage() {
               <li>Search and select a student by name, roll no, class or admission id.</li>
               <li>Set a <span className="font-medium text-gray-700">Percentage</span> or <span className="font-medium text-gray-700">Fixed {symbol}amount</span> discount for that student with a coupon code.</li>
               <li>The discount is <span className="font-medium text-gray-700">auto-applied</span> when collecting that student's fees.</li>
+              <li>Each discount can be used <span className="font-medium text-gray-700">only once</span>. Once applied, it is marked <span className="font-medium text-red-600">Used</span> with the date and its invoice details are viewable.</li>
               <li>Each payment records the coupon code along with the <span className="font-medium text-gray-700">approving admin and time</span> on the note + receipt.</li>
             </ul>
           </div>
@@ -430,12 +465,13 @@ export default function FeesDiscountPage() {
                     <th className="text-left px-4 py-2.5 font-semibold text-gray-600 text-[11px] uppercase">Amount</th>
                     <th className="text-left px-4 py-2.5 font-semibold text-gray-600 text-[11px] uppercase">Use Count</th>
                     <th className="text-left px-4 py-2.5 font-semibold text-gray-600 text-[11px] uppercase">Expiry Date</th>
+                    <th className="text-left px-4 py-2.5 font-semibold text-gray-600 text-[11px] uppercase">Status</th>
                     <th className="text-right px-4 py-2.5 font-semibold text-gray-600 text-[11px] uppercase">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {paginated.length === 0 ? (
-                    <tr><td colSpan={7} className="text-center py-12 text-gray-400 text-sm">No discounts found</td></tr>
+                    <tr><td colSpan={8} className="text-center py-12 text-gray-400 text-sm">No discounts found</td></tr>
                   ) : (
                     paginated.map((d, idx) => (
                       <tr key={d.id} className={`border-b border-gray-50 hover:bg-[var(--primary-light)] transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}>
@@ -445,6 +481,17 @@ export default function FeesDiscountPage() {
                         <td className="px-4 py-2.5 text-gray-600">{d.discountType === "Fix" ? `${symbol}${d.amount}` : <span className="text-gray-300">-</span>}</td>
                         <td className="px-4 py-2.5 text-gray-600">{d.useCount}</td>
                         <td className="px-4 py-2.5 text-gray-600 text-xs">{formatDate(d.expiryDate)}</td>
+                        <td className="px-4 py-2.5">
+                          {d.used ? (
+                            <button onClick={() => setUsageView(d)} className="inline-flex items-center gap-1 text-[11px] font-medium text-red-600 hover:text-red-700 hover:underline">
+                              <FileText className="h-3 w-3" />Used on {formatDate(d.usedAt)}
+                            </button>
+                          ) : d.isActive === false || !d.isActive ? (
+                            <span className="text-[11px] text-gray-400">Inactive</span>
+                          ) : (
+                            <span className="text-[11px] text-emerald-600">Not used</span>
+                          )}
+                        </td>
                         <td className="px-4 py-2.5 text-right">
                           <div className="flex items-center justify-end gap-0.5">
                             <button onClick={() => openEdit(d)} className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg" title="Edit"><Pencil className="h-3.5 w-3.5" /></button>
@@ -570,6 +617,98 @@ export default function FeesDiscountPage() {
             <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
               <button onClick={() => setShowEditModal(false)} className="px-4 py-2 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
               <button onClick={handleEditSave} className="flex items-center gap-1.5 px-5 py-2 text-xs font-medium text-white bg-[var(--primary)] rounded-lg hover:bg-[var(--secondary)] shadow-sm shadow-indigo-200"><Save className="h-3.5 w-3.5" />Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {usageView && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setUsageView(null)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl z-10 flex flex-col max-h-[85vh]">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+              <div className="flex items-center gap-2">
+                <FileText className="h-4 w-4 text-[var(--primary)]" />
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-800">Discount Usage &amp; Invoice</h3>
+                  <p className="text-xs text-gray-500">{usageView.name} · <span className="font-mono">{usageView.discountCode}</span> · Used on {formatDate(usageView.usedAt)}</p>
+                </div>
+              </div>
+              <button onClick={() => setUsageView(null)} className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="flex-1 overflow-auto p-5">
+              {(usageView.payments || []).length === 0 && (usageView.usage || []).length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-8">No invoice details found for this discount.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <div className="flex items-center justify-between mb-3 rounded-lg border border-[var(--primary)]/30 bg-[var(--primary-light)] px-4 py-2.5">
+                    <span className="text-xs font-medium text-gray-700">
+                      {usageView.discountType === "Percentage"
+                        ? `${usageView.percentage}%`
+                        : `${symbol}${num(usageView.amount)}`}{" "}
+                      discount applied as one full amount on the total selected fees.
+                    </span>
+                    <span className="text-xs font-semibold text-[var(--primary)]">
+                      Full discount {"−"}{symbol}
+                      {(usageView.payments || []).reduce((s, p) => s + Number(p.discountAmount || 0), 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-100/80">
+                        <th className="text-left px-3 py-2 text-[11px] font-semibold text-gray-600 uppercase">Date</th>
+                        <th className="text-left px-3 py-2 text-[11px] font-semibold text-gray-600 uppercase">Invoice No</th>
+                        <th className="text-right px-3 py-2 text-[11px] font-semibold text-gray-600 uppercase">Fees Covered</th>
+                        <th className="text-right px-3 py-2 text-[11px] font-semibold text-gray-600 uppercase">Discount (Total)</th>
+                        <th className="text-right px-3 py-2 text-[11px] font-semibold text-gray-600 uppercase">Paid</th>
+                        <th className="text-right px-3 py-2 text-[11px] font-semibold text-gray-600 uppercase">Mode</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {(usageView.payments || []).map((p, i) => (
+                        <tr key={i}>
+                          <td className="px-3 py-2 text-gray-600 text-xs">{formatDate(p.paymentDate)}</td>
+                          <td className="px-3 py-2 text-gray-700 font-mono text-xs">{p.invoiceNo || "-"}</td>
+                          <td className="px-3 py-2 text-right text-gray-700">{p.feeCount || 0}</td>
+                          <td className="px-3 py-2 text-right text-red-600 font-medium">{symbol}{p.discountAmount}</td>
+                          <td className="px-3 py-2 text-right text-emerald-600 font-medium">{symbol}{p.paidAmount}</td>
+                          <td className="px-3 py-2 text-right text-gray-500 text-xs capitalize">{p.paymentMode || "Cash"}</td>
+                        </tr>
+                      ))}
+                      {(usageView.payments || []).length === 0 && (usageView.usage || []).length > 0 && (
+                        (usageView.usage || []).map((u, i) => (
+                          <tr key={i}>
+                            <td className="px-3 py-2 text-gray-600 text-xs">{formatDate(u.paymentDate || u.incomeDate)}</td>
+                            <td className="px-3 py-2 text-gray-700 font-mono text-xs">{u.invoiceNo || "-"}</td>
+                            <td className="px-3 py-2 text-right text-gray-700">1</td>
+                            <td className="px-3 py-2 text-right text-red-600 font-medium">{symbol}{u.discountAmount}</td>
+                            <td className="px-3 py-2 text-right text-emerald-600 font-medium">{symbol}{u.paidAmount}</td>
+                            <td className="px-3 py-2 text-right text-gray-500 text-xs capitalize">{u.paymentMode || "Cash"}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-gray-50/70">
+                        <td colSpan={3} className="px-3 py-2 text-xs font-medium text-gray-500">
+                          Total: {usageView.usageCount || (usageView.usage || []).length} fee(s) covered
+                        </td>
+                        <td className="px-3 py-2 text-right text-red-600 font-bold">
+                          {symbol}{(usageView.payments || []).reduce((s, p) => s + Number(p.discountAmount || 0), 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-3 py-2 text-right text-emerald-600 font-bold">
+                          {symbol}{(usageView.payments || []).reduce((s, p) => s + Number(p.paidAmount || 0), 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-3 py-2">{""}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+              <p className="text-xs text-gray-400 mt-4">This discount was used once and is now locked. It will not be auto-applied to future fee collections.</p>
+            </div>
+            <div className="px-5 py-3 border-t border-gray-200 flex justify-end">
+              <button onClick={() => setUsageView(null)} className="px-4 py-2 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Close</button>
             </div>
           </div>
         </div>

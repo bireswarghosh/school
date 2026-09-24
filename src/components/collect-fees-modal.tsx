@@ -56,6 +56,7 @@ type StudentDiscount = {
   isActive: boolean | null
   approvedBy?: string | null
   approvedAt?: string | null
+  used?: boolean | null
 }
 
 type CurrentUser = {
@@ -161,6 +162,7 @@ export default function CollectFeesModal({
   const [paying, setPaying] = useState(false)
   const [receipt, setReceipt] = useState<FeeReceiptData | null>(null)
   const [studentDiscounts, setStudentDiscounts] = useState<StudentDiscount[]>([])
+  const [useDiscount, setUseDiscount] = useState(true)
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
   const docFrameRef = useRef<HTMLIFrameElement>(null)
 
@@ -214,6 +216,7 @@ export default function CollectFeesModal({
     setSelectedFeeIds([])
     setAmountToPay("")
     setPayment({ method: "Cash", chequeNo: "", bank: "", transactionId: "", note: "" })
+    setUseDiscount(true)
     setReceipt(null)
     setPaying(false)
   }, [open, student?.id])
@@ -257,6 +260,7 @@ export default function CollectFeesModal({
       (studentDiscounts || []).find(
         (d) =>
           d.isActive !== false &&
+          !d.used &&
           (!d.expiryDate || d.expiryDate >= t) &&
           ((d.discountType === "Percentage" && num(d.percentage) > 0) ||
             (d.discountType === "Fix" && num(d.amount) > 0))
@@ -271,7 +275,7 @@ export default function CollectFeesModal({
       appliedDiscountId: null,
       hasAppliedNew: false,
     }))
-    if (!activeDiscount || selectedFeeIds.length === 0) return entries
+    if (!activeDiscount || !useDiscount || selectedFeeIds.length === 0) return entries
     const map = new Map(entries.map((e) => [e.id, e]))
     const eligible = pendingFees.filter(
       (f) => selectedFeeIds.includes(f.id) && num(f.discountAmount) <= 0 && f.amount - f.paid > 0
@@ -332,7 +336,7 @@ export default function CollectFeesModal({
     })
 
     return Array.from(map.values())
-  }, [pendingFees, activeDiscount, selectedFeeIds])
+  }, [pendingFees, activeDiscount, selectedFeeIds, useDiscount])
 
   const approvalNote = (fees: AppliedFee[]) => {
     if (!activeDiscount || !fees.some((f) => f.hasAppliedNew)) return payment.note || ""
@@ -430,16 +434,17 @@ export default function CollectFeesModal({
     if (!student || selectedFeeIds.length === 0) return
     setPaying(true)
     const today = new Date().toISOString().split("T")[0]
-    const paidFees = resolvedFees.filter((f) => selectedFeeIds.includes(f.id) && (allocation[f.id] ?? 0) > 0)
-    const note = approvalNote(paidFees)
+    const selectedResolved = resolvedFees.filter((f) => selectedFeeIds.includes(f.id))
+    const paidFees = selectedResolved.filter((f) => (allocation[f.id] ?? 0) > 0 || (f.hasAppliedNew && f.appliedDiscount > 0))
+    const note = approvalNote(selectedResolved)
     const paidAt = new Date().toISOString()
     try {
       const logRows: any[] = []
       for (const f of resolvedFees) {
         if (!selectedFeeIds.includes(f.id)) continue
         const pay = allocation[f.id] ?? 0
-        const fullyDiscounted = pay <= 0 && f.hasAppliedNew && f.appliedDiscount > 0 && f.balance <= 0
-        if (pay <= 0 && !fullyDiscounted) continue
+        const hasApplied = f.hasAppliedNew && f.appliedDiscount > 0
+        if (pay <= 0 && !hasApplied) continue
         const newPaid = f.paid + pay
         const settled = round2(newPaid + f.discount) >= round2(f.amount)
         const status = settled ? "Paid" : "Partial"
@@ -452,7 +457,7 @@ export default function CollectFeesModal({
           bankName: payment.method === "Cheque" ? (payment.bank || null) : null,
           chequeNo: payment.method === "Cheque" ? (payment.chequeNo || null) : null,
           note: note || null,
-          ...(f.hasAppliedNew && f.appliedDiscount > 0 ? { discountId: f.appliedDiscountId, discountAmount: f.appliedDiscount } : {}),
+          ...(hasApplied ? { discountId: f.appliedDiscountId, discountAmount: f.appliedDiscount } : {}),
         })
         if (pay <= 0) continue
         const incomeHeadId = incomeHeadForGroup(f.groupName, incomeHeads)
@@ -625,20 +630,33 @@ export default function CollectFeesModal({
                     </table>
                   </div>
 
-                  {activeDiscount && resolvedFees.some((f) => f.hasAppliedNew) && (
+                  {activeDiscount && selectedFeeIds.length > 0 && (
                     <div className="flex items-start gap-2 rounded-lg border border-[var(--primary)]/30 bg-[var(--primary-light)] px-4 py-3 text-xs text-gray-700">
                       <Tag className="h-4 w-4 text-[var(--primary)] flex-shrink-0 mt-0.5" />
-                      <span>
-                        <span className="font-semibold text-gray-800">Student discount applied</span> — coupon{" "}
-                        <span className="font-mono font-medium text-[var(--primary)]">{activeDiscount.discountCode}</span>{" "}
-                        ({activeDiscount.discountType === "Percentage" ? `${activeDiscount.percentage}%` : money(symbol, num(activeDiscount.amount))}){" "}
-                        reduces the total payable below.
-                        {activeDiscount.approvedBy
-                          ? ` Approved by ${activeDiscount.approvedBy}${fmtDateTime(activeDiscount.approvedAt) ? " on " + fmtDateTime(activeDiscount.approvedAt) : ""}.`
-                          : " Approved."}
-                        {activeDiscount.expiryDate ? ` Valid till ${fmtDate(activeDiscount.expiryDate)}.` : ""}{" "}
-                        The receipt records this on the payment note.
-                      </span>
+                      <div className="flex-1">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={useDiscount}
+                            onChange={() => setUseDiscount((v) => !v)}
+                            className="accent-[var(--primary)]"
+                          />
+                          <span className="font-semibold text-gray-800">Use student discount ({activeDiscount.discountCode})</span>
+                        </label>
+                        <p className="mt-1 text-gray-600">
+                          {activeDiscount.discountType === "Percentage"
+                            ? `${activeDiscount.percentage}%`
+                            : money(symbol, num(activeDiscount.amount))}{" "}
+                          off the total payable.
+                          {activeDiscount.approvedBy
+                            ? ` Approved by ${activeDiscount.approvedBy}${fmtDateTime(activeDiscount.approvedAt) ? " on " + fmtDateTime(activeDiscount.approvedAt) : ""}.`
+                            : " Approved."}
+                          {activeDiscount.expiryDate ? ` Valid till ${fmtDate(activeDiscount.expiryDate)}.` : ""}{" "}
+                          {useDiscount
+                            ? "The receipt records this on the payment note."
+                            : "Unchecked — the discount will not be applied to this payment."}
+                        </p>
+                      </div>
                     </div>
                   )}
 
@@ -741,12 +759,23 @@ export default function CollectFeesModal({
                           {priorEntries.length > 0 && <p className="text-[11px] text-[var(--primary)] mt-0.5 underline">View history</p>}
                         </div>
                       )}
-                      {selectedDiscount > 0 && (
-                        <div className="bg-white px-4 py-3">
-                          <p className="text-[11px] font-medium text-[var(--primary)]">Discount Applied</p>
-                          <p className="text-lg font-bold text-[var(--primary)] mt-0.5">−{money(symbol, selectedDiscount)}</p>
-                        </div>
-                      )}
+                      {activeDiscount ? (
+                        <label className="bg-white px-4 py-3 cursor-pointer">
+                          <span className="text-[11px] font-medium text-[var(--primary)]">Discount Applied</span>
+                          <span className="flex items-center gap-2 mt-1">
+                            <input
+                              type="checkbox"
+                              checked={useDiscount}
+                              onChange={() => setUseDiscount((v) => !v)}
+                              className="accent-[var(--primary)]"
+                            />
+                            <span className={`text-lg font-bold ${selectedDiscount > 0 ? "text-[var(--primary)]" : "text-gray-400"} mt-0`}>
+                              −{money(symbol, selectedDiscount)}
+                            </span>
+                          </span>
+                          <span className="text-[11px] text-gray-400">{useDiscount ? `${activeDiscount.discountCode} on` : `Skip ${activeDiscount.discountCode}`}</span>
+                        </label>
+                      ) : null}
                       <div className="bg-white px-4 py-3">
                         <p className="text-[11px] font-medium text-gray-500">Total Payable</p>
                         <p className="text-lg font-bold text-gray-900 mt-0.5">{money(symbol, totalDue)}</p>

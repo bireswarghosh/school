@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation"
 import { useApi } from "@/lib/use-api"
 import { useCurrency } from "@/lib/currency-context"
 import { useSchoolInfo, type SchoolInfo } from "@/lib/use-school-info"
-import { ArrowLeft, Loader2, Printer, CreditCard, Banknote, Building2, X, Check, Trash2, FileText, Tag, RotateCcw, CalendarDays } from "lucide-react"
+import { ArrowLeft, Loader2, Printer, CreditCard, Banknote, Building2, X, Check, Trash2, FileText, Tag, RotateCcw, CalendarDays, ChevronDown } from "lucide-react"
 import { incomeHeadForGroup } from "@/lib/income-mapping"
 
 type StudentRecord = {
@@ -69,6 +69,7 @@ type StudentDiscount = {
   isActive: boolean | null
   approvedBy?: string | null
   approvedAt?: string | null
+  used?: boolean | null
 }
 
 type CurrentUser = {
@@ -277,7 +278,9 @@ export default function AddFeePage() {
   const { data: fees, update, refetch } = useApi<FeeRecord>(feesApi)
 
   const [selectedFeeIds, setSelectedFeeIds] = useState<number[]>([])
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
   const [payAmount, setPayAmount] = useState("")
+  const [useDiscount, setUseDiscount] = useState(true)
   const [payment, setPayment] = useState<PaymentFormData>({
     method: "Cash", chequeNo: "", bank: "", transactionId: "", note: "",
     date: new Date().toISOString().split("T")[0],
@@ -297,7 +300,7 @@ export default function AddFeePage() {
     if (coverMeta.coverage.length === 0) return null
     const lines: ReceiptLine[] = coverMeta.coverage.map((c, i) => {
       const f = resolved.find((r) => r.id === c.id)!
-      return { sno: i + 1, group: f.groupName, feeType: f.feeTypeName, amount: c.amount, discount: c.discount, fine: f.fine, paid: c.paid }
+      return { sno: i + 1, group: f.groupName, feeType: f.feeTypeName, amount: c.amount, discount: 0, fine: f.fine, paid: c.paid }
     })
     const methodDetail =
       payment.method === "Cheque"
@@ -439,6 +442,7 @@ const activeDiscount = useMemo<StudentDiscount | null>(() => {
     (studentDiscounts || []).find(
       (d) =>
         d.isActive !== false &&
+        !d.used &&
         (!d.expiryDate || d.expiryDate >= t) &&
         ((d.discountType === "Percentage" && num(d.percentage) > 0) ||
           (d.discountType === "Fix" && num(d.amount) > 0))
@@ -452,6 +456,55 @@ const resolved: ResolvedFee[] = useMemo(() => {
 
   const totalBalance = resolved.reduce((s, f) => s + f.balance, 0)
 
+  const groupedFees = useMemo(() => {
+    const map = new Map<string, ResolvedFee[]>()
+    for (const f of resolved) {
+      const key = f.groupName || "Unassigned"
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(f)
+    }
+    return Array.from(map.entries()).map(([name, fees]) => ({ name, fees }))
+  }, [resolved])
+
+  const toggleGroupCollapse = (name: string) => {
+    setCollapsedGroups((prev) => ({ ...prev, [name]: !prev[name] }))
+  }
+
+  const selectableFees = useMemo(() => {
+    return resolved.filter((f) => f.balance > 0)
+  }, [resolved])
+
+  const allSelectableSelected =
+    selectableFees.length > 0 && selectableFees.every((f) => selectedFeeIds.includes(f.id))
+
+  const toggleSelectAll = () => {
+    setSelectedFeeIds((prev) => {
+      if (prev.length > 0 && selectableFees.every((f) => prev.includes(f.id))) {
+        return prev.filter((id) => !selectableFees.some((f) => f.id === id))
+      }
+      const kept = prev.filter((id) => !selectableFees.some((f) => f.id === id))
+      return [...kept, ...selectableFees.map((f) => f.id)]
+    })
+  }
+
+  const groupSelectables = (fees: ResolvedFee[]) => fees.filter((f) => f.balance > 0)
+
+  const allGroupSelected = (fees: ResolvedFee[]) => {
+    const sel = groupSelectables(fees)
+    return sel.length > 0 && sel.every((f) => selectedFeeIds.includes(f.id))
+  }
+
+  const toggleGroupSelection = (fees: ResolvedFee[]) => {
+    const sel = groupSelectables(fees)
+    setSelectedFeeIds((prev) => {
+      if (sel.length > 0 && sel.every((f) => prev.includes(f.id))) {
+        return prev.filter((id) => !sel.some((f) => f.id === id))
+      }
+      const kept = prev.filter((id) => !sel.some((f) => f.id === id))
+      return [...kept, ...sel.map((f) => f.id)]
+    })
+  }
+
   const toggleFeeSelection = (feeId: number) => {
     setSelectedFeeIds((prev) =>
       prev.includes(feeId) ? prev.filter((id) => id !== feeId) : [...prev, feeId]
@@ -463,48 +516,46 @@ const resolved: ResolvedFee[] = useMemo(() => {
 
   const coverMeta = useMemo(() => {
     const sorted = [...selectedFees].sort((a, b) => a.id - b.id)
-    const enteredRaw = parseFloat(payAmount)
-    const entered = payAmount.trim() === "" || isNaN(enteredRaw) ? selectedBalance : Math.max(0, Math.min(enteredRaw, selectedBalance))
-    const discRaw = activeDiscount
+    const totalGross = round2(selectedBalance)
+    const discRaw = useDiscount && activeDiscount
       ? activeDiscount.discountType === "Percentage"
-        ? (entered * num(activeDiscount.percentage)) / 100
+        ? round2((totalGross * num(activeDiscount.percentage)) / 100)
         : num(activeDiscount.amount)
       : 0
-    const discountUsed = round2(Math.min(entered, Math.max(0, discRaw)))
-    const netPayable = round2(entered - discountUsed)
+    const discountUsed = round2(Math.min(totalGross, Math.max(0, discRaw)))
+    const netPayable = round2(Math.max(0, totalGross - discountUsed))
 
-    let remGross = round2(entered)
+    const enteredRaw = parseFloat(payAmount)
+    const entered = payAmount.trim() === "" || isNaN(enteredRaw) ? netPayable : Math.max(0, Math.min(enteredRaw, netPayable))
+
     const coverage: { id: number; amount: number; discount: number; paid: number }[] = []
-    for (const f of sorted) {
-      if (remGross <= 0) break
-      const take = Math.min(f.balance, remGross)
-      coverage.push({ id: f.id, amount: take, discount: 0, paid: 0 })
-      remGross = round2(remGross - take)
-    }
+    const balSum = sorted.reduce((s, f) => s + f.balance, 0)
     let remDisc = discountUsed
-    const totalGross = coverage.reduce((s, c) => s + c.amount, 0)
-    if (totalGross > 0) {
-      for (let i = 0; i < coverage.length; i++) {
-        const c = coverage[i]
-        if (remDisc <= 0) break
-        const d =
-          i === coverage.length - 1
-            ? Math.min(c.amount, remDisc)
-            : Math.min(c.amount, round2((remDisc * c.amount) / totalGross))
-        c.discount = round2(d)
-        remDisc = round2(remDisc - d)
-      }
+    for (let i = 0; i < sorted.length; i++) {
+      const f = sorted[i]
+      const share =
+        i === sorted.length - 1
+          ? Math.min(f.balance, remDisc)
+          : Math.min(f.balance, round2((discountUsed * f.balance) / Math.max(1, balSum)))
+      coverage.push({ id: f.id, amount: f.balance, discount: round2(share), paid: 0 })
+      remDisc = round2(remDisc - share)
     }
-    for (const c of coverage) c.paid = round2(Math.max(0, c.amount - c.discount))
+    let remPaid = entered
+    for (const c of coverage) {
+      if (remPaid <= 0) break
+      const take = Math.min(c.amount - c.discount, remPaid)
+      c.paid = round2(Math.max(0, take))
+      remPaid = round2(remPaid - take)
+    }
     return { entered, discountUsed, netPayable, coverage }
-  }, [selectedFees, selectedBalance, payAmount, activeDiscount])
+  }, [selectedFees, selectedBalance, payAmount, activeDiscount, useDiscount])
 
   const discountNote = () => {
-    if (!activeDiscount) return ""
+    if (!activeDiscount || !useDiscount || coverMeta.discountUsed <= 0) return ""
     const d = new Date()
     const pad = (n: number) => String(n).padStart(2, "0")
     const when = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-    return `Discount ${activeDiscount.discountCode} approved by ${currentUser?.name || "Admin"} on ${when}.`
+    return `Discount ${activeDiscount.discountCode} applied in full (${activeDiscount.discountType === "Percentage" ? `${activeDiscount.percentage}%` : `${activeDiscount.discountCode} ${num(activeDiscount.amount)}`}) approved by ${currentUser?.name || "Admin"} on ${when}.`
   }
 
   const handlePayNow = async () => {
@@ -514,6 +565,7 @@ const resolved: ResolvedFee[] = useMemo(() => {
     const note = discountNote()
     const studentName = student ? fullName(student.firstName, student.middleName, student.lastName) : ""
     try {
+      let collected = 0
       for (const c of coverMeta.coverage) {
         const f = resolved.find((r) => r.id === c.id)!
         const newPaid = f.paid + c.paid
@@ -530,6 +582,8 @@ const resolved: ResolvedFee[] = useMemo(() => {
           discountAmount: c.discount > 0 ? c.discount : null,
           note: c.discount > 0 && note ? [payment.note || "", note].filter(Boolean).join(" | ") : payment.note || null,
         })
+        if (c.paid <= 0) continue
+        collected = round2(collected + c.paid)
         const incomeHeadId = incomeHeadForGroup(f.groupName, incomeHeads)
         if (incomeHeadId) {
           await fetch("/api/income", {
@@ -549,7 +603,7 @@ const resolved: ResolvedFee[] = useMemo(() => {
           })
         }
       }
-      setToast(`Payment of ${money(symbol, coverMeta.netPayable)} collected successfully!`)
+      setToast(`Payment of ${money(symbol, collected)} collected successfully!`)
       const r = buildReceipt()
       if (r) {
         setReceipt(r)
@@ -722,9 +776,22 @@ const resolved: ResolvedFee[] = useMemo(() => {
 
       {/* Student Info + Fees Table */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-5 py-3 border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white flex items-center justify-between">
+        <div className="px-5 py-3 border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white flex items-center justify-between gap-3">
           <h3 className="text-sm font-semibold text-gray-800">Fee Details</h3>
-          <span className="text-xs text-gray-500">Admission No: {student.admissionNo}</span>
+          <div className="flex items-center gap-4">
+            {selectableFees.length > 0 && (
+              <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={allSelectableSelected}
+                  onChange={toggleSelectAll}
+                  className="w-4 h-4 rounded border-gray-300 text-[var(--primary)] focus:ring-[var(--primary)]"
+                />
+                {allSelectableSelected ? "Unselect All" : "Select All"}
+              </label>
+            )}
+            <span className="text-xs text-gray-500">Admission No: {student.admissionNo}</span>
+          </div>
         </div>
         <div className="p-5">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -798,106 +865,132 @@ const resolved: ResolvedFee[] = useMemo(() => {
                   </div>
                 </div>
               )}
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="text-left px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase w-8">#</th>
-                    <th className="text-left px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Fees Group</th>
-                    <th className="text-left px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Fee Type</th>
-                    <th className="text-left px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Due Date</th>
-                    <th className="text-right px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Amount</th>
-                    <th className="text-right px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Discount</th>
-                    <th className="text-right px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Fine</th>
-                    <th className="text-right px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Paid</th>
-                    <th className="text-right px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Balance</th>
-                    <th className="text-center px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Status</th>
-                    <th className="text-center px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase" title="Select fees to change their payment status">Not Paid?</th>
-                    <th className="text-center px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {resolved.length === 0 ? (
-                    <tr>
-                      <td colSpan={12} className="text-center py-12 text-gray-400">No fee records found for this student</td>
-                    </tr>
-                  ) : (
-                    resolved.map((fee, idx) => {
-                      const isSelected = selectedFeeIds.includes(fee.id)
-                      const isPaid = fee.status === "Paid" || fee.status === "paid"
-                      const hasPayment = isPaid || fee.status === "Partial" || fee.paid > 0
-                      return (
-                        <tr key={fee.id} className={`border-b border-gray-100 hover:bg-[var(--primary-light)]/20 transition-colors ${idx % 2 === 1 ? "bg-gray-50/30" : ""}`}>
-                          <td className="px-3 py-2.5">
+              {resolved.length === 0 ? (
+                <div className="text-center py-12 text-gray-400 text-sm">No fee records found for this student</div>
+              ) : (
+                <div className="space-y-3">
+                  {groupedFees.map((group) => {
+                    const collapsed = !!collapsedGroups[group.name]
+                    const groupBalance = group.fees.reduce((s, f) => s + f.balance, 0)
+                    return (
+                      <div key={group.name} className="rounded-xl border border-gray-200 overflow-hidden">
+                        <div
+                          className="flex items-center justify-between gap-3 px-4 py-3 bg-gradient-to-r from-[var(--primary)]/10 to-[var(--primary)]/5 border-b border-gray-200 cursor-pointer select-none"
+                          onClick={() => toggleGroupCollapse(group.name)}
+                        >
+                          <div className="flex items-center gap-3 min-w-0" onClick={(e) => e.stopPropagation()}>
                             <input
                               type="checkbox"
-                              checked={isSelected}
-                              disabled={isPaid}
-                              onChange={() => toggleFeeSelection(fee.id)}
-                              className="w-4 h-4 rounded border-gray-300 text-[var(--primary)] focus:ring-[var(--primary)]"
+                              checked={allGroupSelected(group.fees)}
+                              onChange={() => toggleGroupSelection(group.fees)}
+                              title={allGroupSelected(group.fees) ? "Unselect all in this group" : "Select all in this group"}
+                              className="w-4 h-4 rounded border-gray-300 text-[var(--primary)] focus:ring-[var(--primary)] cursor-pointer"
                             />
-                          </td>
-                          <td className="px-3 py-2.5 text-gray-600">{fee.groupName}</td>
-                          <td className="px-3 py-2.5 font-medium text-gray-800">{fee.feeTypeName}</td>
-                          <td className="px-3 py-2.5 text-gray-600">{fee.dueDay ? `${fee.dueDay}th of every month` : fee.dueDate === "-" ? "-" : fmtDate(fee.dueDate)}</td>
-                          <td className="px-3 py-2.5 text-right text-gray-800">{money(symbol, fee.amount)}</td>
-                          <td className="px-3 py-2.5 text-right">
-                          {fee.discount > 0 ? (
-                            <span className={fee.hasAppliedNew ? "font-medium text-[var(--primary)]" : "text-gray-600"}>{money(symbol, fee.discount)}{fee.hasAppliedNew ? " (auto)" : ""}</span>
-                          ) : "-"}
-                        </td>
-                          <td className="px-3 py-2.5 text-right text-red-600">{fee.fine > 0 ? money(symbol, fee.fine) : "-"}</td>
-                          <td className="px-3 py-2.5 text-right text-green-600">{fee.paid > 0 ? money(symbol, fee.paid) : "-"}</td>
-                          <td className={`px-3 py-2.5 text-right font-medium ${fee.balance > 0 ? "text-red-600" : "text-green-600"}`}>{money(symbol, fee.balance)}</td>
-                          <td className="px-3 py-2.5 text-center">
-                            {isPaid ? (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-green-100 text-green-700">Paid</span>
-                            ) : fee.status === "Partial" || fee.paid > 0 ? (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700">Partial</span>
-                            ) : (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-red-100 text-red-700">Unpaid</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2.5 text-center">
-                            {hasPayment ? (
-                              <input
-                                type="checkbox"
-                                checked={statusSelection.has(fee.id)}
-                                onChange={() => toggleStatusSelection(fee)}
-                                title="Mark as Not Paid (select multiple allowed)"
-                                className="w-4 h-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
-                              />
-                            ) : (
-                              <span className="text-gray-300 text-xs">—</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2.5 text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              {hasPayment ? (
-                                <button
-                                    onClick={() => openStatusChange(fee)}
-                                    className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors"
-                                    title="Mark as Not Paid / Due (revert payment)"
-                                  >
-                                    <RotateCcw className="h-3 w-3" />
-                                    Change
-                                  </button>
-                              ) : (
-                                <button
-                                  onClick={() => handleDeleteFee(fee)}
-                                  className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                                  title="Delete"
-                                >
-                                  <X className="h-3.5 w-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })
-                  )}
-                </tbody>
-              </table>
+                            <ChevronDown className={`h-4 w-4 text-gray-400 shrink-0 transition-transform ${collapsed ? "-rotate-90" : ""}`} />
+                            <span className="text-sm font-bold text-gray-800 truncate">{group.name}</span>
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-white text-gray-600 border border-gray-200">
+                              {group.fees.length} fee{group.fees.length !== 1 ? "s" : ""}
+                            </span>
+                          </div>
+                          <div className="text-sm font-bold text-red-600 whitespace-nowrap">
+                            Balance: {money(symbol, groupBalance)}
+                          </div>
+                        </div>
+                        {!collapsed && (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="bg-gray-50 border-b border-gray-200">
+                                  <th className="text-left px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase w-8">#</th>
+                                  <th className="text-left px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Fee Type</th>
+                                  <th className="text-left px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Due Date</th>
+                                  <th className="text-right px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Amount</th>
+                                  <th className="text-right px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Fine</th>
+                                  <th className="text-right px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Paid</th>
+                                  <th className="text-right px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Balance</th>
+                                  <th className="text-center px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Status</th>
+                                  <th className="text-center px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase" title="Select fees to change their payment status">Not Paid?</th>
+                                  <th className="text-center px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Action</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {group.fees.map((fee, idx) => {
+                                  const isSelected = selectedFeeIds.includes(fee.id)
+                                  const isPaid = fee.status === "Paid" || fee.status === "paid"
+                                  const hasPayment = isPaid || fee.status === "Partial" || fee.paid > 0
+                                  return (
+                                    <tr key={fee.id} className={`border-b border-gray-100 hover:bg-[var(--primary-light)]/20 transition-colors ${idx % 2 === 1 ? "bg-gray-50/30" : ""}`}>
+                                      <td className="px-3 py-2.5">
+                                        <input
+                                          type="checkbox"
+                                          checked={isSelected}
+                                          disabled={isPaid}
+                                          onChange={() => toggleFeeSelection(fee.id)}
+                                          className="w-4 h-4 rounded border-gray-300 text-[var(--primary)] focus:ring-[var(--primary)]"
+                                        />
+                                      </td>
+                                      <td className="px-3 py-2.5 font-medium text-gray-800">{fee.feeTypeName}</td>
+                                      <td className="px-3 py-2.5 text-gray-600">{fee.dueDay ? `${fee.dueDay}th of every month` : fee.dueDate === "-" ? "-" : fmtDate(fee.dueDate)}</td>
+                                      <td className="px-3 py-2.5 text-right text-gray-800">{money(symbol, fee.amount)}</td>
+                                      <td className="px-3 py-2.5 text-right text-red-600">{fee.fine > 0 ? money(symbol, fee.fine) : "-"}</td>
+                                      <td className="px-3 py-2.5 text-right text-green-600">{fee.paid > 0 ? money(symbol, fee.paid) : "-"}</td>
+                                      <td className={`px-3 py-2.5 text-right font-medium ${fee.balance > 0 ? "text-red-600" : "text-green-600"}`}>{money(symbol, fee.balance)}</td>
+                                      <td className="px-3 py-2.5 text-center">
+                                        {isPaid ? (
+                                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-green-100 text-green-700">Paid</span>
+                                        ) : fee.status === "Partial" || fee.paid > 0 ? (
+                                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700">Partial</span>
+                                        ) : (
+                                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-red-100 text-red-700">Unpaid</span>
+                                        )}
+                                      </td>
+                                      <td className="px-3 py-2.5 text-center">
+                                        {hasPayment ? (
+                                          <input
+                                            type="checkbox"
+                                            checked={statusSelection.has(fee.id)}
+                                            onChange={() => toggleStatusSelection(fee)}
+                                            title="Mark as Not Paid (select multiple allowed)"
+                                            className="w-4 h-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                                          />
+                                        ) : (
+                                          <span className="text-gray-300 text-xs">—</span>
+                                        )}
+                                      </td>
+                                      <td className="px-3 py-2.5 text-center">
+                                        <div className="flex items-center justify-center gap-1">
+                                          {hasPayment ? (
+                                            <button
+                                              onClick={() => openStatusChange(fee)}
+                                              className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors"
+                                              title="Mark as Not Paid / Due (revert payment)"
+                                            >
+                                              <RotateCcw className="h-3 w-3" />
+                                              Change
+                                            </button>
+                                          ) : (
+                                            <button
+                                              onClick={() => handleDeleteFee(fee)}
+                                              className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                              title="Delete"
+                                            >
+                                              <X className="h-3.5 w-3.5" />
+                                            </button>
+                                          )}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -906,16 +999,30 @@ const resolved: ResolvedFee[] = useMemo(() => {
       {activeDiscount && (
         <div className="flex items-start gap-2 rounded-lg border border-[var(--primary)]/30 bg-[var(--primary-light)] px-4 py-3 text-xs text-gray-700">
           <Tag className="h-4 w-4 text-[var(--primary)] flex-shrink-0 mt-0.5" />
-          <span>
-            <span className="font-semibold text-gray-800">Student discount available</span> — coupon{" "}
-            <span className="font-mono font-medium text-[var(--primary)]">{activeDiscount.discountCode}</span>{" "}
-            ({activeDiscount.discountType === "Percentage" ? `${activeDiscount.percentage}%` : `${symbol}${num(activeDiscount.amount)}`}){" "}
-            is deducted from the amount you choose to pay for this student's fees.
-            {activeDiscount.approvedBy
-              ? ` Approved by ${activeDiscount.approvedBy}${activeDiscount.approvedAt ? ` on ${fmtDate(activeDiscount.approvedAt)}` : ""}.`
-              : " Approved."}
-            {activeDiscount.expiryDate ? ` Valid till ${fmtDate(activeDiscount.expiryDate)}.` : ""}
-          </span>
+          <div className="flex-1">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={useDiscount}
+                onChange={() => setUseDiscount((v) => !v)}
+                className="accent-[var(--primary)]"
+              />
+              <span className="font-semibold text-gray-800">Use student discount ({activeDiscount.discountCode})</span>
+            </label>
+            <p className="mt-1 text-gray-600">
+              {activeDiscount.discountType === "Percentage"
+                ? `${activeDiscount.percentage}%`
+                : `${symbol}${num(activeDiscount.amount)}`}{" "}
+              off the total selected fees.
+              {activeDiscount.approvedBy
+                ? ` Approved by ${activeDiscount.approvedBy}${activeDiscount.approvedAt ? ` on ${fmtDate(activeDiscount.approvedAt)}` : ""}.`
+                : " Approved."}
+              {activeDiscount.expiryDate ? ` Valid till ${fmtDate(activeDiscount.expiryDate)}.` : ""}{" "}
+              {useDiscount
+                ? "The discount is applied once on the total — it will not be split per fee item."
+                : "Unchecked — the discount will not be applied to this payment."}
+            </p>
+          </div>
         </div>
       )}
 
@@ -1018,26 +1125,41 @@ const resolved: ResolvedFee[] = useMemo(() => {
 
             {/* Amount to Pay */}
             <div className="bg-[var(--primary-light)] rounded-xl p-4 flex flex-col justify-center">
-              <label className="block text-xs font-medium text-[var(--primary)] uppercase tracking-wider">Amount to Pay (gross)</label>
+              <label className="block text-xs font-medium text-[var(--primary)] uppercase tracking-wider">Amount Received (cash)</label>
               <input
                 type="number"
                 min={0}
-                max={selectedBalance}
+                max={coverMeta.netPayable > 0 ? coverMeta.netPayable : selectedBalance}
                 step="1"
                 value={payAmount}
                 onChange={(e) => setPayAmount(e.target.value)}
-                placeholder={String(selectedBalance)}
+                placeholder={String(coverMeta.netPayable)}
                 className="mt-1.5 w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white"
               />
               <p className="text-xs text-gray-500 mt-1.5">{selectedFees.length} fee(s) selected · Total {money(symbol, selectedBalance)}</p>
-              {activeDiscount && coverMeta.entered > 0 && (
+              {activeDiscount && (
+                <label className={`mt-2 flex items-center gap-2 rounded-lg border px-3 py-2 cursor-pointer ${useDiscount ? "border-emerald-300 bg-emerald-50" : "border-gray-300 bg-white"}`}>
+                  <input
+                    type="checkbox"
+                    checked={useDiscount}
+                    onChange={() => setUseDiscount((v) => !v)}
+                    className="accent-[var(--primary)]"
+                  />
+                  <span className="text-xs font-medium text-gray-700">
+                    {useDiscount
+                      ? <>Applying discount <span className="font-mono text-[var(--primary)]">{activeDiscount.discountCode}</span> on the total</>
+                      : <>Discount skipped — not applied</>}
+                  </span>
+                </label>
+              )}
+              {activeDiscount && coverMeta.discountUsed > 0 && (
                 <div className="mt-2 space-y-0.5 text-xs">
-                  <p className="text-emerald-700 font-medium">Discount − {money(symbol, coverMeta.discountUsed)} ({activeDiscount.discountCode})</p>
+                  <p className="text-emerald-700 font-medium">Discount − {money(symbol, coverMeta.discountUsed)} ({activeDiscount.discountCode}) <span className="text-gray-500">(applied in full)</span></p>
                   <p className="text-base font-bold text-[var(--primary)] text-xl">Net Payable {money(symbol, coverMeta.netPayable)}</p>
                 </div>
               )}
-              {activeDiscount && coverMeta.entered === 0 && (
-                <p className="text-xs text-gray-500 mt-1.5">Students with an approved discount get it deducted from the amount you choose to pay.</p>
+              {activeDiscount && coverMeta.discountUsed === 0 && (
+                <p className="text-xs text-gray-500 mt-1.5">{useDiscount ? "Select fees and enter an amount to apply the discount on the total." : "Discount skipped — the full selected amount is payable."}</p>
               )}
             </div>
           </div>

@@ -38,6 +38,7 @@ type StudentDiscount = {
   approvedBy?: string | null
   approvedAt?: string | null
   discountTypeKind?: string | null
+  used?: boolean | null
 }
 
 const num = (v: unknown) => {
@@ -81,7 +82,7 @@ export default function CollectFeesPage() {
     const map = new Map<number, StudentDiscount>()
     const t = new Date().toISOString().split("T")[0]
     for (const d of studentDiscounts) {
-      if (d.isActive === false || (d.expiryDate && d.expiryDate < t) || !d.studentId) continue
+      if (d.isActive === false || d.used || (d.expiryDate && d.expiryDate < t) || !d.studentId) continue
       const dType = d.discountType === "Percentage" ? "Percentage" : d.discountType === "Fix" ? "Fix" : d.discountTypeKind
       const value = dType === "Percentage" ? num(d.percentage) : num(d.amount)
       if (!(value > 0)) continue

@@ -42,13 +42,83 @@ function mapBody(body: Record<string, any>) {
   return data
 }
 
+async function fetchUsage(ids: number[]): Promise<Map<number, any>> {
+  const map = new Map<number, any>()
+  if (ids.length === 0) return map
+  const result = await query(
+    `SELECT
+       fp.discount_id AS "discountId",
+       fp.id AS "feePaymentId",
+       i.invoice_no AS "invoiceNo",
+       i.date AS "incomeDate",
+       ft.name AS "feeTypeName",
+       fg.name AS "groupName",
+       fp.amount AS "amount",
+       fp.discount_amount AS "discountAmount",
+       fp.paid_amount AS "paidAmount",
+       fp.payment_date AS "paymentDate",
+       fp.payment_mode AS "paymentMode",
+       fp.status AS "paymentStatus"
+     FROM fees_payments fp
+     LEFT JOIN incomes i ON i.fee_payment_id = fp.id
+     LEFT JOIN fees_types ft ON ft.id = fp.fees_type_id
+     LEFT JOIN fees_groups fg ON fg.id = fp.fees_group_id
+     WHERE fp.discount_id = ANY($1) AND fp.discount_amount > 0
+     ORDER BY fp.payment_date DESC, fp.id DESC`,
+    [ids] as any
+  )
+  // Aggregate usage per payment (date + invoice) so a Fix discount shows as ONE
+  // full amount applied on the total selected fees, not one row per fee item.
+  for (const row of result.rows) {
+    const did = Number(row.discountId)
+    const entry = map.get(did)
+    const key = `${row.paymentDate || row.incomeDate || ""}|${row.invoiceNo || ""}|${row.paymentMode || ""}`
+    if (!entry) {
+      map.set(did, { used: true, usedAt: row.paymentDate || row.incomeDate || null, usageCount: 0, usage: [], byPayment: new Map() })
+    }
+    const cur = map.get(did)
+    cur.usageCount += 1
+    const group = cur.byPayment.get(key)
+    if (!group) {
+      cur.byPayment.set(key, {
+        paymentDate: row.paymentDate || row.incomeDate || null,
+        invoiceNo: row.invoiceNo || null,
+        paymentMode: row.paymentMode || null,
+        feeCount: 0,
+        discountAmount: 0,
+        paidAmount: 0,
+      })
+    }
+    const g = cur.byPayment.get(key)
+    g.feeCount += 1
+    g.discountAmount = round2(g.discountAmount + Number(row.discountAmount || 0))
+    g.paidAmount = round2(g.paidAmount + Number(row.paidAmount || 0))
+    cur.usage.push(row)
+  }
+  for (const cur of map.values()) {
+    cur.payments = Array.from(cur.byPayment.values())
+    delete cur.byPayment
+  }
+  return map
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100
+
+const usageFor = (u: any) =>
+  u && u.used
+    ? { used: true, usedAt: u.usedAt, usageCount: u.usageCount, usage: u.usage, payments: u.payments || [] }
+    : { used: false, usedAt: null, usageCount: 0, usage: [], payments: [] }
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const id = searchParams.get("id")
   const studentId = searchParams.get("studentId")
   if (id) {
     const item = await getById(TABLE, parseInt(id))
-    return NextResponse.json(mapResponse(item, fieldMap) || { error: "Not found" }, { status: item ? 200 : 404 })
+    const base = mapResponse(item, fieldMap) as any || null
+    if (!base) return NextResponse.json({ error: "Not found" }, { status: 404 })
+    const usage = await fetchUsage([Number(base.id)])
+    return NextResponse.json({ ...base, ...usageFor(usage.get(Number(base.id))) }, { status: 200 })
   }
   const where = studentId ? `WHERE fd.student_id = ${parseInt(studentId, 10)}` : ""
   const result = await query(`
@@ -60,7 +130,11 @@ export async function GET(req: NextRequest) {
     ${where}
     ORDER BY fd.id DESC
   `)
-  return NextResponse.json(mapResponse(result.rows, fieldMap))
+  const rows = (mapResponse(result.rows, fieldMap) as any[]) || []
+  const ids = rows.map((r: any) => Number(r.id))
+  const usageMap = await fetchUsage(ids)
+  const enriched = rows.map((r: any) => ({ ...r, ...usageFor(usageMap.get(Number(r.id))) }))
+  return NextResponse.json(enriched)
 }
 
 export async function POST(req: NextRequest) {
