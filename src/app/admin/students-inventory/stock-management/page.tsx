@@ -23,8 +23,14 @@ export default function StockManagementPage() {
   const [tab, setTab] = useState<"levels" | "transactions">("levels")
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | "ok" | "low" | "out">("all")
+  const [groupBy, setGroupBy] = useState<"product" | "size">("product")
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [allExpanded, setAllExpanded] = useState(false)
+  const [expandedSizeGroups, setExpandedSizeGroups] = useState<Set<string>>(new Set())
+
+  const [draftValues, setDraftValues] = useState<Record<string, string>>({})
+  const [bulkSaving, setBulkSaving] = useState(false)
+  const [bulkMessage, setBulkMessage] = useState("")
 
   const [adjustTarget, setAdjustTarget] = useState<{ product: Product | null; variation: Variation | null }>({ product: null, variation: null })
   const [showAdjustModal, setShowAdjustModal] = useState(false)
@@ -166,13 +172,160 @@ export default function StockManagementPage() {
     })
   }
 
+  const sizeGroups = useMemo(() => {
+    const rowPids = new Set(rows.map((r) => r.product.id))
+    const q = search.trim().toLowerCase()
+    const map = new Map<string, { product: Product; variation: Variation }[]>()
+    for (const p of products) {
+      if (p.id == null || !rowPids.has(p.id)) continue
+      for (const v of variationsByProduct.get(p.id) || []) {
+        if (q) {
+          const hay = [v.componentName, v.color, v.size, v.sku, v.variantValue].filter(Boolean).join(" ").toLowerCase()
+          if (!hay.includes(q) && !(p.name || "").toLowerCase().includes(q) && !(p.code || "").toLowerCase().includes(q)) continue
+        }
+        const size = v.size || v.variantValue || "No Size"
+        if (!map.has(size)) map.set(size, [])
+        map.get(size)!.push({ product: p, variation: v })
+      }
+    }
+    const ratio = (a: string, b: string) => {
+      const na = parseFloat(a.split("/")[0])
+      const nb = parseFloat(b.split("/")[0])
+      if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb
+      return a.localeCompare(b, undefined, { numeric: true })
+    }
+    return Array.from(map.entries())
+      .map(([size, items]) => ({ size, items }))
+      .sort((a, b) => ratio(a.size, b.size))
+  }, [rows, products, variationsByProduct, search])
+
+  const toggleSizeCollapse = (size: string) => {
+    setExpandedSizeGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(size)) next.delete(size)
+      else next.add(size)
+      return next
+    })
+  }
+
   const toggleAllExpand = () => {
     if (allExpanded) {
       setExpanded(new Set())
+      setExpandedSizeGroups(new Set())
       setAllExpanded(false)
     } else {
       setExpanded(new Set(products.filter((p) => p.id != null && productHasVars(p.id)).map((p) => p.id!)))
+      setExpandedSizeGroups(new Set(sizeGroups.map((g) => g.size)))
       setAllExpanded(true)
+    }
+  }
+
+  const currentBalance = (key: string) => {
+    if (key.startsWith("v-")) {
+      return varBalMap.get(Number(key.slice(2)))?.balance ?? 0
+    }
+    const pid = Number(key.slice(2))
+    return prodBalMap.get(pid)?.balance ?? 0
+  }
+
+  const keyForVariation = (id: number | undefined) => (id != null ? `v-${id}` : "")
+  const keyForProduct = (id: number | undefined) => (id != null ? `p-${id}` : "")
+
+  const draftValue = (key: string) =>
+    draftValues[key] !== undefined ? draftValues[key] : String(currentBalance(key))
+
+  const setDraft = (key: string, value: string) => {
+    setDraftValues((prev) => ({ ...prev, [key]: value }))
+    if (bulkMessage) setBulkMessage("")
+  }
+
+  const dirtyKeys = () => {
+    const keys: string[] = []
+    for (const key of Object.keys(draftValues)) {
+      const target = Math.max(0, Math.floor(Number(draftValues[key]) || 0))
+      if (target !== currentBalance(key)) keys.push(key)
+    }
+    return keys
+  }
+
+  const isDirty = (key: string) => {
+    if (draftValues[key] === undefined) return false
+    return Math.max(0, Math.floor(Number(draftValues[key]) || 0)) !== currentBalance(key)
+  }
+
+  const dirtyCount = useMemo(() => dirtyKeys().length, [draftValues, varBalMap, prodBalMap])
+
+  const resetDrafts = () => {
+    setDraftValues({})
+    setBulkMessage("")
+  }
+
+  const pendingDeltas = () => {
+    const deltas: { kind: "product" | "variation"; id: number; delta: number; label: string }[] = []
+    for (const key of dirtyKeys()) {
+      const target = Math.max(0, Math.floor(Number(draftValues[key]) || 0))
+      const current = currentBalance(key)
+      const delta = target - current
+      if (delta === 0) continue
+      if (key.startsWith("v-")) {
+        const id = Number(key.slice(2))
+        const v = variations.find((x) => x.id === id)
+        const label = v ? [v.componentName, v.color, v.size].filter(Boolean).join(" · ") : `#${id}`
+        deltas.push({ kind: "variation", id, delta, label })
+      } else {
+        const id = Number(key.slice(2))
+        const p = products.find((x) => x.id === id)
+        deltas.push({ kind: "product", id, delta, label: p?.name || `#${id}` })
+      }
+    }
+    return deltas
+  }
+
+  const handleBulkSave = async () => {
+    const deltas = pendingDeltas()
+    if (deltas.length === 0) {
+      setBulkMessage("No stock values changed")
+      return
+    }
+    setBulkSaving(true)
+    setBulkMessage("")
+    let saved = 0
+    const errors: string[] = []
+    for (const d of deltas) {
+      const entryType = d.delta > 0 ? "IN" : "OUT"
+      const key = d.kind === "variation" ? keyForVariation(d.id) : keyForProduct(d.id)
+      try {
+        const res = await fetch("/api/students-inventory/stock", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            productId: d.kind === "variation" ? variations.find((v) => v.id === d.id)?.productId ?? null : d.id,
+            variationId: d.kind === "variation" ? d.id : null,
+            entryType,
+            quantity: Math.abs(d.delta),
+            entryDate: today,
+            reference: "Bulk edit",
+            notes: `Excel-style stock update: ${d.label} ${currentBalance(key)} → ${draftValues[key]}`,
+          }),
+        })
+        if (!res.ok) {
+          const e = await res.json().catch(() => ({}))
+          errors.push(`${d.label}: ${e.error || "failed"}`)
+        } else {
+          saved++
+        }
+      } catch {
+        errors.push(`${d.label}: network error`)
+      }
+    }
+    setBulkSaving(false)
+    if (errors.length === 0) {
+      setDraftValues({})
+      setBulkMessage("")
+      refreshAll()
+    } else {
+      setBulkMessage(`Updated ${saved}/${deltas.length}: ${errors.join("; ")}`)
+      refreshAll()
     }
   }
 
@@ -424,19 +577,120 @@ export default function StockManagementPage() {
 
         {tab === "levels" ? (
           <>
-            <div className="px-5 py-2.5 border-b border-gray-100 flex items-center gap-2">
-              {(["all", "ok", "low", "out"] as const).map((f) => (
-                <button key={f} onClick={() => setStatusFilter(f)} className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${statusFilter === f ? "bg-[var(--primary)] text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
-                  {f === "all" ? "All" : f === "ok" ? "In Stock" : f === "low" ? "Low" : "Out"}
-                </button>
-              ))}
-              <span className="ml-auto text-xs text-gray-500">{rows.length} of {products.length} products</span>
+<div className="px-5 py-2.5 border-b border-gray-100 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                {(["all", "ok", "low", "out"] as const).map((f) => (
+                  <button key={f} onClick={() => setStatusFilter(f)} className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${statusFilter === f ? "bg-[var(--primary)] text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                    {f === "all" ? "All" : f === "ok" ? "In Stock" : f === "low" ? "Low" : "Out"}
+                  </button>
+                ))}
+                <div className="flex rounded-lg bg-gray-100 p-1 ml-2">
+                  <button onClick={() => setGroupBy("product")} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${groupBy === "product" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>By Product</button>
+                  <button onClick={() => setGroupBy("size")} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${groupBy === "size" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>By Size</button>
+                </div>
+              </div>
+              <span className="text-xs text-gray-500">{rows.length} of {products.length} products{groupBy === "size" ? ` · ${sizeGroups.length} sizes` : ""}</span>
             </div>
+
+            {dirtyCount > 0 && (
+              <div className="px-5 py-2.5 bg-emerald-50 border-b border-emerald-200 flex flex-wrap items-center justify-between gap-3">
+                <span className="text-xs font-medium text-emerald-800">
+                  <Layers className="h-3.5 w-3.5 inline-block mr-1 -mt-0.5" />
+                  {dirtyCount} stock value{dirtyCount !== 1 ? "s" : ""} edited — inline grid (like Excel). Click Save to apply.
+                </span>
+                <div className="flex items-center gap-2">
+                  <button onClick={resetDrafts} className="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-white transition-colors">Reset</button>
+                  <button onClick={handleBulkSave} disabled={bulkSaving} className="px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-60 transition-colors">
+                    {bulkSaving ? "Saving…" : `Save All Changes (${dirtyCount})`}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {balancesLoading ? (
               <div className="py-16 text-center text-gray-400 text-sm">Loading stock levels…</div>
             ) : rows.length === 0 ? (
               <div className="py-16 text-center text-gray-400 text-sm">No products match</div>
+            ) : groupBy === "size" ? (
+              <div className="p-3 space-y-3">
+                {sizeGroups.length === 0 ? (
+                  <div className="py-10 text-center text-gray-400 text-sm">No variations to group by size</div>
+                ) : (
+                  sizeGroups.map((group, gi) => {
+                    const collapsed = !expandedSizeGroups.has(group.size)
+                    const groupBal = group.items.reduce((s, it) => s + (varBalMap.get(it.variation.id!)?.balance ?? 0), 0)
+                    return (
+                      <div key={group.size} className="rounded-xl border border-gray-200 overflow-hidden">
+                        <div className="flex items-center justify-between gap-3 px-4 py-3 bg-gradient-to-r from-[var(--primary)]/10 to-[var(--primary)]/5 border-b border-gray-200 cursor-pointer select-none" onClick={() => toggleSizeCollapse(group.size)}>
+                          <div className="flex items-center gap-3 min-w-0">
+                            <ChevronDown className={`h-4 w-4 text-gray-400 shrink-0 transition-transform ${collapsed ? "-rotate-90" : ""}`} />
+                            <span className="text-sm font-bold text-gray-800">Size {group.size}</span>
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-white text-gray-600 border border-gray-200">
+                              {group.items.length} vari{group.items.length === 1 ? "ant" : "ants"}
+                            </span>
+                          </div>
+                          <div className="text-sm font-bold text-red-600 whitespace-nowrap">Total Qty: {groupBal.toLocaleString("en-IN")}</div>
+                        </div>
+                        {!collapsed && (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="bg-gray-50 border-b border-gray-200">
+                                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase">Product</th>
+                                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase">Component</th>
+                                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase">Color</th>
+                                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase">SKU</th>
+                                  <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-600 uppercase">Min</th>
+                                  <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-600 uppercase">Current</th>
+                                  <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-600 uppercase">Status</th>
+                                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-600 uppercase">Action</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {group.items.map((it, idx) => {
+                                  const v = it.variation
+                                  const vb = varBalMap.get(v.id!)?.balance ?? 0
+                                  const vm = Number(v.minStock ?? 0) || 0
+                                  const vs = statusOf(vb, vm)
+                                  const key = keyForVariation(v.id)
+                                  return (
+                                    <tr key={v.id} className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${idx % 2 === 1 ? "bg-gray-50/30" : ""}`}>
+                                      <td className="px-4 py-2.5 font-medium text-gray-800">{it.product.name}</td>
+                                      <td className="px-4 py-2.5 text-gray-600">{v.componentName || v.variantType || "-"}</td>
+                                      <td className="px-4 py-2.5 text-gray-600">{v.color || <span className="text-gray-300">-</span>}</td>
+                                      <td className="px-4 py-2.5 text-gray-500 font-mono text-xs">{v.sku || "-"}</td>
+                                      <td className="px-4 py-2.5 text-center">
+                                        <button onClick={() => openMin("variation", v.id!, `${it.product.name} — ${[v.componentName, v.color, v.size].filter(Boolean).join(" · ")}`, v.minStock)} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-gray-500 hover:bg-gray-100">
+                                          {vm} <Pencil className="h-3 w-3" />
+                                        </button>
+                                      </td>
+                                      <td className="px-4 py-2.5 text-center">
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          value={draftValue(key)}
+                                          onChange={(e) => setDraft(key, e.target.value)}
+                                          className={`w-20 h-8 px-2 rounded-lg border text-center text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)] transition-colors ${isDirty(key) ? "border-emerald-400 bg-emerald-50 text-emerald-700 font-semibold" : "border-gray-300"}`}
+                                        />
+                                      </td>
+                                      <td className="px-4 py-2.5 text-center">{statusBadge(vs)}</td>
+                                      <td className="px-4 py-2.5 text-right">
+                                        <button onClick={() => openAdjust(it.product, v)} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-medium hover:bg-emerald-100" title="Adjust variation stock">
+                                          <ArrowDownToLine className="h-3 w-3" /> Adjust
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  )
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
+                )}
+              </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -481,7 +735,19 @@ export default function StockManagementPage() {
                               {r.minStock} <Pencil className="h-3 w-3" />
                             </button>
                           </td>
-                          <td className="px-4 py-3 text-center">{balanceChip(r.balance)}</td>
+                          <td className="px-4 py-3 text-center">
+                            {!productHasVars(pid) ? (
+                              <input
+                                type="number"
+                                min={0}
+                                value={draftValue(keyForProduct(pid))}
+                                onChange={(e) => setDraft(keyForProduct(pid), e.target.value)}
+                                className={`w-24 h-9 px-2 rounded-lg border text-center text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)] transition-colors ${isDirty(keyForProduct(pid)) ? "border-emerald-400 bg-emerald-50 text-emerald-700 font-semibold" : "border-gray-300"}`}
+                              />
+                            ) : (
+                              balanceChip(r.balance)
+                            )}
+                          </td>
                           <td className="px-4 py-3 text-center">{statusBadge(r.status)}</td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex items-center justify-end gap-1">
@@ -514,7 +780,15 @@ export default function StockManagementPage() {
                                   {vm} <Pencil className="h-3 w-3" />
                                 </button>
                               </td>
-                              <td className="px-4 py-2.5 text-center">{balanceChip(vb)}</td>
+                              <td className="px-4 py-2.5 text-center">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={draftValue(keyForVariation(v.id))}
+                                  onChange={(e) => setDraft(keyForVariation(v.id), e.target.value)}
+                                  className={`w-24 h-8 px-2 rounded-lg border text-center text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)] transition-colors ${isDirty(keyForVariation(v.id)) ? "border-emerald-400 bg-emerald-50 text-emerald-700 font-semibold" : "border-gray-300"}`}
+                                />
+                              </td>
                               <td className="px-4 py-2.5 text-center">{statusBadge(vs)}</td>
                               <td className="px-4 py-2.5 text-right">
                                 <button onClick={() => openAdjust(r.product, v)} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-medium hover:bg-emerald-100" title="Adjust variation stock">
@@ -534,6 +808,7 @@ export default function StockManagementPage() {
             <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between text-sm text-gray-500">
               <span>Showing {rows.length} of {products.length} products</span>
               {adjustMessage && <span className="text-xs text-red-600">{adjustMessage}</span>}
+              {bulkMessage && <span className={`text-xs ${bulkMessage.startsWith("Updated") ? "text-emerald-600" : "text-red-600"}`}>{bulkMessage}</span>}
             </div>
           </>
         ) : (

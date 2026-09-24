@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react"
-import { Loader2, Printer, CreditCard, Banknote, Building2, X, FileText, Tag, History } from "lucide-react"
+import { Loader2, Printer, CreditCard, Banknote, Building2, X, FileText, Tag, History, ChevronDown } from "lucide-react"
 import { useApi } from "@/lib/use-api"
 import { useCurrency } from "@/lib/currency-context"
 import { useSchoolInfo } from "@/lib/use-school-info"
@@ -164,6 +164,7 @@ export default function CollectFeesModal({
   const [studentDiscounts, setStudentDiscounts] = useState<StudentDiscount[]>([])
   const [useDiscount, setUseDiscount] = useState(true)
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
   const docFrameRef = useRef<HTMLIFrameElement>(null)
 
   useEffect(() => {
@@ -338,6 +339,38 @@ export default function CollectFeesModal({
     return Array.from(map.values())
   }, [pendingFees, activeDiscount, selectedFeeIds, useDiscount])
 
+  const groupedFees = useMemo(() => {
+    const map = new Map<string, AppliedFee[]>()
+    for (const f of resolvedFees) {
+      const key = f.groupName || "Unassigned"
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(f)
+    }
+    return Array.from(map.entries()).map(([name, fees]) => ({ name, fees }))
+  }, [resolvedFees])
+
+  const toggleGroupCollapse = (name: string) => {
+    setCollapsedGroups((prev) => ({ ...prev, [name]: !prev[name] }))
+  }
+
+  const groupSelectables = (fees: AppliedFee[]) => fees.filter((f) => f.balance > 0)
+
+  const allGroupSelected = (fees: AppliedFee[]) => {
+    const sel = groupSelectables(fees)
+    return sel.length > 0 && sel.every((f) => selectedFeeIds.includes(f.id))
+  }
+
+  const toggleGroupSelection = (fees: AppliedFee[]) => {
+    const sel = groupSelectables(fees)
+    setSelectedFeeIds((prev) => {
+      if (sel.length > 0 && sel.every((f) => prev.includes(f.id))) {
+        return prev.filter((id) => !sel.some((f) => f.id === id))
+      }
+      const kept = prev.filter((id) => !sel.some((f) => f.id === id))
+      return [...kept, ...sel.map((f) => f.id)]
+    })
+  }
+
   const approvalNote = (fees: AppliedFee[]) => {
     if (!activeDiscount || !fees.some((f) => f.hasAppliedNew)) return payment.note || ""
     const d = new Date()
@@ -353,6 +386,19 @@ export default function CollectFeesModal({
     setSelectedFeeIds((prev) =>
       prev.includes(feeId) ? prev.filter((id) => id !== feeId) : [...prev, feeId]
     )
+  }
+
+  const allPendingSelected =
+    pendingFees.length > 0 && pendingFees.every((f) => selectedFeeIds.includes(f.id))
+
+  const toggleSelectAllPending = () => {
+    setSelectedFeeIds((prev) => {
+      if (prev.length > 0 && pendingFees.every((f) => prev.includes(f.id))) {
+        return prev.filter((id) => !pendingFees.some((f) => f.id === id))
+      }
+      const kept = prev.filter((id) => !pendingFees.some((f) => f.id === id))
+      return [...kept, ...pendingFees.map((f) => f.id)]
+    })
   }
 
   const selectedFees = resolvedFees.filter((f) => selectedFeeIds.includes(f.id))
@@ -585,49 +631,84 @@ export default function CollectFeesModal({
                 </div>
               ) : (
                 <>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="bg-gray-100/80">
-                          <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                            <input
-                              type="checkbox"
-                              checked={selectedFeeIds.length === pendingFees.length}
-                              onChange={() =>
-                                setSelectedFeeIds(selectedFeeIds.length === pendingFees.length ? [] : pendingFees.map((f) => f.id))
-                              }
-                              className="accent-[var(--primary)]"
-                            />
-                          </th>
-                          <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wider">Fee Type</th>
-                          <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wider">Amount</th>
-                          <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wider">Balance</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {resolvedFees.map((fee) => {
-                          const isSelected = selectedFeeIds.includes(fee.id)
-                          return (
-                            <tr key={fee.id} className={isSelected ? "bg-[var(--primary-light)]" : "bg-white"}>
-                              <td className="px-3 py-2.5">
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  onChange={() => toggleFeeSelection(fee.id)}
-                                  className="accent-[var(--primary)]"
-                                />
-                              </td>
-                              <td className="px-3 py-2.5">
-                                <div className="font-medium text-gray-800">{fee.feeTypeName}</div>
-                                <div className="text-xs text-gray-500">{fee.groupName}</div>
-                              </td>
-                              <td className="px-3 py-2.5 text-right text-gray-800">{money(symbol, fee.amount)}</td>
-                              <td className={`px-3 py-2.5 text-right font-medium ${fee.rawBalance > 0 ? "text-red-600" : "text-green-600"}`}>{money(symbol, fee.rawBalance)}</td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
+                  <div className="space-y-3">
+                    {groupedFees.map((group) => {
+                      const collapsed = !!collapsedGroups[group.name]
+                      const groupBalance = group.fees.reduce((s, f) => s + f.balance, 0)
+                      return (
+                        <div key={group.name} className="rounded-xl border border-gray-200 overflow-hidden">
+                          <div
+                            className="flex items-center justify-between gap-3 px-4 py-3 bg-gradient-to-r from-[var(--primary)]/10 to-[var(--primary)]/5 border-b border-gray-200 cursor-pointer select-none"
+                            onClick={() => toggleGroupCollapse(group.name)}
+                          >
+                            <div className="flex items-center gap-3 min-w-0" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={allGroupSelected(group.fees)}
+                                onChange={() => toggleGroupSelection(group.fees)}
+                                title={allGroupSelected(group.fees) ? "Unselect all in this group" : "Select all in this group"}
+                                className="w-4 h-4 rounded border-gray-300 text-[var(--primary)] focus:ring-[var(--primary)] cursor-pointer"
+                              />
+                              <ChevronDown className={`h-4 w-4 text-gray-400 shrink-0 transition-transform ${collapsed ? "-rotate-90" : ""}`} />
+                              <span className="text-sm font-bold text-gray-800 truncate">{group.name}</span>
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-white text-gray-600 border border-gray-200">
+                                {group.fees.length} fee{group.fees.length !== 1 ? "s" : ""}
+                              </span>
+                            </div>
+                            <div className="text-sm font-bold text-red-600 whitespace-nowrap">
+                              Amount: {money(symbol, groupBalance)}
+                            </div>
+                          </div>
+                          {!collapsed && (
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-sm">
+                                <thead>
+                                  <tr className="bg-gray-50 border-b border-gray-200">
+                                    <th className="text-left px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase w-8">#</th>
+                                    <th className="text-left px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Fee Type</th>
+                                    <th className="text-right px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Amount</th>
+                                    <th className="text-right px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Balance</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {group.fees.map((fee, idx) => {
+                                    const isSelected = selectedFeeIds.includes(fee.id)
+                                    return (
+                                      <tr key={fee.id} className={`border-b border-gray-100 hover:bg-[var(--primary-light)]/20 transition-colors ${idx % 2 === 1 ? "bg-gray-50/30" : ""} ${isSelected ? "bg-[var(--primary-light)]" : ""}`}>
+                                        <td className="px-3 py-2.5">
+                                          <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            onChange={() => toggleFeeSelection(fee.id)}
+                                            className="w-4 h-4 rounded border-gray-300 text-[var(--primary)] focus:ring-[var(--primary)]"
+                                          />
+                                        </td>
+                                        <td className="px-3 py-2.5 font-medium text-gray-800">{fee.feeTypeName}</td>
+                                        <td className="px-3 py-2.5 text-right text-gray-800">{money(symbol, fee.amount)}</td>
+                                        <td className={`px-3 py-2.5 text-right font-medium ${fee.rawBalance > 0 ? "text-red-600" : "text-green-600"}`}>{money(symbol, fee.rawBalance)}</td>
+                                      </tr>
+                                    )
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs text-gray-600">
+                    <input
+                      type="checkbox"
+                      checked={allPendingSelected}
+                      onChange={toggleSelectAllPending}
+                      className="w-4 h-4 rounded border-gray-300 text-[var(--primary)] focus:ring-[var(--primary)]"
+                    />
+                    <span>
+                      {allPendingSelected ? "Unselect all fees" : "Select all fees"}
+                    </span>
+                    <span className="text-gray-400">({selectedFeeIds.length}/{pendingFees.length})</span>
                   </div>
 
                   {activeDiscount && selectedFeeIds.length > 0 && (

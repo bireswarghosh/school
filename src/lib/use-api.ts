@@ -1,6 +1,14 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { fetchCached, invalidate } from "@/lib/fetch-cache"
+
+const notifyMenuChange = (endpoint: string) => {
+  if (endpoint.includes("sidebar-menu")) {
+    if (typeof window !== "undefined")
+      window.dispatchEvent(new Event("sidebar-visibility-changed"))
+  }
+}
 
 export function useApi<T extends { id?: number }>(endpoint: string) {
   const [data, setData] = useState<T[]>([])
@@ -10,9 +18,7 @@ export function useApi<T extends { id?: number }>(endpoint: string) {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true)
-      const res = await fetch(endpoint)
-      if (!res.ok) throw new Error(`Failed to fetch from ${endpoint}`)
-      const result = await res.json()
+      const result = await fetchCached<T[]>(endpoint)
       setData(result)
       setError(null)
     } catch (e: any) {
@@ -36,6 +42,7 @@ export function useApi<T extends { id?: number }>(endpoint: string) {
     }
     const saved = await res.json()
     setData((prev) => [...prev, saved])
+    invalidate(endpoint)
     return saved
   }
 
@@ -51,6 +58,7 @@ export function useApi<T extends { id?: number }>(endpoint: string) {
     }
     const saved = await res.json()
     setData((prev) => prev.map((d) => (d.id === id ? saved : d)))
+    invalidate(endpoint)
     return saved
   }
 
@@ -61,6 +69,7 @@ export function useApi<T extends { id?: number }>(endpoint: string) {
       throw new Error(err.error || "Failed to delete")
     }
     setData((prev) => prev.filter((d) => d.id !== id))
+    invalidate(endpoint)
   }
 
   return { data, loading, error, add, update, remove, refetch: fetchData }

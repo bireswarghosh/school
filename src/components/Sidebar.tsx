@@ -140,7 +140,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
   const [visLoaded, setVisLoaded] = useState(false)
 
   const fetchVis = useCallback(() => {
-    fetch("/api/system-setting/sidebar-menu")
+    fetch("/api/system-setting/sidebar-menu", { cache: "force-cache" })
       .then((r) => r.json())
       .then((data: { id: number; label: string; parent_id: number | null; is_visible: boolean }[]) => {
         const map: Record<string, boolean> = {}
@@ -160,7 +160,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
       .catch(() => setVisLoaded(true))
   }, [])
 
-  useEffect(() => { fetchVis() }, [fetchVis, pathname])
+  useEffect(() => { fetchVis() }, [fetchVis])
 
   useEffect(() => {
     const handler = () => fetchVis()
