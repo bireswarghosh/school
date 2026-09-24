@@ -102,6 +102,16 @@ const num = (v: unknown) => {
   return isNaN(n) ? 0 : n
 }
 
+const MONTH_NAMES = ["march", "february", "january", "december", "november", "october", "september", "august", "july", "june", "may", "april"]
+const MONTH_PRIORITY: Record<string, number> = {}
+MONTH_NAMES.forEach((m, i) => { MONTH_PRIORITY[m] = i + 1 })
+
+const monthPriority = (name: string) => {
+  const n = (name || "").toLowerCase()
+  for (const m of MONTH_NAMES) if (n.includes(m)) return MONTH_PRIORITY[m]
+  return 0
+}
+
 const money = (symbol: string, v: number) => `${symbol}${v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 const round2 = (n: number) => Math.round(n * 100) / 100
@@ -223,7 +233,14 @@ export default function CollectFeesModal({
           const feeTypeName = f.feesType ? (feeTypes[Number(f.feesType)]?.name ?? `Type ${f.feesType}`) : "-"
           return { ...f, feeTypeName, groupName, amount, discount, fine, paid, balance, rawBalance }
         })
-        .filter((r) => r.balance > 0 && (groupSet.size === 0 || groupSet.has(Number(r.feesGroup)))),
+        .filter((r) => r.balance > 0 && (groupSet.size === 0 || groupSet.has(Number(r.feesGroup))))
+        .sort((a, b) => {
+          const pa = monthPriority(a.feeTypeName)
+          const pb = monthPriority(b.feeTypeName)
+          if (pa && pb) return pa - pb
+          if (pa || pb) return pa ? -1 : 1
+          return 0
+        }),
     [fees, feeGroups, feeTypes, groupSet]
   )
   const pendingCount = pendingFees.length

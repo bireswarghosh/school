@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { handle, requireRole, requireStudent, requireStaff, getParentKids } from "@/lib/my-api"
 import { query } from "@/lib/db"
+import { getFeeLedger, summarizeFeeRows } from "@/lib/fee-pay"
 
 function today() {
   return new Date().toISOString().slice(0, 10)
@@ -66,18 +67,6 @@ export const GET = handle(async (req: NextRequest, ctx) => {
         [String(student.id)]
       ),
       query(
-        `SELECT fm.amount, fm.due_date AS "dueDate", ft.name AS "feesType"
-         FROM fees_masters fm LEFT JOIN fees_types ft ON ft.id = fm.fees_type_id
-         WHERE fm.class_id = $1 AND fm.status = 'Active' ORDER BY fm.id`,
-        [student.class_id]
-      ),
-      query(
-        `SELECT fp.amount, fp.paid_amount AS "paidAmount", fp.status, ft.name AS "feesType"
-         FROM fees_payments fp LEFT JOIN fees_types ft ON ft.id = fp.fees_type_id
-         WHERE fp.student_id = $1 ORDER BY fp.id DESC`,
-        [student.id]
-      ),
-      query(
         `SELECT DISTINCT ct.teacher_name AS "name"
          FROM class_teachers ct WHERE ct.class_id = $1 AND ct.section_id = $2`,
         [student.class_id, student.section_id]
@@ -117,13 +106,12 @@ export const GET = handle(async (req: NextRequest, ctx) => {
     const noticeRes = data[7]
     const timetableRes = data[8]
     const libraryRes = data[9]
-    const feeMasterRes = data[10]
-    const feePayRes = data[11]
-    const teacherRes = data[12]
-    const staffRes = data[13]
-    const studentsCount = data[14]
-    const visitorRes = data[15]
-    const salesRes = data[16]
+    const teacherRes = data[10]
+    const staffRes = data[11]
+    const studentsCount = data[12]
+    const visitorRes = data[13]
+    const salesRes = data[14]
+    const feeLedger = await getFeeLedger(student)
 
     const className = classRes.rows[0]?.name || null
     const sectionName = sectionRes.rows[0]?.name || null
@@ -149,10 +137,7 @@ export const GET = handle(async (req: NextRequest, ctx) => {
       subject, percentage: v.max > 0 ? Math.round((v.marks / v.max) * 100) : 0,
     }))
 
-    const totalDue = feeMasterRes.rows.reduce((s: number, m: any) => {
-      const paid = feePayRes.rows.filter((p: any) => ["paid", "success"].includes(String(p.status || "").toLowerCase()) && p.feesType === m.feesType).reduce((ps: number, p: any) => ps + Number(p.paidAmount || p.amount || 0), 0)
-      return s + Math.max(0, Number(m.amount) - paid)
-    }, 0)
+    const totalDue = Math.round(feeLedger.summary.totalDue)
 
     const allTeacherNames = new Set<string>()
     teacherRes.rows.forEach((r: any) => allTeacherNames.add(r.name))
@@ -209,20 +194,24 @@ export const GET = handle(async (req: NextRequest, ctx) => {
       )
       hwTotal = hw.rows[0]?.total ?? 0
 
-      const masters = await query(
-        `SELECT fm.class_id AS "classId", fm.fees_type_id AS "feesTypeId", SUM(fm.amount)::float AS amount, ft.name AS "feesType"
-         FROM fees_masters fm JOIN students s ON s.class_id = fm.class_id
-         LEFT JOIN fees_types ft ON ft.id = fm.fees_type_id
-         WHERE s.id IN (${ids}) AND fm.status = 'Active' GROUP BY fm.class_id, fm.fees_type_id, ft.name`
+      const feeRes = await query(
+        `SELECT fp.student_id AS "studentId", fp.fees_type_id AS "feesTypeId", fp.amount,
+           fp.discount_amount AS "discountAmount", fp.paid_amount AS "paidAmount", fp.status
+         FROM fees_payments fp
+         WHERE fp.student_id IN (${ids})`
       )
-      const paid = await query(
-        `SELECT fees_type_id AS "feesTypeId", SUM(COALESCE(paid_amount, amount))::float AS paid
-         FROM fees_payments WHERE student_id IN (${ids}) GROUP BY fees_type_id`
-      )
-      const paidMap = new Map(paid.rows.map((p) => [Number(p.feesTypeId), Number(p.paid)]))
-      feeBalance = masters.rows.reduce((s, m) => s + Math.max(0, Number(m.amount) - (paidMap.get(Number(m.feesTypeId)) || 0)), 0)
-      totalPaid = paid.rows.reduce((s, p) => s + Number(p.paid || 0), 0)
-      totalDue = masters.rows.reduce((s, m) => s + Number(m.amount || 0), 0)
+      const byStudent = new Map<number, any[]>()
+      for (const r of feeRes.rows as any[]) {
+        const k = Number(r.studentId)
+        if (!byStudent.has(k)) byStudent.set(k, [])
+        byStudent.get(k)!.push(r)
+      }
+      for (const [, rows] of byStudent) {
+        const t = summarizeFeeRows(rows)
+        feeBalance += t.balance
+        totalPaid += t.paid
+        totalDue += t.gross
+      }
 
       for (const kid of kids) {
         const att = await query(

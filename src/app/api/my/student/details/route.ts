@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { handle, requireRole, requireStudent } from "@/lib/my-api"
 import { query } from "@/lib/db"
+import { getFeeLedger } from "@/lib/fee-pay"
 
 function asNumber(v: any): number | null {
   const n = Number(v)
@@ -11,7 +12,7 @@ export const GET = handle(async (req: NextRequest, ctx) => {
   requireRole(ctx, ["student"])
   const s = await requireStudent(ctx)
 
-  const [cls, sec, guardians, attendance, fees, exams, homework] = await Promise.all([
+  const [cls, sec, guardians, attendance, exams, homework] = await Promise.all([
     s.class_id ? query(`SELECT name FROM classes WHERE id = $1`, [s.class_id]) : Promise.resolve({ rows: [] }),
     s.section_id ? query(`SELECT name FROM sections WHERE id = $1`, [s.section_id]) : Promise.resolve({ rows: [] }),
     query(
@@ -28,16 +29,6 @@ export const GET = handle(async (req: NextRequest, ctx) => {
        WHERE sa.student_id = $1
        GROUP BY at.type`,
       [s.id]
-    ),
-    query(
-      `SELECT fm.id, fm.amount, fm.due_date AS "dueDate", fm.status,
-         ft.name AS "feesType", fg.name AS "feesGroup"
-       FROM fees_masters fm
-       LEFT JOIN fees_types ft ON ft.id = fm.fees_type_id
-       LEFT JOIN fees_groups fg ON fg.id = fm.fees_group_id
-       WHERE fm.class_id = $1 AND fm.status = 'Active'
-       ORDER BY fm.id`,
-      [s.class_id]
     ),
     query(
       `SELECT em.exam_id AS "examId", e.name AS "examName", e.publish_result AS "published",
@@ -64,14 +55,17 @@ export const GET = handle(async (req: NextRequest, ctx) => {
   }
   const attendanceTotal = attendance.rows.reduce((sum: number, r: any) => sum + r.total, 0)
 
-  const dues = fees.rows.map((m: any) => ({
-    masterId: Number(m.id),
-    feesType: m.feesType,
-    feesGroup: m.feesGroup,
-    amount: Number(m.amount),
-    dueDate: m.dueDate,
+  const feeLedger = await getFeeLedger(s)
+  const dues = feeLedger.dues.map((d: any) => ({
+    feesTypeId: Number(d.feesTypeId),
+    feesType: d.feesType,
+    feesGroup: d.feesGroup,
+    amount: Number(d.amount),
+    paidAmount: Number(d.paidAmount),
+    balance: Number(d.balance),
+    dueDate: d.dueDate,
   }))
-  const totalDue = dues.reduce((sum: number, d: any) => sum + d.amount, 0)
+  const totalDue = Math.round(feeLedger.summary.totalDue)
 
   const results = exams.rows
     .filter((r: any) => r.published)

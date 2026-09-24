@@ -200,10 +200,10 @@ export default function PortalFees() {
     return order.amount ?? 0
   }
 
-  const pay = async (masterId: number) => {
-    const due = data?.dues?.find((d: any) => d.masterId === masterId)
+  const pay = async (feesTypeId: number) => {
+    const due = data?.dues?.find((d: any) => d.feesTypeId === feesTypeId)
     if (!due || Number(due.balance) <= 0) return
-    setPayingId(masterId)
+    setPayingId(feesTypeId)
     setError("")
     setPaidMsg("")
     try {
@@ -213,7 +213,7 @@ export default function PortalFees() {
         setPayingId(null)
         return
       }
-      const amount = await runOrder({ masterId: due.masterId, feesTypeId: due.feesTypeId, amount: freshBalance, gateway })
+      const amount = await runOrder({ feesTypeId: due.feesTypeId, amount: freshBalance, gateway })
       setPaidMsg(`Payment of ${symbol}${amount.toLocaleString("en-IN")} completed successfully`)
       await load()
     } catch (e: any) {
@@ -236,7 +236,7 @@ export default function PortalFees() {
         setPayingGroup(null)
         return
       }
-      const amount = await runOrder({ masterIds: heads.map((h: any) => h.masterId), feesTypeIds: heads.map((h: any) => h.feesTypeId), gateway })
+      const amount = await runOrder({ feesTypeIds: heads.map((h: any) => h.feesTypeId), gateway })
       setPaidMsg(`Payment of ${symbol}${amount.toLocaleString("en-IN")} completed successfully`)
       await load()
     } catch (e: any) {
@@ -485,7 +485,7 @@ export default function PortalFees() {
                             </thead>
                             <tbody className="divide-y divide-[var(--border)]">
                               {group.dues.map((d: any) => (
-                                <tr key={d.masterId}>
+                                <tr key={d.feesTypeId}>
                                   <td className="px-5 pl-12 py-2.5 font-medium text-[var(--foreground)]">{d.feesType}</td>
                                   <td className="px-5 py-2.5 text-[var(--foreground)]">{symbol}{Number(d.amount).toLocaleString("en-IN")}</td>
                                   <td className="px-5 py-2.5 text-[var(--foreground)]">{symbol}{Number(d.paidAmount).toLocaleString("en-IN")}</td>
@@ -500,11 +500,11 @@ export default function PortalFees() {
                                   <td className="px-5 py-2.5">
                                     {d.balance > 0 && (
                                       <button
-                                        onClick={() => pay(d.masterId)}
-                                        disabled={payingId === d.masterId}
+                                        onClick={() => pay(d.feesTypeId)}
+                                        disabled={payingId === d.feesTypeId}
                                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--primary)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-60"
                                       >
-                                        {payingId === d.masterId && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                                        {payingId === d.feesTypeId && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                                         Pay {symbol}{Number(d.balance).toLocaleString("en-IN")}
                                       </button>
                                     )}

@@ -35,17 +35,12 @@ export const POST = handle(async (req: NextRequest, ctx) => {
   const studentId = body.studentId ? Number(body.studentId) : undefined
   const payAll = Boolean(body.payAll)
   const singleRaw = body.feesTypeId ? Number(body.feesTypeId) : 0
-  const singleMasterRaw = body.masterId ? Number(body.masterId) : (body.feesMasterId ? Number(body.feesMasterId) : 0)
   const feesTypeIds = (Array.isArray(body.feesTypeIds) ? (body.feesTypeIds as any[]) : [])
     .map(Number)
     .filter((n) => Number.isFinite(n) && n > 0)
   if (Number.isFinite(singleRaw) && singleRaw > 0) feesTypeIds.push(singleRaw)
-  const masterIds = (Array.isArray(body.masterIds) ? (body.masterIds as any[]) : Array.isArray(body.feesMasterIds) ? (body.feesMasterIds as any[]) : [])
-    .map(Number)
-    .filter((n) => Number.isFinite(n) && n > 0)
-  if (Number.isFinite(singleMasterRaw) && singleMasterRaw > 0) masterIds.push(singleMasterRaw)
 
-  if (!payAll && feesTypeIds.length === 0 && masterIds.length === 0) {
+  if (!payAll && feesTypeIds.length === 0) {
     throw new ApiError(400, "feesTypeId is required")
   }
 
@@ -71,24 +66,20 @@ export const POST = handle(async (req: NextRequest, ctx) => {
       }
       return h
     })
-  // Prefer masterId when provided (avoids double-counting duplicate fee types)
-  const hasMasterIds = masterIds.length > 0
+  // Prefer feesTypeId when provided — heads are keyed by fee type in the ledger.
   const selected = payAll
     ? heads
-    : hasMasterIds
-    ? heads.filter((h: any) => masterIds.includes(Number(h.masterId)) || (Array.isArray(h.masterIds) && h.masterIds.some((id: number) => masterIds.includes(Number(id)))))
     : heads.filter((h: any) => feesTypeIds.includes(Number(h.feesTypeId)))
   if (selected.length === 0) throw new ApiError(400, "No pending fee balance selected")
   const total = selected.reduce((s: number, h: any) => s + Number(h.balance), 0)
 
   const wantedSet = selected
-    .map((h: any) => hasMasterIds ? Number(h.masterId) : Number(h.feesTypeId))
+    .map((h: any) => Number(h.feesTypeId))
     .sort((a, b) => a - b)
     .join(",")
 
-  // Purge ALL stale Pending rows for these fee types/masters across ALL gateways.
+  // Purge ALL stale Pending rows for these fee types across ALL gateways.
   const wantedIds = selected.map((h: any) => Number(h.feesTypeId))
-  const wantedMasterIds = selected.map((h: any) => Number(h.masterId))
   if (wantedIds.length > 0) {
     await query(
       `DELETE FROM fees_payments

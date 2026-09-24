@@ -56,78 +56,173 @@ export async function paidForType(studentId: number, feesTypeId: number): Promis
   return Number(res.rows[0]?.paid || 0)
 }
 
+function statusKey(v: any): string {
+  return String(v || "").toLowerCase()
+}
+
+const PAID_STATUSES = new Set(["paid", "success"])
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
+}
+
+// Aggregate a student's fees_payments rows into per-fee-type dues.
+//
+// fees_payments is the per-student fee ledger: the school assigns a fee head by
+// inserting an 'Unpaid' row (amount = the assigned amount). Paid rows are either
+// the same row updated in place (admin cash collection) or a separate row created
+// by the online pay flow (order → verify). To avoid double counting we treat a
+// Paid/Success row as a payment that only covers its own amount - paid_amount
+// (usually zero), while Unpaid/Partial rows are the "assignment" that defines the
+// amount still owed. Pending rows are in-flight payments and add nothing yet.
+export function buildFeeDues(rows: any[], dueByType?: Map<number, string | null>) {
+  const byType = new Map<number, any[]>()
+  for (const r of rows) {
+    const key = Number(r.feesTypeId)
+    if (!byType.has(key)) byType.set(key, [])
+    byType.get(key)!.push(r)
+  }
+
+  const dues: any[] = []
+  for (const [feesTypeId, typeRows] of byType) {
+    const first = typeRows[0]
+    let amount = 0
+    let discount = 0
+    let paid = 0
+    let paidAt: string | null = null
+    for (const r of typeRows) {
+      const st = statusKey(r.status)
+      const amt = Number(r.amount || 0)
+      const paidAmt = Number(r.paidAmount || 0)
+      if (PAID_STATUSES.has(st)) {
+        amount += Math.max(0, amt - paidAmt)
+        paid += paidAmt
+        if (r.paymentDate && (!paidAt || r.paymentDate > paidAt)) paidAt = r.paymentDate
+      } else if (st === "pending") {
+        amount += Math.max(0, amt - paidAmt)
+      } else {
+        amount += amt
+        discount += Number(r.discountAmount || 0)
+        paid += paidAmt
+        if (st === "partial" && r.paymentDate && (!paidAt || r.paymentDate > paidAt)) paidAt = r.paymentDate
+      }
+    }
+    const gross = amount
+    // A head fully paid in place has no unpaid rows left — show the paid amount as its gross for display.
+    if (gross === 0 && paid > 0) amount = paid
+    dues.push({
+      feesTypeId,
+      feesGroupId: first.feesGroupId != null ? Number(first.feesGroupId) : null,
+      feesType: first.feesType || null,
+      feesGroup: first.feesGroup || null,
+      amount: round2(amount),
+      paidAmount: round2(paid),
+      balance: round2(Math.max(0, gross - discount - paid)),
+      dueDate: dueByType?.get(feesTypeId) ?? null,
+      paidOn: paidAt,
+    })
+  }
+
+  dues.sort(
+    (a, b) =>
+      (Number(a.balance) > 0 ? 0 : 1) - (Number(b.balance) > 0 ? 0 : 1) ||
+      a.feesTypeId - b.feesTypeId
+  )
+  return dues
+}
+
+// Totals (gross / paid / balance) for a set of a student's fees_payments rows.
+export function summarizeFeeRows(rows: any[]) {
+  const dues = buildFeeDues(rows)
+  return {
+    gross: round2(dues.reduce((s, d) => s + Number(d.amount), 0)),
+    paid: round2(dues.reduce((s, d) => s + Number(d.paidAmount), 0)),
+    balance: round2(dues.reduce((s, d) => s + Number(d.balance), 0)),
+    pending: dues.filter((d) => Number(d.balance) > 0).length,
+  }
+}
+
+export interface FeeLedgerRow {
+  id: number
+  feesTypeId: number
+  feesType: string | null
+  amount: number
+  discountAmount: number
+  fineAmount: number
+  paidAmount: number
+  paymentMode: string | null
+  paymentMethod: string | null
+  transactionId: string | null
+  paymentDate: string | null
+  status: string | null
+  createdAt: string | null
+}
+
 // Full fee ledger for a student — same shape as GET /api/my/student/fees.
+// Dues come from fees_payments (the fees actually assigned to this student),
+// matching the admin student profile. Class-level fees_masters are only used to
+// resolve the due date for display.
 export async function getFeeLedger(student: any) {
-  const mastersRes = await query(
-    `SELECT fm.id, fm.amount, fm.due_date AS "dueDate", fm.status,
-       ft.name AS "feesType", ft.id AS "feesTypeId", fg.name AS "feesGroup", fg.id AS "feesGroupId"
+  const ledgerRes = await query(
+    `SELECT fp.id, fp.fees_type_id AS "feesTypeId", fp.fees_group_id AS "feesGroupId",
+       fp.amount, fp.discount_amount AS "discountAmount", fp.fine_amount AS "fineAmount",
+       fp.paid_amount AS "paidAmount", fp.payment_mode AS "paymentMode",
+       fp.payment_method AS "paymentMethod", fp.transaction_id AS "transactionId",
+       fp.payment_date AS "paymentDate", fp.status, fp.created_at AS "createdAt",
+       ft.name AS "feesType", fg.name AS "feesGroup"
+     FROM fees_payments fp
+     LEFT JOIN fees_types ft ON ft.id = fp.fees_type_id
+     LEFT JOIN fees_groups fg ON fg.id = fp.fees_group_id
+     WHERE fp.student_id = $1
+     ORDER BY fp.id`,
+    [student.id]
+  )
+  const rows = ledgerRes.rows as any[]
+
+  const dueRes = await query(
+    `SELECT fm.fees_type_id AS "feesTypeId", fm.due_date AS "dueDate"
      FROM fees_masters fm
-     LEFT JOIN fees_types ft ON ft.id = fm.fees_type_id
-     LEFT JOIN fees_groups fg ON fg.id = fm.fees_group_id
      WHERE fm.class_id = $1 AND fm.status = 'Active'
      ORDER BY fm.id`,
     [student.class_id]
   )
+  const dueByType = new Map<number, string | null>()
+  for (const m of dueRes.rows) dueByType.set(Number(m.feesTypeId), m.dueDate ?? null)
 
-  const paidRes = await query(
-    `SELECT fp.id, fp.fees_type_id AS "feesTypeId", fp.amount, fp.discount_amount AS "discountAmount",
-       fp.fine_amount AS "fineAmount", fp.paid_amount AS "paidAmount", fp.payment_mode AS "paymentMode",
-       fp.payment_method AS "paymentMethod", fp.transaction_id AS "transactionId",
-       fp.payment_date AS "paymentDate", fp.status, fp.created_at AS "createdAt"
-     FROM fees_payments fp
-     WHERE fp.student_id = $1 AND LOWER(fp.status) IN ('paid', 'success')
-     ORDER BY fp.payment_date DESC`,
-    [student.id]
+  const dues = buildFeeDues(rows, dueByType)
+  const totalDue = dues.reduce((sum, d) => sum + Number(d.balance), 0)
+  const totalPaid = round2(
+    rows
+      .filter((r) => PAID_STATUSES.has(statusKey(r.status)))
+      .reduce((sum: number, p: any) => sum + Number(p.paidAmount || p.amount || 0), 0)
   )
 
-  const byType = new Map<number, { paid: number; paidAt: string | null; last: any }>()
-  for (const p of paidRes.rows) {
-    const key = Number(p.feesTypeId)
-    const cur = byType.get(key) || { paid: 0, paidAt: null, last: null }
-    cur.paid += Number(p.paidAmount || p.amount || 0)
-    if (p.paymentDate && (!cur.paidAt || p.paymentDate > cur.paidAt)) cur.paidAt = p.paymentDate
-    cur.last = p
-    byType.set(key, cur)
-  }
-
-  // Deduplicate masters by feesTypeId — if same fee type appears multiple times for a class (duplicate master), keep one entry with its amount (don't sum duplicates)
-  const byFeesType = new Map<number, { masters: any[]; first: any }>()
-  for (const m of mastersRes.rows as any[]) {
-    const key = Number(m.feesTypeId)
-    const cur = byFeesType.get(key)
-    if (cur) {
-      cur.masters.push(m)
-    } else {
-      byFeesType.set(key, { masters: [m], first: m })
-    }
-  }
-  const dues = Array.from(byFeesType.values()).map(({ masters, first }) => {
-    const m = first
-    const paid = byType.get(Number(m.feesTypeId))
-    const paidAmount = paid ? paid.paid : 0
-    const amount = Number(m.amount)
-    return {
-      masterId: Number(m.id),
-      feesTypeId: Number(m.feesTypeId),
-      feesGroupId: Number(m.feesGroupId) || null,
-      feesType: m.feesType,
-      feesGroup: m.feesGroup,
-      amount,
-      paidAmount,
-      balance: Math.max(0, amount - paidAmount),
-      dueDate: m.dueDate,
-      paidOn: paid?.paidAt || null,
-      masterIds: masters.map((x: any) => Number(x.id)),
-    }
-  })
-
-  const totalDue = dues.reduce((sum, d) => sum + d.balance, 0)
-  const totalPaid = paidRes.rows.reduce((sum: number, p: any) => sum + Number(p.paidAmount || p.amount || 0), 0)
+  const payments: FeeLedgerRow[] = rows
+    .filter((r) => {
+      const st = statusKey(r.status)
+      return st === "pending" || PAID_STATUSES.has(st)
+    })
+    .sort((a, b) => (b.paymentDate || "").localeCompare(a.paymentDate || "") || Number(b.id) - Number(a.id))
+    .map((r) => ({
+      id: Number(r.id),
+      feesTypeId: Number(r.feesTypeId),
+      feesType: r.feesType || null,
+      amount: Number(r.amount || 0),
+      discountAmount: Number(r.discountAmount || 0),
+      fineAmount: Number(r.fineAmount || 0),
+      paidAmount: Number(r.paidAmount || 0),
+      paymentMode: r.paymentMode,
+      paymentMethod: r.paymentMethod,
+      transactionId: r.transactionId,
+      paymentDate: r.paymentDate,
+      status: r.status,
+      createdAt: r.createdAt,
+    }))
 
   return {
     studentId: Number(student.id),
-    summary: { totalDue, totalPaid, pendingCount: dues.filter((d) => d.balance > 0).length },
+    summary: { totalDue, totalPaid, pendingCount: dues.filter((d) => Number(d.balance) > 0).length },
     dues,
-    payments: paidRes.rows,
+    payments,
   }
 }
