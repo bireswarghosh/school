@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
-import { Search, X, TicketCheck, Printer, Eye } from "lucide-react"
+import { useState, useMemo, useEffect, type ReactNode } from "react"
+import { Search, X, TicketCheck, Printer, Eye, ReceiptText, Wallet, TrendingUp, BadgePercent, Users, GraduationCap, Coins, ChevronLeft, ChevronRight } from "lucide-react"
 import { useApi } from "@/lib/use-api"
 import { useCurrency } from "@/lib/currency-context"
 import { useSchoolInfo } from "@/lib/use-school-info"
@@ -12,12 +12,31 @@ type IncomeHead = {
   name: string
 }
 
+type FeesType = {
+  id: number
+  name: string
+}
+
+type ClassItem = {
+  id: number
+  name: string
+}
+
+type SectionItem = {
+  id: number
+  name: string
+  class_id?: number | null
+}
+
 type IncomeRecord = {
   id: number
   studentId?: number
   feePaymentId?: number | null
   incomeHeadId: number
   incomeHead: string
+  feesTypeId?: number | null
+  classId?: number | null
+  sectionId?: number | null
   name: string
   invoiceNo: string
   date: string
@@ -59,16 +78,31 @@ type EnquiryRecord = {
   regFormNote: string
 }
 
+const PAGE_SIZE = 15
+
 export default function SearchIncomePage() {
   const { symbol } = useCurrency()
   const { data: allIncomes } = useApi<IncomeRecord>("/api/income")
   const { data: incomeHeads } = useApi<IncomeHead>("/api/income/head")
+  const { data: feesTypes } = useApi<FeesType>("/api/fees/fees-type")
+  const { data: classes } = useApi<ClassItem>("/api/academics/class")
+  const { data: sections } = useApi<SectionItem>("/api/academics/section")
   const { data: enquiries } = useApi<EnquiryRecord>("/api/front-office/admission-enquiry")
-  const [dateFrom, setDateFrom] = useState("")
-  const [dateTo, setDateTo] = useState("")
+  const todayStr = (() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+  })()
+  const [dateFrom, setDateFrom] = useState(todayStr)
+  const [dateTo, setDateTo] = useState(todayStr)
   const [searchHead, setSearchHead] = useState("")
+  const [searchFeesType, setSearchFeesType] = useState("")
+  const [searchClass, setSearchClass] = useState("")
+  const [searchSection, setSearchSection] = useState("")
   const [searchText, setSearchText] = useState("")
-  const [searched, setSearched] = useState(false)
+  const [searched, setSearched] = useState(true)
+  const [tab, setTab] = useState<"fees" | "reg">("fees")
+  const [feesPage, setFeesPage] = useState(1)
+  const [regPage, setRegPage] = useState(1)
   const [invoiceRecord, setInvoiceRecord] = useState<EnquiryRecord | null>(null)
   const [viewStudent, setViewStudent] = useState<IncomeGroup | null>(null)
 
@@ -87,6 +121,18 @@ export default function SearchIncomePage() {
       filtered = filtered.filter((inc) => inc.incomeHeadId?.toString() === searchHead)
     }
 
+    if (searchFeesType) {
+      filtered = filtered.filter((inc) => inc.feesTypeId?.toString() === searchFeesType)
+    }
+
+    if (searchClass) {
+      filtered = filtered.filter((inc) => inc.classId?.toString() === searchClass)
+    }
+
+    if (searchSection) {
+      filtered = filtered.filter((inc) => inc.sectionId?.toString() === searchSection)
+    }
+
     if (searchText.trim()) {
       const q = searchText.toLowerCase()
       filtered = filtered.filter(
@@ -98,9 +144,24 @@ export default function SearchIncomePage() {
     }
 
     return filtered
-  }, [allIncomes, dateFrom, dateTo, searchHead, searchText, searched])
+  }, [allIncomes, dateFrom, dateTo, searchHead, searchFeesType, searchClass, searchSection, searchText, searched])
+
+  const classSections = useMemo(() => {
+    if (!searchClass) return sections || []
+    return (sections || []).filter((s) => s.class_id?.toString() === searchClass)
+  }, [sections, searchClass])
+
+  useEffect(() => {
+    setFeesPage(1)
+    setRegPage(1)
+  }, [dateFrom, dateTo, searchHead, searchFeesType, searchClass, searchSection, searchText])
 
   const totalAmount = useMemo(() => results.reduce((sum, inc) => sum + (Number(inc.amount) || 0), 0), [results])
+
+  const totalOriginal = useMemo(() => results.reduce((sum, inc) => sum + (Number(inc.originalAmount) || 0), 0), [results])
+  const totalDiscount = useMemo(() => results.reduce((sum, inc) => sum + (Number(inc.discountAmountTotal) || 0), 0), [results])
+  const studentCount = useMemo(() => new Set(results.map((inc) => inc.studentId).filter(Boolean)).size, [results])
+  const classCount = useMemo(() => new Set(results.map((inc) => inc.classId).filter(Boolean)).size, [results])
 
   const grouped = useMemo<IncomeGroup[]>(() => {
     const map = new Map<string, IncomeRecord[]>()
@@ -129,21 +190,83 @@ export default function SearchIncomePage() {
 
   const totalTxn = useMemo(() => transactions.reduce((sum, e) => sum + (Number(e.regFormAmount) || 0), 0), [transactions])
 
+  const feesPages = Math.max(1, Math.ceil(grouped.length / PAGE_SIZE))
+  const curFeesPage = Math.min(feesPage, feesPages)
+  const feesSlice = grouped.slice((curFeesPage - 1) * PAGE_SIZE, curFeesPage * PAGE_SIZE)
+  const regPages = Math.max(1, Math.ceil(transactions.length / PAGE_SIZE))
+  const curRegPage = Math.min(regPage, regPages)
+  const regSlice = transactions.slice((curRegPage - 1) * PAGE_SIZE, curRegPage * PAGE_SIZE)
+
   const handleReset = () => {
-    setDateFrom("")
-    setDateTo("")
+    setDateFrom(todayStr)
+    setDateTo(todayStr)
     setSearchHead("")
+    setSearchFeesType("")
+    setSearchClass("")
+    setSearchSection("")
     setSearchText("")
-    setSearched(false)
+    setSearched(true)
   }
 
   return (
     <div className="space-y-6">
-      <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-[var(--primary)] to-[var(--primary)]/80 px-6 py-4 shadow-sm">
-        <div className="relative z-10">
-          <h2 className="text-xl font-bold text-white">Search Income</h2>
-          <p className="text-sm text-[var(--primary)]/80 mt-0.5">Income / Search Income</p>
-        </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3">
+        <StatCard
+          label="Income Records"
+          value={results.length.toLocaleString()}
+          sub="Matching entries"
+          icon={<ReceiptText className="h-4 w-4" />}
+          tone="from-orange-500 to-amber-500"
+        />
+        <StatCard
+          label="Total Income"
+          value={`${symbol}${totalAmount.toLocaleString()}`}
+          sub="Collected"
+          icon={<Wallet className="h-4 w-4" />}
+          tone="from-emerald-500 to-teal-500"
+        />
+        <StatCard
+          label="Original Amount"
+          value={`${symbol}${totalOriginal.toLocaleString()}`}
+          sub="Gross before discount"
+          icon={<Coins className="h-4 w-4" />}
+          tone="from-indigo-500 to-blue-500"
+        />
+        <StatCard
+          label="Discount Applied"
+          value={`${symbol}${totalDiscount.toLocaleString()}`}
+          sub="Total discount given"
+          icon={<BadgePercent className="h-4 w-4" />}
+          tone="from-rose-500 to-pink-500"
+        />
+        <StatCard
+          label="Students Paid"
+          value={studentCount.toLocaleString()}
+          sub="Unique students"
+          icon={<Users className="h-4 w-4" />}
+          tone="from-sky-500 to-blue-600"
+        />
+        <StatCard
+          label="Classes Covered"
+          value={classCount.toLocaleString()}
+          sub="Classes in filter"
+          icon={<GraduationCap className="h-4 w-4" />}
+          tone="from-violet-500 to-purple-600"
+        />
+        <StatCard
+          label="Reg Form Purchases"
+          value={transactions.length.toLocaleString()}
+          sub="Form sales"
+          icon={<TicketCheck className="h-4 w-4" />}
+          tone="from-amber-500 to-yellow-500"
+        />
+        <StatCard
+          label="Reg Form Amount"
+          value={`${symbol}${totalTxn.toLocaleString()}`}
+          sub="Total reg form payment"
+          icon={<TrendingUp className="h-4 w-4" />}
+          tone="from-fuchsia-500 to-pink-600"
+        />
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
@@ -169,6 +292,35 @@ export default function SearchIncomePage() {
               {(incomeHeads || []).map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
             </select>
           </div>
+          <div className="space-y-1">
+            <label className="block text-xs font-medium text-gray-600">Fees Type</label>
+            <select value={searchFeesType} onChange={(e) => setSearchFeesType(e.target.value)}
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--primary)]">
+              <option value="">All</option>
+              {(feesTypes || []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="block text-xs font-medium text-gray-600">Class</label>
+            <select
+              value={searchClass}
+              onChange={(e) => {
+                setSearchClass(e.target.value)
+                setSearchSection("")
+              }}
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--primary)]">
+              <option value="">All</option>
+              {(classes || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="block text-xs font-medium text-gray-600">Section</label>
+            <select value={searchSection} onChange={(e) => setSearchSection(e.target.value)}
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--primary)]">
+              <option value="">All</option>
+              {classSections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
           <div className="space-y-1 flex-1 min-w-[200px]">
             <label className="block text-xs font-medium text-gray-600">Search by Income</label>
             <input type="text" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search by name, head, or invoice..."
@@ -189,75 +341,98 @@ export default function SearchIncomePage() {
         </form>
       </div>
 
-      <div className="bg-white rounded-xl border border-amber-200 shadow-sm overflow-hidden">
-        <div className="px-5 py-3 border-b border-amber-100 bg-gradient-to-r from-amber-50 to-yellow-50 flex items-center justify-between flex-wrap gap-2">
-          <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500 text-white"><TicketCheck className="h-4 w-4" /></span>
-            Registration Form Purchase — Payment Transactions
-          </h3>
-          <div className="text-xs text-gray-600">
-            <strong className="text-gray-800">{transactions.length}</strong> purchase{transactions.length === 1 ? "" : "s"}
-            <span className="mx-2 text-gray-300">|</span>
-            Total: <span className="font-bold text-amber-700">{symbol}{totalTxn.toLocaleString()}</span>
-          </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                {["#", "Name", "Class", "Reg Form No", "Payment Date", "Payment Mode", "Reference / Txn ID", `Amount (${symbol})`, "Status", ""].map((h) => (
-                  <th key={h} className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {transactions.length === 0 ? (
-                <tr><td colSpan={10} className="text-center py-8 text-gray-400">No registration form purchases found</td></tr>
-              ) : (
-                transactions.map((e, idx) => {
-                  const ref = e.regFormTransactionId || e.regFormChequeNo || e.regFormBank || ""
-                  return (
-                    <tr key={e.id} className={`border-b border-gray-100 ${idx % 2 === 1 ? "bg-gray-50/50" : ""} hover:bg-gray-50 transition-colors`}>
-                      <td className="px-4 py-3 text-gray-600">{idx + 1}</td>
-                      <td className="px-4 py-3 font-medium text-gray-800">{e.name}</td>
-                      <td className="px-4 py-3 text-gray-600">{e.classVal || "—"}</td>
-                      <td className="px-4 py-3 text-gray-600 font-mono text-xs whitespace-nowrap">{e.regFormNo || "—"}</td>
-                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{e.regFormPaymentDate || "—"}</td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">{e.regFormPaymentMode || "—"}</span>
-                      </td>
-                      <td className="px-4 py-3 text-gray-600 font-mono text-xs">{ref || "—"}</td>
-                      <td className="px-4 py-3 text-gray-800 font-medium">{symbol}{(Number(e.regFormAmount) || 0).toLocaleString()}</td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${e.regFormStatus === "Purchased" ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"}`}>
-                          {e.regFormStatus || "Pending"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <button
-                          onClick={() => setInvoiceRecord(e)}
-                          className="p-1.5 text-fuchsia-600 hover:bg-fuchsia-50 rounded-lg transition-colors"
-                          title="Print Reg Form Invoice"
-                        >
-                          <Printer className="h-4 w-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="px-4 py-3 border-t border-amber-100 flex items-center justify-between text-sm text-gray-600 flex-wrap gap-2">
-          <span>Showing <strong>{transactions.length}</strong> registration form purchase transactions (filtered by Date From/To above)</span>
-          <span className="font-semibold text-gray-800">
-            Total: <span className="text-amber-700">{symbol}{totalTxn.toLocaleString()}</span>
-          </span>
-        </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={() => setTab("fees")}
+          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+            tab === "fees" ? "bg-[var(--primary)] text-white border-[var(--primary)]" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+          }`}
+        >
+          <Wallet className="h-4 w-4" /> Fees Paid — Grouped by Student & Date
+        </button>
+        <button
+          onClick={() => setTab("reg")}
+          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+            tab === "reg" ? "bg-[var(--primary)] text-white border-[var(--primary)]" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+          }`}
+        >
+          <TicketCheck className="h-4 w-4" /> Registration Form Purchase — Transactions
+        </button>
       </div>
 
-      {searched && (
+      {tab === "reg" && (
+        <div className="bg-white rounded-xl border border-amber-200 shadow-sm overflow-hidden">
+          <div className="px-5 py-3 border-b border-amber-100 bg-gradient-to-r from-amber-50 to-yellow-50 flex items-center justify-between flex-wrap gap-2">
+            <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500 text-white"><TicketCheck className="h-4 w-4" /></span>
+              Registration Form Purchase — Payment Transactions
+            </h3>
+            <div className="text-xs text-gray-600">
+              <strong className="text-gray-800">{transactions.length}</strong> purchase{transactions.length === 1 ? "" : "s"}
+              <span className="mx-2 text-gray-300">|</span>
+              Total: <span className="font-bold text-amber-700">{symbol}{totalTxn.toLocaleString()}</span>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  {["#", "Name", "Class", "Reg Form No", "Payment Date", "Payment Mode", "Reference / Txn ID", `Amount (${symbol})`, "Status", ""].map((h) => (
+                    <th key={h} className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {regSlice.length === 0 ? (
+                  <tr><td colSpan={10} className="text-center py-8 text-gray-400">No registration form purchases found</td></tr>
+                ) : (
+                  regSlice.map((e, idx) => {
+                    const ref = e.regFormTransactionId || e.regFormChequeNo || e.regFormBank || ""
+                    return (
+                      <tr key={e.id} className={`border-b border-gray-100 ${idx % 2 === 1 ? "bg-gray-50/50" : ""} hover:bg-gray-50 transition-colors`}>
+                        <td className="px-4 py-3 text-gray-600">{(curRegPage - 1) * PAGE_SIZE + idx + 1}</td>
+                        <td className="px-4 py-3 font-medium text-gray-800">{e.name}</td>
+                        <td className="px-4 py-3 text-gray-600">{e.classVal || "—"}</td>
+                        <td className="px-4 py-3 text-gray-600 font-mono text-xs whitespace-nowrap">{e.regFormNo || "—"}</td>
+                        <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{e.regFormPaymentDate || "—"}</td>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">{e.regFormPaymentMode || "—"}</span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-600 font-mono text-xs">{ref || "—"}</td>
+                        <td className="px-4 py-3 text-gray-800 font-medium">{symbol}{(Number(e.regFormAmount) || 0).toLocaleString()}</td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${e.regFormStatus === "Purchased" ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"}`}>
+                            {e.regFormStatus || "Pending"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={() => setInvoiceRecord(e)}
+                            className="p-1.5 text-fuchsia-600 hover:bg-fuchsia-50 rounded-lg transition-colors"
+                            title="Print Reg Form Invoice"
+                          >
+                            <Printer className="h-4 w-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+          <Pagination
+            page={curRegPage}
+            pages={regPages}
+            total={transactions.length}
+            pageSize={PAGE_SIZE}
+            onChange={setRegPage}
+            label="registration form purchase transactions"
+          />
+        </div>
+      )}
+
+      {tab === "fees" && (searched ? (
         <>
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="px-5 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between flex-wrap gap-2">
@@ -278,12 +453,12 @@ export default function SearchIncomePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {grouped.length === 0 ? (
+                  {feesSlice.length === 0 ? (
                     <tr><td colSpan={6} className="text-center py-8 text-gray-400">No matching income records found</td></tr>
                   ) : (
-                    grouped.map((g, idx) => (
+                    feesSlice.map((g, idx) => (
                       <tr key={`${g.name}|${g.date}`} className={`border-b border-gray-100 ${idx % 2 === 1 ? "bg-gray-50/50" : ""} hover:bg-gray-50 transition-colors`}>
-                        <td className="px-4 py-3 text-gray-600">{idx + 1}</td>
+                        <td className="px-4 py-3 text-gray-600">{(curFeesPage - 1) * PAGE_SIZE + idx + 1}</td>
                         <td className="px-4 py-3 font-medium text-gray-800">{g.name}</td>
                         <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{g.date || "—"}</td>
                         <td className="px-4 py-3">
@@ -304,6 +479,14 @@ export default function SearchIncomePage() {
                 </tbody>
               </table>
             </div>
+            <Pagination
+              page={curFeesPage}
+              pages={feesPages}
+              total={grouped.length}
+              pageSize={PAGE_SIZE}
+              onChange={setFeesPage}
+              label="student & date groups"
+            />
           </div>
 
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex items-center justify-between">
@@ -315,14 +498,12 @@ export default function SearchIncomePage() {
             </span>
           </div>
         </>
-      )}
-
-      {!searched && (
+      ) : (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-12 text-center">
           <Search className="h-12 w-12 text-gray-300 mx-auto mb-3" />
           <p className="text-gray-500 text-sm">Select date range and criteria, then click Search to find income records</p>
         </div>
-      )}
+      ))}
 
       {/* Reg Form Invoice Modal */}
       {invoiceRecord && (
@@ -332,6 +513,81 @@ export default function SearchIncomePage() {
       {viewStudent && (
         <StudentIncomeModal student={viewStudent} symbol={symbol} onClose={() => setViewStudent(null)} />
       )}
+    </div>
+  )
+}
+
+function Pagination({ page, pages, total, pageSize, onChange, label }: { page: number; pages: number; total: number; pageSize: number; onChange: (n: number) => void; label: string }) {
+  if (total === 0) return null
+  const start = (page - 1) * pageSize + 1
+  const end = Math.min(page * pageSize, total)
+  const nums: number[] = []
+  for (let i = 1; i <= pages; i++) {
+    if (i === 1 || i === pages || Math.abs(i - page) <= 2) nums.push(i)
+  }
+  const items: (number | "…")[] = []
+  let prev = 0
+  for (const n of nums) {
+    if (prev && n - prev > 1) items.push("…")
+    items.push(n)
+    prev = n
+  }
+  return (
+    <div className="sticky bottom-4 z-20 px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-full border border-gray-200 bg-white/95 shadow-lg px-4 py-2 backdrop-blur">
+        <span className="text-xs text-gray-600">
+          Showing <strong>{start}–{end}</strong> of <strong>{total}</strong> {label}
+        </span>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => onChange(page - 1)}
+            disabled={page <= 1}
+            className="flex h-8 w-8 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent"
+            aria-label="Previous page"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          {items.map((it, i) =>
+            it === "…" ? (
+              <span key={`e-${i}`} className="px-1 text-xs text-gray-400">…</span>
+            ) : (
+              <button
+                key={it}
+                onClick={() => onChange(it)}
+                className={`h-8 min-w-8 px-2 rounded-full text-xs font-semibold transition-colors ${
+                  it === page ? "bg-[var(--primary)] text-white" : "text-gray-600 hover:bg-gray-100"
+                }`}
+              >
+                {it}
+              </button>
+            )
+          )}
+          <button
+            onClick={() => onChange(page + 1)}
+            disabled={page >= pages}
+            className="flex h-8 w-8 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent"
+            aria-label="Next page"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function StatCard({ label, value, sub, icon, tone }: { label: string; value: string; sub?: string; icon: ReactNode; tone: string }) {
+  return (
+    <div className="relative overflow-hidden rounded-xl border border-gray-100 bg-white p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
+      <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${tone}`} aria-hidden />
+      <div className="mt-1 flex items-center gap-2.5">
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white shadow-sm bg-gradient-to-br ${tone}`}>{icon}</div>
+        <div className="min-w-0">
+          <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-gray-400">{label}</p>
+          <p className="truncate text-base font-bold leading-tight text-gray-900">{value}</p>
+        </div>
+      </div>
+      {sub && <p className="mt-1.5 truncate text-[11px] text-gray-400">{sub}</p>}
     </div>
   )
 }

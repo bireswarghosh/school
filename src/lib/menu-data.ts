@@ -132,6 +132,7 @@ export const menuData: MenuCategory[] = [
     items: [
       { label: "Add Income", path: "/admin/income/add-income" },
       { label: "Search Income", path: "/admin/income/search-income" },
+      { label: "Student Sales List", path: "/admin/income/student-sales" },
       { label: "Income Head", path: "/admin/income/income-head" },
     ],
   },

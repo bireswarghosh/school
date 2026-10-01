@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getAll, getById, create, update, remove, query } from "@/lib/db"
+import { getById, create, update, remove, query } from "@/lib/db"
 import { camelToSnake, mapResponse } from "@/lib/field-mapping"
 
 const TABLE = "si_sales"
@@ -105,20 +105,29 @@ function buildSaleRow(input: Record<string, any>, ctx: { saleNo: string; saleDat
   }
 }
 
+const SELECT = `
+  SELECT s.*, st.class_id AS class_id, st.section_id AS section_id,
+    p.name AS product_name
+  FROM si_sales s
+  LEFT JOIN students st ON st.id = s.student_id
+  LEFT JOIN si_products p ON p.id = s.product_id
+`
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const id = searchParams.get("id")
   const studentId = searchParams.get("student_id")
   if (id) {
-    const item = await getById(TABLE, parseInt(id))
-    return NextResponse.json(mapResponse(item, fieldMap) || { error: "Not found" }, { status: item ? 200 : 404 })
+    const result = await query(`${SELECT} WHERE s.id = $1`, [parseInt(id)])
+    const item = result.rows[0]
+    return NextResponse.json(item ? mapResponse(item, fieldMap) : { error: "Not found" }, { status: item ? 200 : 404 })
   }
   if (studentId) {
-    const items = await getAll(TABLE, ORDER, "student_id = $1", [studentId])
-    return NextResponse.json(mapResponse(items, fieldMap))
+    const result = await query(`${SELECT} WHERE s.student_id = $1 ORDER BY s.id DESC`, [studentId])
+    return NextResponse.json(mapResponse(result.rows, fieldMap))
   }
-  const items = await getAll(TABLE, ORDER)
-  return NextResponse.json(mapResponse(items, fieldMap))
+  const result = await query(`${SELECT} ORDER BY s.id DESC`)
+  return NextResponse.json(mapResponse(result.rows, fieldMap))
 }
 
 export async function POST(req: NextRequest) {
