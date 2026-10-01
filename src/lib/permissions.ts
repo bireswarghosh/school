@@ -33,6 +33,12 @@ export const permissionsTree: PermCategory[] = [
 
 export const allPermItems = permissionsTree.flatMap((c) => c.items)
 
+export const knownPermissionCodes = new Set(allPermItems.map((i) => i.code))
+
+export function isKnownPermissionCode(code: string): boolean {
+  return knownPermissionCodes.has(code)
+}
+
 export function buildEmptyPermMap(): PermMap {
   const map: PermMap = {}
   for (const item of allPermItems) map[item.code] = { view: false, add: false, edit: false, delete: false }
@@ -50,7 +56,8 @@ export function parsePermissions(perms: string[]): PermMap {
     const sep = raw.indexOf(":")
     const code = sep === -1 ? raw : raw.slice(0, sep)
     const action = sep === -1 ? "" : raw.slice(sep + 1)
-    if (!map[code]) continue
+    if (!code || code === "*") continue
+    if (!map[code]) map[code] = { view: false, add: false, edit: false, delete: false }
     if (action === "") {
       map[code] = { view: true, add: true, edit: true, delete: true }
     } else if ((PERM_ACTIONS as readonly string[]).includes(action)) {
@@ -63,14 +70,17 @@ export function parsePermissions(perms: string[]): PermMap {
 export function collectPermissions(map: PermMap): string[] {
   const out: string[] = []
   let allOn = true
-  for (const item of allPermItems) {
-    const m = map[item.code]
+  for (const code of Object.keys(map)) {
+    const m = map[code]
     if (!m) continue
-    if (m.view) out.push(`${item.code}:view`)
-    if (m.add) out.push(`${item.code}:add`)
-    if (m.edit) out.push(`${item.code}:edit`)
-    if (m.delete) out.push(`${item.code}:delete`)
-    if (!(m.view && m.add && m.edit && m.delete)) allOn = false
+    const known = knownPermissionCodes.has(code)
+    const enabled = m.view || m.add || m.edit || m.delete
+    if (m.view) out.push(`${code}:view`)
+    if (m.add) out.push(`${code}:add`)
+    if (m.edit) out.push(`${code}:edit`)
+    if (m.delete) out.push(`${code}:delete`)
+    if (known && !(m.view && m.add && m.edit && m.delete)) allOn = false
+    if (!known && enabled && !(m.view && m.add && m.edit && m.delete)) allOn = false
   }
   return allOn ? ["*"] : out
 }

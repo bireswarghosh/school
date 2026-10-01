@@ -8,18 +8,52 @@ type RazorpayConfig = {
   callbackUrl?: string | null
 }
 
-// Resolve Razorpay keys: env vars take precedence, otherwise read the
-// gateway settings saved from the super admin console (payment_settings).
+// A Razorpay key is only usable when it looks like a genuine key (rzp_test_ /
+// rzp_live_ with a real id). Placeholder / demo strings such as
+// "rzp_test_api_key_12345" must NOT count as configured, otherwise the realtime
+// checkout would try (and fail) against the API with invalid credentials.
+function looksLikeRazorpayKey(key: string): boolean {
+  const k = String(key || "").trim()
+  return /^rzp_(test|live)_/.test(k) && k.length >= 18
+}
+
+// Resolve Razorpay keys in priority order:
+//   1. RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET env vars (deployment override).
+//   2. payment_gateways row named "Razorpay" — the row managed from the admin
+//      Payment Methods panel (/admin/system-setting/general-setting?tab=payment).
+//   3. payment_settings row id=1 — the legacy super-admin console setting.
+// Only keys that look like genuine Razorpay keys are accepted; anything else is
+// treated as not configured so the app falls back to the demo/manual flow.
 export async function getConfig(): Promise<RazorpayConfig> {
   const envKey = process.env.RAZORPAY_KEY_ID || ""
   const envSecret = process.env.RAZORPAY_KEY_SECRET || ""
-  if (envKey && envSecret) {
+  if (looksLikeRazorpayKey(envKey) && looksLikeRazorpayKey(envSecret)) {
     return { keyId: envKey, keySecret: envSecret, currency: "INR", enabled: true }
   }
+
+  try {
+    const gw = (
+      await query(
+        `SELECT api_key AS "apiKey", secret_key AS "secretKey"
+         FROM payment_gateways WHERE name = 'Razorpay' ORDER BY id LIMIT 1`
+      )
+    ).rows[0]
+    if (gw && looksLikeRazorpayKey(gw.apiKey) && looksLikeRazorpayKey(gw.secretKey)) {
+      return { keyId: gw.apiKey, keySecret: gw.secretKey, currency: "INR", enabled: true }
+    }
+  } catch {
+    // fall through to payment_settings
+  }
+
   try {
     const res = await query(`SELECT * FROM payment_settings WHERE id = 1`)
     const row = res.rows[0]
-    if (row && row.razorpay_enabled && row.razorpay_key_id && row.razorpay_key_secret) {
+    if (
+      row &&
+      row.razorpay_enabled &&
+      looksLikeRazorpayKey(row.razorpay_key_id) &&
+      looksLikeRazorpayKey(row.razorpay_key_secret)
+    ) {
       return {
         keyId: row.razorpay_key_id,
         keySecret: row.razorpay_key_secret,

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState, useCallback } from "react"
-import { UserCheck, Search, ShoppingCart, Plus, Minus, Trash2, Ticket, Save, Package, BookOpen, X, Loader2, Printer, FileDown, MessageCircle, CheckCircle2, Pencil, SlidersHorizontal, Eye, Layers, AlertTriangle } from "lucide-react"
+import { UserCheck, Search, ShoppingCart, Plus, Minus, Trash2, Ticket, Save, Package, BookOpen, X, Loader2, Printer, FileDown, MessageCircle, CheckCircle2, Pencil, SlidersHorizontal, Eye, Layers, AlertTriangle, CreditCard } from "lucide-react"
 import { useApi } from "@/lib/use-api"
 import { ProductIcon, getIconColors, InventoryBadge } from "@/lib/inventory-icons"
 import { useCurrency } from "@/lib/currency-context"
@@ -30,6 +30,7 @@ type Sale = {
   totalAmount?: number | string
   saleDate?: string
   paymentStatus?: string
+  paymentMethod?: string
 }
 type CartItem = {
   key: string
@@ -60,10 +61,12 @@ type Receipt = {
   discount: number
   total: number
   paymentStatus: string
+  paymentMethod: string
   student: { id: number; name: string; className?: string; sectionName?: string; phone?: string } | null
 }
 type BalanceRow = { productId: number; variationId: number | null; name?: string; label?: string; minStock?: number; balance: number; status: "ok" | "low" | "out" }
 type BalanceResponse = { products: BalanceRow[]; variations: BalanceRow[] }
+type PaymentGateway = { id?: number; name: string; code?: string; status?: boolean; mode?: string }
 
 const inputCls = "w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:border-orange-300 focus:ring-2 focus:ring-orange-200 dark:focus:ring-orange-500/20 outline-none transition-all"
 
@@ -77,7 +80,18 @@ export default function StudentSalesPage() {
   const { data: sales, update: updateSale, remove: removeSale, refetch } = useApi<Sale>("/api/students-inventory/sale")
   const { data: variations } = useApi<Variation>("/api/students-inventory/variation")
   const { data: categories } = useApi<Category>("/api/students-inventory/category")
+  const { data: gateways } = useApi<PaymentGateway>("/api/system-setting/payment-gateway")
   const { symbol } = useCurrency()
+
+  const activeGateways = useMemo(() => gateways.filter((g) => g.status), [gateways])
+
+  const paymentMethodOptions = useMemo(() => {
+    const opts = ["Cash", "Cheque", "Card", "Online Transfer"]
+    for (const g of activeGateways) {
+      if (!opts.includes(g.name)) opts.push(`${g.name}${g.mode === "Test" ? " (Test)" : ""}`)
+    }
+    return opts
+  }, [activeGateways])
 
   const money = (v: number) => `${symbol}${v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
@@ -98,12 +112,13 @@ export default function StudentSalesPage() {
   const [cart, setCart] = useState<CartItem[]>([])
   const [couponId, setCouponId] = useState("")
   const [paymentStatus, setPaymentStatus] = useState("Paid")
+  const [paymentMethod, setPaymentMethod] = useState("Cash")
   const [saleDate, setSaleDate] = useState(new Date().toISOString().slice(0, 10))
   const [saving, setSaving] = useState(false)
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
 
   const [editSale, setEditSale] = useState<Sale | null>(null)
-  const [saleForm, setSaleForm] = useState({ quantity: 1, unitPrice: 0, discountAmount: 0, saleDate: "", paymentStatus: "Paid" })
+  const [saleForm, setSaleForm] = useState({ quantity: 1, unitPrice: 0, discountAmount: 0, saleDate: "", paymentStatus: "Paid", paymentMethod: "Cash" })
   const [savingEdit, setSavingEdit] = useState(false)
   const [deleteSaleTarget, setDeleteSaleTarget] = useState<Sale | null>(null)
   const [deletingSale, setDeletingSale] = useState(false)
@@ -496,6 +511,7 @@ export default function StudentSalesPage() {
         studentName: student.name,
         saleDate,
         paymentStatus,
+        paymentMethod,
         discountId: selectedCoupon ? Number(selectedCoupon.id) : null,
         items: cart.map((i) => {
           const d = itemDiscount(i)
@@ -538,6 +554,7 @@ export default function StudentSalesPage() {
         discount: couponDiscount,
         total,
         paymentStatus,
+        paymentMethod,
         student: student ? { id: student.id, name: student.name, className: student.className, sectionName: student.sectionName, phone: student.phone } : null,
       })
       setReceiptOpen(true)
@@ -545,6 +562,7 @@ export default function StudentSalesPage() {
       setCart([])
       setCouponId("")
       setPaymentStatus("Paid")
+      setPaymentMethod("Cash")
       setSaleDate(new Date().toISOString().slice(0, 10))
       setSearchQuery("")
       setStudent(null)
@@ -614,7 +632,7 @@ export default function StudentSalesPage() {
       ${sPhone || sEmail ? `<div style="font-size:11px;color:#4b5563;margin-top:2px;">${[sPhone, sEmail].filter(Boolean).join(" | ")}</div>` : ""}
       <div class="meta">
         <span class="r-no">${esc(r.saleNo)}</span> · Date: ${esc(r.saleDate)}<br />
-        <span class="status">${esc(r.paymentStatus)}</span>
+        <span class="status">${esc(r.paymentStatus)}</span>${r.paymentMethod ? ` · <span style="font-size:11px;">${esc(r.paymentMethod)}</span>` : ""}
       </div>
     </div>
 
@@ -658,7 +676,7 @@ export default function StudentSalesPage() {
       .join("\n")
     const invoiceLink = `${window.location.origin}/api/students-inventory/sale/invoice?no=${encodeURIComponent(receipt.saleNo)}`
     const text =
-      `*${sName}*\nOrder Confirmed ✔\nInvoice: ${receipt.saleNo}\nDate: ${receipt.saleDate}\nStudent: ${receipt.student?.name || "-"}${receipt.student?.className ? ` (${receipt.student.className}${receipt.student.sectionName ? ` - ${receipt.student.sectionName}` : ""})` : ""}\n\n${itemsTxt}\n\nSubtotal: ${money(receipt.subtotal)}${receipt.discount ? `\nDiscount: ${money(receipt.discount)}` : ""}\n*Total: ${money(receipt.total)}*\nStatus: ${receipt.paymentStatus}\n\nView PDF receipt: ${invoiceLink}\n\nThank you for your purchase!`
+      `*${sName}*\nOrder Confirmed ✔\nInvoice: ${receipt.saleNo}\nDate: ${receipt.saleDate}\nStudent: ${receipt.student?.name || "-"}${receipt.student?.className ? ` (${receipt.student.className}${receipt.student.sectionName ? ` - ${receipt.student.sectionName}` : ""})` : ""}\n\n${itemsTxt}\n\nSubtotal: ${money(receipt.subtotal)}${receipt.discount ? `\nDiscount: ${money(receipt.discount)}` : ""}\n*Total: ${money(receipt.total)}*\nStatus: ${receipt.paymentStatus}${receipt.paymentMethod ? ` · ${receipt.paymentMethod}` : ""}\n\nView PDF receipt: ${invoiceLink}\n\nThank you for your purchase!`
     const phone = receipt.student?.phone
     const digits = phone ? String(phone).replace(/[^\d]/g, "") : ""
     const url = digits.length >= 10 ? `https://wa.me/${digits}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`
@@ -759,6 +777,7 @@ export default function StudentSalesPage() {
         <div class="inv-no">Invoice ${esc(base.saleNo || "")}</div>
         <div>Date: ${esc(String(base.saleDate || "").slice(0, 10))}</div>
         <div><span class="status">${esc(status)}</span></div>
+        ${base.paymentMethod ? `<div>Payment: ${esc(base.paymentMethod)}</div>` : ""}
       </div>
     </div>
 
@@ -814,6 +833,7 @@ export default function StudentSalesPage() {
       discountAmount: Number(sale.discountAmount) || 0,
       saleDate: String(sale.saleDate || new Date().toISOString().slice(0, 10)).slice(0, 10),
       paymentStatus: sale.paymentStatus === "Paid" ? "Paid" : "Unpaid",
+      paymentMethod: sale.paymentMethod || "Cash",
     })
   }
 
@@ -834,6 +854,7 @@ export default function StudentSalesPage() {
         totalAmount,
         saleDate: saleForm.saleDate,
         paymentStatus: saleForm.paymentStatus,
+        paymentMethod: saleForm.paymentMethod,
       })
       await refetch()
       notify.success("Sale updated")
@@ -1194,13 +1215,27 @@ export default function StudentSalesPage() {
                   ))}
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[11px] font-black tracking-widest text-slate-500 dark:text-slate-400 uppercase mb-1.5">Payment</label>
                   <select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)} className={inputCls + " !py-2"}>
                     <option>Paid</option>
                     <option>Unpaid</option>
                   </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-black tracking-widest text-slate-500 dark:text-slate-400 uppercase mb-1.5">Payment Method</label>
+                  <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className={inputCls + " !py-2"}>
+                    {paymentMethodOptions.map((o) => (
+                      <option key={o}>{o}</option>
+                    ))}
+                  </select>
+                  {activeGateways.length > 0 && (
+                    <p className="mt-1 text-[10px] font-medium text-slate-400 dark:text-slate-500 flex items-center gap-1">
+                      <CreditCard className="h-3 w-3 text-orange-500" />
+                      {activeGateways.map((g) => g.name).join(" · ")} online gateway{activeGateways.length > 1 ? "s" : ""} enabled
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-[11px] font-black tracking-widest text-slate-500 dark:text-slate-400 uppercase mb-1.5">Sale Date</label>
@@ -1289,9 +1324,12 @@ export default function StudentSalesPage() {
                     <td className="px-4 py-3 text-right font-black text-slate-900 dark:text-white">{money(g.total)}</td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-400 text-xs">{g.date ? String(g.date).slice(0, 10) : "-"}</td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black border ${g.first.paymentStatus === "Paid" ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30" : "bg-red-50 text-red-700 border-red-200 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/30"}`}>
-                        <span className={`h-1.5 w-1.5 rounded-full ${g.first.paymentStatus === "Paid" ? "bg-emerald-500" : "bg-red-500"}`} />{g.first.paymentStatus || "Unpaid"}
-                      </span>
+                      <div className="flex flex-col gap-1">
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black border self-start ${g.first.paymentStatus === "Paid" ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30" : "bg-red-50 text-red-700 border-red-200 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/30"}`}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${g.first.paymentStatus === "Paid" ? "bg-emerald-500" : "bg-red-500"}`} />{g.first.paymentStatus || "Unpaid"}
+                        </span>
+                        {g.first.paymentMethod ? <span className="text-[10px] font-semibold text-slate-400">{g.first.paymentMethod}</span> : null}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
@@ -1332,7 +1370,7 @@ export default function StudentSalesPage() {
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
               <div>
                 <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">Order {viewOrder.saleNo}</h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400">{viewOrder.rows[0]?.studentName || "-"} · {viewOrder.rows[0]?.saleDate ? String(viewOrder.rows[0].saleDate).slice(0,10) : ""} · <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${viewOrder.rows[0]?.paymentStatus==="Paid"?"bg-emerald-100 text-emerald-700":"bg-red-100 text-red-700"}`}>{viewOrder.rows[0]?.paymentStatus || "Unpaid"}</span></p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{viewOrder.rows[0]?.studentName || "-"} · {viewOrder.rows[0]?.saleDate ? String(viewOrder.rows[0].saleDate).slice(0,10) : ""} · <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${viewOrder.rows[0]?.paymentStatus==="Paid"?"bg-emerald-100 text-emerald-700":"bg-red-100 text-red-700"}`}>{viewOrder.rows[0]?.paymentStatus || "Unpaid"}</span>{viewOrder.rows[0]?.paymentMethod ? ` · ${viewOrder.rows[0].paymentMethod}` : ""}</p>
               </div>
               <button onClick={()=> setViewOrder(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><X className="h-5 w-5" /></button>
             </div>
@@ -1567,6 +1605,7 @@ export default function StudentSalesPage() {
                 <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${receipt.paymentStatus === "Paid" ? "text-emerald-700 border-emerald-600" : "text-red-600 border-red-600"}`}>
                   {receipt.paymentStatus}
                 </span>
+                {receipt.paymentMethod && <p className="text-xs text-gray-500 mt-1">Payment: {receipt.paymentMethod}</p>}
               </div>
 
               {receipt.student && (
@@ -1714,6 +1753,18 @@ export default function StudentSalesPage() {
                   >
                     <option value="Paid">Paid</option>
                     <option value="Unpaid">Unpaid</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Payment Method</label>
+                  <select
+                    value={saleForm.paymentMethod}
+                    onChange={(e) => setSaleForm((p) => ({ ...p, paymentMethod: e.target.value }))}
+                    className={inputCls}
+                  >
+                    {paymentMethodOptions.map((o) => (
+                      <option key={o} value={o}>{o}</option>
+                    ))}
                   </select>
                 </div>
               </div>

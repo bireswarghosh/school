@@ -44,6 +44,11 @@ export default function StockManagementPage() {
   const [showMinModal, setShowMinModal] = useState(false)
   const [minSaving, setMinSaving] = useState(false)
 
+  const [showBulkMinModal, setShowBulkMinModal] = useState(false)
+  const [bulkMinValue, setBulkMinValue] = useState("")
+  const [bulkMinSaving, setBulkMinSaving] = useState(false)
+  const [bulkMinMessage, setBulkMinMessage] = useState("")
+
   const [transactionMode, setTransactionMode] = useState<{ type: "add" | "edit"; entry?: StockEntry } | null>(null)
   const [txForm, setTxForm] = useState<StockEntry>({ productId: null, variationId: null, storeId: null, entryType: "IN", quantity: undefined, reference: "", entryDate: today, notes: "" })
   const [txErrors, setTxErrors] = useState<Record<string, string>>({})
@@ -417,6 +422,46 @@ export default function StockManagementPage() {
     }
   }
 
+  const openBulkMin = () => {
+    setBulkMinValue("")
+    setBulkMinMessage("")
+    setShowBulkMinModal(true)
+  }
+
+  const handleBulkMinSave = async () => {
+    const val = Math.max(0, Math.floor(Number(bulkMinValue) || 0))
+    setBulkMinSaving(true)
+    setBulkMinMessage("")
+    let saved = 0
+    const errors: string[] = []
+    for (const p of products) {
+      if (p.id == null) continue
+      try {
+        await updateProduct(p.id, { minStock: val })
+        saved++
+      } catch (e: any) {
+        errors.push(`Product ${p.name || `#${p.id}`}: ${e.message || "failed"}`)
+      }
+    }
+    for (const v of variations) {
+      if (v.id == null) continue
+      try {
+        await updateVariation(v.id, { minStock: val })
+        saved++
+      } catch (e: any) {
+        errors.push(`Variation #${v.id}: ${e.message || "failed"}`)
+      }
+    }
+    setBulkMinSaving(false)
+    refreshAll()
+    if (errors.length === 0) {
+      setShowBulkMinModal(false)
+      setBulkMinValue("")
+    } else {
+      setBulkMinMessage(`Updated ${saved}/${products.length + variations.length} items: ${errors.slice(0, 5).join("; ")}${errors.length > 5 ? ` +${errors.length - 5} more` : ""}`)
+    }
+  }
+
   const openTxAdd = () => {
     setTransactionMode({ type: "add" })
     setTxForm({ productId: null, variationId: null, storeId: null, entryType: "IN", quantity: undefined, reference: "", entryDate: today, notes: "" })
@@ -571,6 +616,9 @@ export default function StockManagementPage() {
                 <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 pr-3 py-2 rounded-lg border border-gray-300 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)] w-64" placeholder="Search product or variation" />
               </div>
               <button onClick={toggleAllExpand} className="px-3 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">{allExpanded ? "Collapse All" : "Expand All"}</button>
+              <button onClick={openBulkMin} className="px-3 py-2 text-sm font-semibold text-white bg-[var(--primary)] rounded-lg hover:bg-[var(--secondary)] transition-colors flex items-center gap-1.5">
+                <SlidersHorizontal className="h-4 w-4" /> Bulk Min Stock
+              </button>
             </div>
           )}
         </div>
@@ -948,6 +996,35 @@ export default function StockManagementPage() {
               <button onClick={() => setShowMinModal(false)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
               <button onClick={handleMinSave} disabled={minSaving} className="px-6 py-2 bg-[var(--primary)] text-white text-sm font-medium rounded-lg hover:bg-[var(--secondary)] disabled:opacity-60">
                 {minSaving ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showBulkMinModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowBulkMinModal(false)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md z-10">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2"><SlidersHorizontal className="h-5 w-5 text-[var(--primary)]" />Bulk Min Stock Update</h3>
+              <button onClick={() => setShowBulkMinModal(false)} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-gray-600">
+                Set the minimum stock level for all <span className="font-semibold text-gray-800">{products.length} product{products.length === 1 ? "" : "s"}</span> and <span className="font-semibold text-gray-800">{variations.length} variation{variations.length === 1 ? "" : "s"}</span>.
+              </p>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Minimum stock level</label>
+                <input type="number" min={0} value={bulkMinValue} onChange={(e) => { setBulkMinValue(e.target.value); if (bulkMinMessage) setBulkMinMessage("") }} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="e.g. 10" autoFocus />
+                <p className="text-[11px] text-gray-400 mt-1">Stock at or below this level triggers a Low / Out alert. This overrides existing min stock on every product and variation.</p>
+              </div>
+              {bulkMinMessage && <p className={`text-xs ${bulkMinMessage.startsWith("Updated") ? "text-amber-600" : "text-red-600"}`}>{bulkMinMessage}</p>}
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-2">
+              <button onClick={() => setShowBulkMinModal(false)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+              <button onClick={handleBulkMinSave} disabled={bulkMinSaving} className="px-6 py-2 bg-[var(--primary)] text-white text-sm font-medium rounded-lg hover:bg-[var(--secondary)] disabled:opacity-60">
+                {bulkMinSaving ? "Applying…" : "Apply to All"}
               </button>
             </div>
           </div>

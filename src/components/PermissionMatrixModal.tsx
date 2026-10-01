@@ -1,13 +1,14 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { X, Save, Home, Search, ChevronRight, Settings, Check } from "lucide-react"
+import { X, Save, Home, Search, ChevronRight, Settings, Check, Plus, Trash2 } from "lucide-react"
 import { iconMap } from "@/lib/menu-icons"
 import {
   permissionsTree,
   parsePermissions,
   collectPermissions,
   itemAllOn,
+  knownPermissionCodes,
   PERM_ACTIONS,
   type PermMap,
   type PermCategory,
@@ -32,14 +33,38 @@ export default function PermissionMatrixModal({ title, subtitle, initialPermissi
   const [permMap, setPermMap] = useState<PermMap>(() => parsePermissions(initialPermissions))
   const [activeCat, setActiveCat] = useState<string>(permissionsTree[0].label)
   const [filter, setFilter] = useState("")
+  const [customInput, setCustomInput] = useState("")
   const [saving, setSaving] = useState(false)
 
+  const customCodes = useMemo(
+    () => Object.keys(permMap || {}).filter((code) => !knownPermissionCodes.has(code)),
+    [permMap]
+  )
+
+  const customCat: PermCategory = useMemo(
+    () => ({
+      label: "Custom",
+      icon: "Star",
+      items: customCodes.map((code) => ({ label: code, path: "", code })),
+    }),
+    [customCodes]
+  )
+
+  const sidebarCats: PermCategory[] = useMemo(
+    () => [...permissionsTree, customCat],
+    [customCat]
+  )
+
   const filteredItems = useMemo(() => {
+    if (activeCat === "Custom") {
+      const q = filter.trim().toLowerCase()
+      return q ? customCat.items.filter((i) => i.label.toLowerCase().includes(q)) : customCat.items
+    }
     const cat = permissionsTree.find((c) => c.label === activeCat)
     if (!cat) return []
     const q = filter.trim().toLowerCase()
     return q ? cat.items.filter((i) => i.label.toLowerCase().includes(q)) : cat.items
-  }, [activeCat, filter])
+  }, [activeCat, filter, customCat])
 
   const toggleAction = (code: string, action: (typeof PERM_ACTIONS)[number]) => {
     setPermMap((prev) => {
@@ -98,6 +123,22 @@ export default function PermissionMatrixModal({ title, subtitle, initialPermissi
     return cat.items.filter((i) => Object.values(permMap[i.code] || {}).some(Boolean)).length
   }
 
+  const addCustomCode = () => {
+    const code = customInput.trim().toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "")
+    if (!code || knownPermissionCodes.has(code) || (permMap && permMap[code])) return
+    setPermMap((prev) => ({ ...prev, [code]: { view: false, add: false, edit: false, delete: false } }))
+    setCustomInput("")
+  }
+
+  const removeCustomCode = (code: string) => {
+    setPermMap((prev) => {
+      if (!prev || !prev[code]) return prev
+      const next = { ...prev }
+      delete next[code]
+      return next
+    })
+  }
+
   const handleSave = async () => {
     setSaving(true)
     try {
@@ -122,8 +163,8 @@ export default function PermissionMatrixModal({ title, subtitle, initialPermissi
 
         <div className="flex flex-1 min-h-0">
           <div className="w-64 shrink-0 border-r border-gray-200 overflow-y-auto py-2 bg-gray-50/50">
-            {permissionsTree.map((cat) => {
-              const Icon = cat.icon === "Home" ? Home : iconMap[cat.icon] || Settings
+            {sidebarCats.map((cat) => {
+              const Icon = cat.icon === "Home" ? Home : cat.icon === "Star" ? Plus : iconMap[cat.icon] || Settings
               const count = catEnabledCount(cat)
               const allOn = cat.items.length > 0 && cat.items.every((i) => itemAllOn(permMap[i.code]))
               const active = activeCat === cat.label
@@ -164,6 +205,25 @@ export default function PermissionMatrixModal({ title, subtitle, initialPermissi
               <span className="text-xs text-gray-500">{filteredItems.length} items</span>
             </div>
 
+            {activeCat === "Custom" && (
+              <div className="px-5 py-2.5 border-b border-gray-100 bg-gray-50/60 flex items-center gap-2">
+                <input
+                  type="text"
+                  value={customInput}
+                  onChange={(e) => setCustomInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") addCustomCode() }}
+                  placeholder="Add a custom permission code, e.g. reports_export"
+                  className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent"
+                />
+                <button
+                  onClick={addCustomCode}
+                  className="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 flex items-center gap-1.5"
+                >
+                  <Plus className="h-4 w-4" /> Add
+                </button>
+              </div>
+            )}
+
             <div className="px-5 pb-1 flex items-center">
               <div className="flex items-center gap-2 min-w-0 flex-1">
                 <button
@@ -200,6 +260,7 @@ export default function PermissionMatrixModal({ title, subtitle, initialPermissi
               )}
               {filteredItems.map((item) => {
                 const m = permMap[item.code]
+                const isCustom = activeCat === "Custom"
                 return (
                   <div key={item.code} className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2.5 hover:bg-gray-50">
                     <div className="flex items-center gap-2 min-w-0">
@@ -207,6 +268,7 @@ export default function PermissionMatrixModal({ title, subtitle, initialPermissi
                         {itemAllOn(m) && <Check className="h-3 w-3" />}
                       </button>
                       <span className="text-sm font-medium text-gray-800 truncate">{item.label}</span>
+                      {isCustom && <span className="text-[10px] text-gray-400 font-mono uppercase">custom</span>}
                     </div>
                     <div className="flex items-center gap-4 shrink-0 ml-4">
                       {PERM_ACTIONS.map((action) => (
@@ -220,6 +282,11 @@ export default function PermissionMatrixModal({ title, subtitle, initialPermissi
                           {ACTION_LABELS[action]}
                         </label>
                       ))}
+                      {isCustom && (
+                        <button onClick={() => removeCustomCode(item.code)} className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="Remove custom permission">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 )

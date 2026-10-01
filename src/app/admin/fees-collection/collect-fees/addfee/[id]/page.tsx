@@ -8,6 +8,7 @@ import { useCurrency } from "@/lib/currency-context"
 import { useSchoolInfo, type SchoolInfo } from "@/lib/use-school-info"
 import { ArrowLeft, Loader2, Printer, CreditCard, Banknote, Building2, X, Check, Trash2, FileText, Tag, RotateCcw, CalendarDays, ChevronDown } from "lucide-react"
 import { incomeHeadForGroup } from "@/lib/income-mapping"
+import { computeFine, effectiveDueDate, type FeeFineTerms } from "@/lib/fee-fine"
 
 type StudentRecord = {
   id: number
@@ -272,6 +273,7 @@ export default function AddFeePage() {
   const [feeTypes, setFeeTypes] = useState<Record<number, { name: string; group: string }>>({})
   const [masterDueDates, setMasterDueDates] = useState<Record<string, string>>({})
   const [masterDueDays, setMasterDueDays] = useState<Record<string, number>>({})
+  const [masterTerms, setMasterTerms] = useState<(FeeFineTerms & { feesGroup: string; feesType: string; class: string | null })[]>([])
   const [incomeHeads, setIncomeHeads] = useState<IncomeHead[]>([])
 
   const feesApi = useMemo(() => `/api/fees/fees-payment?studentId=${id}`, [id])
@@ -406,9 +408,26 @@ export default function AddFeePage() {
         })
         setMasterDueDates(map)
         setMasterDueDays(dayMap)
+        setMasterTerms((Array.isArray(d) ? d : []).map((m: any) => ({
+          feesGroup: m.feesGroup,
+          feesType: m.feesType,
+          class: m.class || null,
+          fineType: m.fineType,
+          fineValue: m.fineValue,
+          perDay: m.perDay,
+          fineRows: m.fineRows,
+          dueDate: m.dueDate,
+          dueDay: m.dueDay,
+        })))
       }),
     ]).catch(() => {})
   }, [])
+
+  const findMaster = (groupName: string, typeName: string, className?: string) => {
+    const exact = masterTerms.find((m) => m.feesGroup === groupName && m.feesType === typeName && m.class === className)
+    if (exact) return exact
+    return masterTerms.find((m) => m.feesGroup === groupName && m.feesType === typeName) ?? null
+  }
 
   useEffect(() => {
     if (!fees) return
@@ -426,15 +445,18 @@ const baseResolved: ResolvedFee[] = useMemo(() => {
     const discount = num(f.discountAmount)
     const fine = num(f.fineAmount)
     const paid = num(f.paidAmount)
-    const balance = amount - discount - paid
     const groupName = f.feesGroup ? (feeGroups[Number(f.feesGroup)] ?? `Group ${f.feesGroup}`) : "-"
     const feeTypeName = f.feesType ? (feeTypes[Number(f.feesType)]?.name ?? `Type ${f.feesType}`) : "-"
     const key = `${groupName}|${feeTypeName}`
     const dueDate = masterDueDates[key] || "-"
     const dueDay = masterDueDays[key] ?? null
-    return { ...f, groupName, feeTypeName, dueDate, dueDay, amount, discount, fine, paid, balance, appliedDiscount: 0, appliedDiscountId: null, hasAppliedNew: false }
+    const master = findMaster(groupName, feeTypeName, student?.class)
+    const overdueFine = computeFine({ terms: master, amount, dueDate: effectiveDueDate(master), status: f.status })
+    const chargedFine = round2(Math.max(fine, overdueFine))
+    const balance = round2(Math.max(0, amount - discount - paid) + chargedFine)
+    return { ...f, groupName, feeTypeName, dueDate, dueDay, amount, discount, fine: chargedFine, paid, balance, appliedDiscount: 0, appliedDiscountId: null, hasAppliedNew: false }
   })
-}, [fees, feeGroups, feeTypes, masterDueDates, masterDueDays])
+}, [fees, feeGroups, feeTypes, masterDueDates, masterDueDays, masterTerms, student?.class])
 
 const activeDiscount = useMemo<StudentDiscount | null>(() => {
   const t = new Date().toISOString().split("T")[0]
@@ -568,10 +590,14 @@ const resolved: ResolvedFee[] = useMemo(() => {
       let collected = 0
       for (const c of coverMeta.coverage) {
         const f = resolved.find((r) => r.id === c.id)!
-        const newPaid = f.paid + c.paid
-        const status = newPaid >= f.amount ? "Paid" : newPaid > 0 ? "Partial" : "Unpaid"
+        const feeBalance = round2(Math.max(0, f.amount - f.discount - f.paid))
+        const toFee = round2(Math.min(c.paid, feeBalance))
+        const newPaid = round2(f.paid + toFee)
+        const settled = round2(c.paid + f.paid + f.discount + c.discount) >= round2(f.amount + f.fine)
+        const status = settled ? "Paid" : newPaid > 0 ? "Partial" : "Unpaid"
         await update(c.id, {
           paidAmount: newPaid,
+          fineAmount: f.fine > 0 ? f.fine : null,
           status,
           paymentMode: payment.method,
           paymentDate,

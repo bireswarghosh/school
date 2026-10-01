@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, X, Save, Shield, Search } from "lucide-react"
+import { Plus, X, Save, Shield, Search, Pencil, Trash2 } from "lucide-react"
 import { useApi } from "@/lib/use-api"
 import { toast as notify } from "@/lib/toast"
 import { enabledPermissionCount } from "@/lib/permissions"
@@ -12,15 +12,21 @@ type Role = {
   name: string
   description: string
   permissions: string[]
+  isSystem?: boolean
+  schoolId?: number | null
 }
 
 export default function RolesPermissionsPanel() {
-  const { data: roles, add, update, loading } = useApi<Role>("/api/roles")
+  const { data: roles, add, update, remove, loading } = useApi<Role>("/api/roles")
   const [selectedRole, setSelectedRole] = useState<Role | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
   const [addName, setAddName] = useState("")
   const [addDescription, setAddDescription] = useState("")
   const [roleSearch, setRoleSearch] = useState("")
+  const [editRole, setEditRole] = useState<Role | null>(null)
+  const [editName, setEditName] = useState("")
+  const [editDescription, setEditDescription] = useState("")
+  const [deleteRole, setDeleteRole] = useState<Role | null>(null)
 
   const filteredRoles = roles.filter((r) =>
     (r.name + r.description).toLowerCase().includes(roleSearch.trim().toLowerCase())
@@ -47,6 +53,36 @@ export default function RolesPermissionsPanel() {
       setAddDescription("")
     } catch (e: unknown) {
       notify.error(e instanceof Error ? e.message : "Failed to add role")
+    }
+  }
+
+  const openEditRole = (role: Role) => {
+    setEditRole(role)
+    setEditName(role.name)
+    setEditDescription(role.description || "")
+  }
+
+  const handleEditRole = async () => {
+    if (!editRole || !editName.trim()) return
+    try {
+      await update(editRole.id, { name: editName.trim(), description: editDescription.trim() })
+      notify.success("Role updated")
+      setEditRole(null)
+      setEditName("")
+      setEditDescription("")
+    } catch (e: unknown) {
+      notify.error(e instanceof Error ? e.message : "Failed to update role")
+    }
+  }
+
+  const handleDeleteRole = async () => {
+    if (!deleteRole) return
+    try {
+      await remove(deleteRole.id)
+      notify.success("Role deleted")
+      setDeleteRole(null)
+    } catch (e: unknown) {
+      notify.error(e instanceof Error ? e.message : "Failed to delete role")
     }
   }
 
@@ -93,9 +129,17 @@ export default function RolesPermissionsPanel() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <button onClick={() => setSelectedRole(role)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Permissions">
-                      <Shield className="h-4 w-4" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => openEditRole(role)} disabled={!!role.isSystem} className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed" title={role.isSystem ? "System roles cannot be edited" : "Edit role name / description"}>
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button onClick={() => setSelectedRole(role)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Permissions">
+                        <Shield className="h-4 w-4" />
+                      </button>
+                      <button onClick={() => setDeleteRole(role)} disabled={!!role.isSystem} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed" title={role.isSystem ? "System roles cannot be deleted" : "Delete role"}>
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -158,6 +202,77 @@ export default function RolesPermissionsPanel() {
               <button onClick={handleAddRole}
                 className="rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 flex items-center gap-2">
                 <Save className="h-4 w-4" /> Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editRole && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-semibold text-gray-800">Edit Role</h3>
+              <button onClick={() => setEditRole(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Role Name</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="e.g. Manager"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  rows={3}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[var(--primary)]"
+                />
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <button onClick={() => setEditRole(null)}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                Cancel
+              </button>
+              <button onClick={handleEditRole}
+                className="rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 flex items-center gap-2">
+                <Save className="h-4 w-4" /> Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteRole && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-lg">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-semibold text-gray-800">Delete Role</h3>
+              <button onClick={() => setDeleteRole(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-600">
+              Delete role <span className="font-semibold text-gray-800">{deleteRole.name}</span>? Users linked to this
+              role will fall back to their base role and lose these permissions. This cannot be undone.
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <button onClick={() => setDeleteRole(null)}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                Cancel
+              </button>
+              <button onClick={handleDeleteRole}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700">
+                Delete
               </button>
             </div>
           </div>

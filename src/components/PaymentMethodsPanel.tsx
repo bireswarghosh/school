@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Settings, Save, X, Check, Loader2, FlaskConical } from "lucide-react"
+import { Settings, Save, X, Check, Loader2, FlaskConical, PlugZap } from "lucide-react"
 import { useApi } from "@/lib/use-api"
 
 type PaymentGateway = {
@@ -24,6 +24,8 @@ export default function PaymentMethodsPanel() {
   const [form, setForm] = useState({ apiKey: "", secretKey: "", mode: "Test", enabled: false })
   const [savingId, setSavingId] = useState<number | null>(null)
   const [saveError, setSaveError] = useState("")
+  const [testingId, setTestingId] = useState<number | null>(null)
+  const [testResult, setTestResult] = useState<Record<number, { ok: boolean; message: string }>>({})
 
   const handleConfigure = (gw: PaymentGateway) => {
     setConfigureGateway(gw)
@@ -71,6 +73,24 @@ export default function PaymentMethodsPanel() {
       apiKey: configureGateway.demoApiKey || f.apiKey,
       secretKey: configureGateway.demoSecretKey || f.secretKey,
     }))
+  }
+
+  const handleTest = async (gw: PaymentGateway) => {
+    setTestingId(gw.id)
+    setTestResult((prev) => ({ ...prev, [gw.id]: { ok: false, message: "Testing connection…" } }))
+    try {
+      const res = await fetch("/api/system-setting/payment-gateway/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: gw.id }),
+      })
+      const data = await res.json()
+      setTestResult((prev) => ({ ...prev, [gw.id]: { ok: data.ok, message: data.error || data.message || (res.ok ? "Connected" : "Test failed") } }))
+    } catch (e: any) {
+      setTestResult((prev) => ({ ...prev, [gw.id]: { ok: false, message: e.message || "Test failed" } }))
+    } finally {
+      setTestingId(null)
+    }
   }
 
   const maskKey = (k: string) => {
@@ -151,12 +171,28 @@ export default function PaymentMethodsPanel() {
                       {savingId === gw.id && <Loader2 className="inline h-3 w-3 animate-spin text-gray-400 ml-1" />}
                     </td>
                     <td className="px-4 py-3">
-                      <button
-                        onClick={() => handleConfigure(gw)}
-                        className="flex items-center gap-1 p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors text-xs font-medium"
-                      >
-                        <Settings className="h-4 w-4" /> Configure
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleTest(gw)}
+                          disabled={testingId === gw.id}
+                          className="flex items-center gap-1 p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors text-xs font-medium"
+                          title="Test connection with saved keys"
+                        >
+                          <PlugZap className="h-4 w-4" /> {testingId === gw.id ? "Testing…" : "Test"}
+                        </button>
+                        <button
+                          onClick={() => handleConfigure(gw)}
+                          className="flex items-center gap-1 p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors text-xs font-medium"
+                        >
+                          <Settings className="h-4 w-4" /> Configure
+                        </button>
+                      </div>
+                      {testResult[gw.id] && (
+                        <div className={`mt-1 flex items-start gap-1 text-[11px] font-medium ${testResult[gw.id].ok ? "text-emerald-600" : "text-red-600"}`}>
+                          {testResult[gw.id].ok ? <Check className="h-3 w-3 mt-0.5 shrink-0" /> : <X className="h-3 w-3 mt-0.5 shrink-0" />}
+                          <span className="max-w-[240px]">{testResult[gw.id].message}</span>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))

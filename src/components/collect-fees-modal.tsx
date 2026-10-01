@@ -8,6 +8,7 @@ import { useSchoolInfo } from "@/lib/use-school-info"
 import { toast } from "@/lib/toast"
 import { buildReceiptHtml, type FeeReceiptData, type FeeReceiptLine } from "@/lib/fee-receipt"
 import { incomeHeadForGroup } from "@/lib/income-mapping"
+import { computeFine, effectiveDueDate, isPaid, type FeeFineTerms } from "@/lib/fee-fine"
 
 type FeeRecord = {
   id: number
@@ -152,6 +153,7 @@ export default function CollectFeesModal({
   const [feeGroups, setFeeGroups] = useState<Record<number, string>>({})
   const [feeTypes, setFeeTypes] = useState<Record<number, { name: string; group: string }>>({})
   const [incomeHeads, setIncomeHeads] = useState<IncomeHead[]>([])
+  const [masterTerms, setMasterTerms] = useState<(FeeFineTerms & { feesGroup: string; feesType: string; class: string | null })[]>([])
   const [selectedFeeIds, setSelectedFeeIds] = useState<number[]>([])
   const [amountToPay, setAmountToPay] = useState("")
   const [paymentLog, setPaymentLog] = useState<PaymentLogEntry[]>([])
@@ -209,8 +211,27 @@ export default function CollectFeesModal({
       fetch("/api/income/head").then((r) => r.json()).then((d) => {
         setIncomeHeads(Array.isArray(d) ? d : [])
       }).catch(() => {}),
+      fetch("/api/fees/fees-master").then((r) => r.json()).then((d) => {
+        setMasterTerms((Array.isArray(d) ? d : []).map((m: any) => ({
+          feesGroup: m.feesGroup,
+          feesType: m.feesType,
+          class: m.class || null,
+          fineType: m.fineType,
+          fineValue: m.fineValue,
+          perDay: m.perDay,
+          fineRows: m.fineRows,
+          dueDate: m.dueDate,
+          dueDay: m.dueDay,
+        })))
+      }).catch(() => {}),
     ]).catch(() => {})
   }, [])
+
+  const findMaster = (groupName: string, typeName: string, className?: string) => {
+    const exact = masterTerms.find((m) => m.feesGroup === groupName && m.feesType === typeName && m.class === className)
+    if (exact) return exact
+    return masterTerms.find((m) => m.feesGroup === groupName && m.feesType === typeName) ?? null
+  }
 
   useEffect(() => {
     if (!open) return
@@ -231,13 +252,16 @@ export default function CollectFeesModal({
           const discount = num(f.discountAmount)
           const fine = num(f.fineAmount)
           const paid = num(f.paidAmount)
-          const balance = amount - discount - paid
-          const rawBalance = round2(amount - paid)
           const groupName = f.feesGroup ? (feeGroups[Number(f.feesGroup)] ?? `Group ${f.feesGroup}`) : "-"
           const feeTypeName = f.feesType ? (feeTypes[Number(f.feesType)]?.name ?? `Type ${f.feesType}`) : "-"
-          return { ...f, feeTypeName, groupName, amount, discount, fine, paid, balance, rawBalance }
+          const master = findMaster(groupName, feeTypeName, student?.className)
+          const overdueFine = computeFine({ terms: master, amount, dueDate: effectiveDueDate(master), status: f.status })
+          const chargedFine = round2(Math.max(fine, overdueFine))
+          const balance = round2(Math.max(0, amount - discount - paid) + chargedFine)
+          const rawBalance = round2(amount - paid)
+          return { ...f, feeTypeName, groupName, amount, discount, fine: chargedFine, paid, balance, rawBalance }
         })
-        .filter((r) => r.balance > 0 && (groupSet.size === 0 || groupSet.has(Number(r.feesGroup))))
+        .filter((r) => !isPaid(r.status) && r.balance > 0 && (groupSet.size === 0 || groupSet.has(Number(r.feesGroup))))
         .sort((a, b) => {
           const pa = monthPriority(a.feeTypeName)
           const pb = monthPriority(b.feeTypeName)
@@ -245,7 +269,7 @@ export default function CollectFeesModal({
           if (pa || pb) return pa ? -1 : 1
           return 0
         }),
-    [fees, feeGroups, feeTypes, groupSet]
+    [fees, feeGroups, feeTypes, groupSet, masterTerms, student?.className]
   )
   const pendingCount = pendingFees.length
 
@@ -292,7 +316,7 @@ export default function CollectFeesModal({
       row.appliedDiscountId = activeDiscount.id
       row.hasAppliedNew = true
       row.discount = round2(f.discount + row.appliedDiscount)
-      row.balance = round2(f.amount - row.discount - f.paid)
+      row.balance = round2(f.amount - row.discount - f.paid + f.fine)
     }
 
     if (activeDiscount.discountType === "Percentage") {
@@ -411,6 +435,7 @@ export default function CollectFeesModal({
   const remaining = round2(totalDue - payingAmount)
 
   const selectedGross = round2(selectedFees.reduce((s, f) => s + f.amount, 0))
+  const selectedFine = round2(selectedFees.reduce((s, f) => s + f.fine, 0))
   const selectedPriorPaid = round2(selectedFees.reduce((s, f) => s + f.paid, 0))
   const selectedDiscount = round2(selectedFees.reduce((s, f) => s + (f.hasAppliedNew ? f.appliedDiscount : 0), 0))
 
@@ -491,11 +516,14 @@ export default function CollectFeesModal({
         const pay = allocation[f.id] ?? 0
         const hasApplied = f.hasAppliedNew && f.appliedDiscount > 0
         if (pay <= 0 && !hasApplied) continue
-        const newPaid = f.paid + pay
-        const settled = round2(newPaid + f.discount) >= round2(f.amount)
+        const feeBalance = round2(Math.max(0, f.amount - f.discount - f.paid))
+        const toFee = round2(Math.min(pay, feeBalance))
+        const newPaid = round2(f.paid + toFee)
+        const settled = round2(pay + f.paid + f.discount) >= round2(f.amount + f.fine)
         const status = settled ? "Paid" : "Partial"
         await updateFee(f.id, {
           paidAmount: newPaid,
+          fineAmount: f.fine > 0 ? f.fine : null,
           status,
           paymentMode: payment.method,
           paymentDate: today,
@@ -667,6 +695,7 @@ export default function CollectFeesModal({
                                     <th className="text-left px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase w-8">#</th>
                                     <th className="text-left px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Fee Type</th>
                                     <th className="text-right px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Amount</th>
+                                    <th className="text-right px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Fine</th>
                                     <th className="text-right px-3 py-2.5 font-semibold text-gray-600 text-xs uppercase">Balance</th>
                                   </tr>
                                 </thead>
@@ -685,6 +714,7 @@ export default function CollectFeesModal({
                                         </td>
                                         <td className="px-3 py-2.5 font-medium text-gray-800">{fee.feeTypeName}</td>
                                         <td className="px-3 py-2.5 text-right text-gray-800">{money(symbol, fee.amount)}</td>
+                                        <td className="px-3 py-2.5 text-right text-red-600">{fee.fine > 0 ? money(symbol, fee.fine) : "-"}</td>
                                         <td className={`px-3 py-2.5 text-right font-medium ${fee.rawBalance > 0 ? "text-red-600" : "text-green-600"}`}>{money(symbol, fee.rawBalance)}</td>
                                       </tr>
                                     )
@@ -861,6 +891,13 @@ export default function CollectFeesModal({
                         <p className="text-[11px] font-medium text-gray-500">Total Payable</p>
                         <p className="text-lg font-bold text-gray-900 mt-0.5">{money(symbol, totalDue)}</p>
                       </div>
+                      {selectedFine > 0 && (
+                        <div className="bg-white px-4 py-3">
+                          <p className="text-[11px] font-medium text-gray-500">Total Fine</p>
+                          <p className="text-lg font-bold text-red-600 mt-0.5">{money(symbol, selectedFine)}</p>
+                          <p className="text-[11px] text-gray-400 mt-1">Late fine on overdue fees</p>
+                        </div>
+                      )}
                       <div className="bg-white px-4 py-3">
                         <p className="block text-[11px] font-medium text-gray-600 mb-1">Amount to Pay</p>
                         <input

@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
     `SELECT s.sale_no, s.student_id, s.student_name, s.product_id, s.book_id,
             s.vp_product_id, s.component_id, s.variant_id, s.uniform_name,
             s.quantity, s.unit_price, s.subtotal, s.discount_amount, s.total_amount,
-            s.sale_date, s.payment_status, s.school_id,
+            s.sale_date, s.payment_status, s.payment_method, s.school_id,
             COALESCE(p.name, '') AS product_name, COALESCE(b.title, '') AS book_name,
             COALESCE(vc.name, '') AS component_name, COALESCE(vv.name, '') AS variant_name
       FROM si_sales s
@@ -137,6 +137,7 @@ export async function GET(req: NextRequest) {
         <div class="inv-no">Invoice ${esc(first.sale_no)}</div>
         <div>Date: ${String(first.sale_date || "").slice(0, 10)}</div>
         <div><span class="status ${statusClass}">${esc(status)}</span></div>
+        ${first.payment_method ? `<div>Payment: ${esc(first.payment_method)}</div>` : ""}
       </div>
     </div>
 
