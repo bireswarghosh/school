@@ -18,6 +18,8 @@ const fieldMap: Record<string, string> = {
   saleDate: "sale_date",
   paymentStatus: "payment_status",
   paymentMethod: "payment_method",
+  paymentNote: "payment_note",
+  exchangeNote: "exchange_note",
   vpProductId: "vp_product_id",
   componentId: "component_id",
   variantId: "variant_id",
@@ -69,7 +71,7 @@ async function writeStockOut(data: Record<string, any>, saleNo: string, saleDate
   }
 }
 
-function buildSaleRow(input: Record<string, any>, ctx: { saleNo: string; saleDate: string; paymentStatus: string; paymentMethod?: string }): Record<string, any> {
+function buildSaleRow(input: Record<string, any>, ctx: { saleNo: string; saleDate: string; paymentStatus: string; paymentMethod?: string; paymentNote?: string | null }): Record<string, any> {
   const quantity = Number(input.quantity) || 0
   const unitPrice = Number(input.unitPrice) || 0
   const subtotal = input.subtotal !== undefined && input.subtotal !== null && input.subtotal !== ""
@@ -102,6 +104,7 @@ function buildSaleRow(input: Record<string, any>, ctx: { saleNo: string; saleDat
     sale_date: ctx.saleDate,
     payment_status: ctx.paymentStatus,
     payment_method: input.paymentMethod ?? ctx.paymentMethod ?? "Cash",
+    payment_note: input.paymentNote ?? ctx.paymentNote ?? null,
   }
 }
 
@@ -137,6 +140,7 @@ export async function POST(req: NextRequest) {
     const saleDate = body.saleDate || new Date().toISOString().slice(0, 10)
     const paymentStatus = body.paymentStatus || "Unpaid"
     const paymentMethod = body.paymentMethod || "Cash"
+    const paymentNote = typeof body.paymentNote === "string" && body.paymentNote.trim() ? body.paymentNote.trim() : null
 
     if (Array.isArray(body.items) && body.items.length > 0) {
       const lines = body.items.map((item: Record<string, any>) => ({
@@ -144,6 +148,7 @@ export async function POST(req: NextRequest) {
         studentId: item.studentId ?? body.studentId,
         studentName: item.studentName ?? body.studentName,
         paymentMethod: item.paymentMethod ?? paymentMethod,
+        paymentNote: item.paymentNote ?? paymentNote,
       }))
 
       // Pre-validate stock before inserting anything.
@@ -163,7 +168,7 @@ export async function POST(req: NextRequest) {
       const created: Record<string, any>[] = []
       let total = 0
       for (const item of lines) {
-        const data = buildSaleRow(item, { saleNo, saleDate, paymentStatus, paymentMethod })
+        const data = buildSaleRow(item, { saleNo, saleDate, paymentStatus, paymentMethod, paymentNote })
         const row = await create(TABLE, data)
         total += Number(row.total_amount) || 0
         if (row.product_id) {
@@ -184,7 +189,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(mapResponse(created, fieldMap), { status: 201 })
     }
 
-    const data = buildSaleRow(body, { saleNo, saleDate, paymentStatus, paymentMethod })
+    const data = buildSaleRow(body, { saleNo, saleDate, paymentStatus, paymentMethod, paymentNote })
     const stockable = stockableOf(body)
     if (stockable) {
       const available = await availableQty(stockable.productId, stockable.variationId)

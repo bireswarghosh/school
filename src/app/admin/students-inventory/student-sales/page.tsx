@@ -1,13 +1,14 @@
 "use client"
 
-import { useEffect, useMemo, useState, useCallback } from "react"
-import { UserCheck, Search, ShoppingCart, Plus, Minus, Trash2, Ticket, Save, Package, BookOpen, X, Loader2, Printer, FileDown, MessageCircle, CheckCircle2, Pencil, SlidersHorizontal, Eye, Layers, AlertTriangle, CreditCard } from "lucide-react"
+import { useEffect, useMemo, useState, useCallback, Fragment } from "react"
+import { UserCheck, Search, ShoppingCart, Plus, Minus, Trash2, Ticket, Save, Package, BookOpen, X, Loader2, Printer, FileDown, MessageCircle, CheckCircle2, Pencil, SlidersHorizontal, Eye, Layers, AlertTriangle, StickyNote, ChevronDown, ArrowLeftRight } from "lucide-react"
 import { useApi } from "@/lib/use-api"
 import { ProductIcon, getIconColors, InventoryBadge } from "@/lib/inventory-icons"
 import { useCurrency } from "@/lib/currency-context"
 import { useAuth } from "@/lib/auth-context"
 import { useSchoolInfo } from "@/lib/use-school-info"
 import { toast as notify } from "@/lib/toast"
+import { invalidate } from "@/lib/fetch-cache"
 
 type Product = { id?: number; name: string; sellingPrice?: number | string; icon?: string; iconImage?: string; categoryId?: number | null; categoryName?: string }
 type Category = { id?: number; name: string; icon?: string; iconImage?: string }
@@ -31,6 +32,9 @@ type Sale = {
   saleDate?: string
   paymentStatus?: string
   paymentMethod?: string
+  paymentNote?: string | null
+  variantId?: number | null
+  exchangeNote?: string | null
 }
 type CartItem = {
   key: string
@@ -62,6 +66,7 @@ type Receipt = {
   total: number
   paymentStatus: string
   paymentMethod: string
+  paymentNote?: string | null
   student: { id: number; name: string; className?: string; sectionName?: string; phone?: string } | null
 }
 type BalanceRow = { productId: number; variationId: number | null; name?: string; label?: string; minStock?: number; balance: number; status: "ok" | "low" | "out" }
@@ -113,15 +118,27 @@ export default function StudentSalesPage() {
   const [couponId, setCouponId] = useState("")
   const [paymentStatus, setPaymentStatus] = useState("Paid")
   const [paymentMethod, setPaymentMethod] = useState("Cash")
+  const [paymentNote, setPaymentNote] = useState("")
   const [saleDate, setSaleDate] = useState(new Date().toISOString().slice(0, 10))
   const [saving, setSaving] = useState(false)
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
 
   const [editSale, setEditSale] = useState<Sale | null>(null)
-  const [saleForm, setSaleForm] = useState({ quantity: 1, unitPrice: 0, discountAmount: 0, saleDate: "", paymentStatus: "Paid", paymentMethod: "Cash" })
+  const [saleForm, setSaleForm] = useState({ quantity: 1, unitPrice: 0, discountAmount: 0, saleDate: "", paymentStatus: "Paid", paymentMethod: "Cash", paymentNote: "" })
   const [savingEdit, setSavingEdit] = useState(false)
   const [deleteSaleTarget, setDeleteSaleTarget] = useState<Sale | null>(null)
   const [deletingSale, setDeletingSale] = useState(false)
+
+  // Exchange-a-line state (replace product/book in an existing order)
+  const [exchangeLine, setExchangeLine] = useState<Sale | null>(null)
+  const [exType, setExType] = useState<"product" | "book">("product")
+  const [exProductId, setExProductId] = useState("")
+  const [exBookId, setExBookId] = useState("")
+  const [exVariationId, setExVariationId] = useState("")
+  const [exQty, setExQty] = useState(1)
+  const [exPrice, setExPrice] = useState(0)
+  const [exSaving, setExSaving] = useState(false)
+  const [exError, setExError] = useState("")
 
   const [bookClass, setBookClass] = useState("")
   const [bookModalOpen, setBookModalOpen] = useState(false)
@@ -129,6 +146,9 @@ export default function StudentSalesPage() {
   const [recentPageSize, setRecentPageSize] = useState(10)
   const [recentPage, setRecentPage] = useState(1)
   const [viewOrder, setViewOrder] = useState<{ saleNo: string; rows: Sale[] } | null>(null)
+  const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>({})
+  const toggleOrderExpand = (saleNo: string) =>
+    setExpandedOrders((prev) => ({ ...prev, [saleNo]: !prev[saleNo] }))
 
   const [balances, setBalances] = useState<BalanceResponse>({ products: [], variations: [] })
   const [lowAlertDismissed, setLowAlertDismissed] = useState(false)
@@ -512,6 +532,7 @@ export default function StudentSalesPage() {
         saleDate,
         paymentStatus,
         paymentMethod,
+        paymentNote: paymentNote.trim() ? paymentNote.trim() : null,
         discountId: selectedCoupon ? Number(selectedCoupon.id) : null,
         items: cart.map((i) => {
           const d = itemDiscount(i)
@@ -555,6 +576,7 @@ export default function StudentSalesPage() {
         total,
         paymentStatus,
         paymentMethod,
+        paymentNote: paymentNote.trim() ? paymentNote.trim() : null,
         student: student ? { id: student.id, name: student.name, className: student.className, sectionName: student.sectionName, phone: student.phone } : null,
       })
       setReceiptOpen(true)
@@ -563,6 +585,7 @@ export default function StudentSalesPage() {
       setCouponId("")
       setPaymentStatus("Paid")
       setPaymentMethod("Cash")
+      setPaymentNote("")
       setSaleDate(new Date().toISOString().slice(0, 10))
       setSearchQuery("")
       setStudent(null)
@@ -632,7 +655,7 @@ export default function StudentSalesPage() {
       ${sPhone || sEmail ? `<div style="font-size:11px;color:#4b5563;margin-top:2px;">${[sPhone, sEmail].filter(Boolean).join(" | ")}</div>` : ""}
       <div class="meta">
         <span class="r-no">${esc(r.saleNo)}</span> · Date: ${esc(r.saleDate)}<br />
-        <span class="status">${esc(r.paymentStatus)}</span>${r.paymentMethod ? ` · <span style="font-size:11px;">${esc(r.paymentMethod)}</span>` : ""}
+        <span class="status">${esc(r.paymentStatus)}</span>${r.paymentMethod ? ` · <span style="font-size:11px;">${esc(r.paymentMethod)}</span>` : ""}${r.paymentNote ? `<div style="font-size:11px;color:#6b7280;margin-top:3px;">Note: ${esc(r.paymentNote)}</div>` : ""}
       </div>
     </div>
 
@@ -676,7 +699,7 @@ export default function StudentSalesPage() {
       .join("\n")
     const invoiceLink = `${window.location.origin}/api/students-inventory/sale/invoice?no=${encodeURIComponent(receipt.saleNo)}`
     const text =
-      `*${sName}*\nOrder Confirmed ✔\nInvoice: ${receipt.saleNo}\nDate: ${receipt.saleDate}\nStudent: ${receipt.student?.name || "-"}${receipt.student?.className ? ` (${receipt.student.className}${receipt.student.sectionName ? ` - ${receipt.student.sectionName}` : ""})` : ""}\n\n${itemsTxt}\n\nSubtotal: ${money(receipt.subtotal)}${receipt.discount ? `\nDiscount: ${money(receipt.discount)}` : ""}\n*Total: ${money(receipt.total)}*\nStatus: ${receipt.paymentStatus}${receipt.paymentMethod ? ` · ${receipt.paymentMethod}` : ""}\n\nView PDF receipt: ${invoiceLink}\n\nThank you for your purchase!`
+      `*${sName}*\nOrder Confirmed ✔\nInvoice: ${receipt.saleNo}\nDate: ${receipt.saleDate}\nStudent: ${receipt.student?.name || "-"}${receipt.student?.className ? ` (${receipt.student.className}${receipt.student.sectionName ? ` - ${receipt.student.sectionName}` : ""})` : ""}\n\n${itemsTxt}\n\nSubtotal: ${money(receipt.subtotal)}${receipt.discount ? `\nDiscount: ${money(receipt.discount)}` : ""}\n*Total: ${money(receipt.total)}*\nStatus: ${receipt.paymentStatus}${receipt.paymentMethod ? ` · ${receipt.paymentMethod}` : ""}${receipt.paymentNote ? `\nPayment Note: ${receipt.paymentNote}` : ""}\n\nView PDF receipt: ${invoiceLink}\n\nThank you for your purchase!`
     const phone = receipt.student?.phone
     const digits = phone ? String(phone).replace(/[^\d]/g, "") : ""
     const url = digits.length >= 10 ? `https://wa.me/${digits}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`
@@ -778,6 +801,7 @@ export default function StudentSalesPage() {
         <div>Date: ${esc(String(base.saleDate || "").slice(0, 10))}</div>
         <div><span class="status">${esc(status)}</span></div>
         ${base.paymentMethod ? `<div>Payment: ${esc(base.paymentMethod)}</div>` : ""}
+        ${(base as Sale).paymentNote ? `<div style="font-size:11px;color:#6b7280;">Note: ${esc((base as Sale).paymentNote || "")}</div>` : ""}
       </div>
     </div>
 
@@ -834,6 +858,7 @@ export default function StudentSalesPage() {
       saleDate: String(sale.saleDate || new Date().toISOString().slice(0, 10)).slice(0, 10),
       paymentStatus: sale.paymentStatus === "Paid" ? "Paid" : "Unpaid",
       paymentMethod: sale.paymentMethod || "Cash",
+      paymentNote: sale.paymentNote || "",
     })
   }
 
@@ -855,6 +880,7 @@ export default function StudentSalesPage() {
         saleDate: saleForm.saleDate,
         paymentStatus: saleForm.paymentStatus,
         paymentMethod: saleForm.paymentMethod,
+        paymentNote: saleForm.paymentNote.trim() ? saleForm.paymentNote.trim() : null,
       })
       await refetch()
       notify.success("Sale updated")
@@ -877,6 +903,142 @@ export default function StudentSalesPage() {
       notify.error(e instanceof Error ? e.message : "Failed to delete sale")
     } finally {
       setDeletingSale(false)
+    }
+  }
+
+  // ---------- Order-line exchange (replace product/book in an existing order) ----------
+  const openExchange = (line: Sale) => {
+    setExchangeLine(line)
+    const isBook = !!line.bookId
+    setExType(isBook ? "book" : "product")
+    setExProductId(line.productId ? String(line.productId) : "")
+    setExBookId(line.bookId ? String(line.bookId) : "")
+    setExVariationId(line.variantId ? String(line.variantId) : "")
+    setExQty(Math.max(1, Number(line.quantity) || 1))
+    setExPrice(Math.max(0, Number(line.unitPrice) || 0))
+    setExError("")
+  }
+
+  const handleExProductSelect = (pidStr: string) => {
+    setExProductId(pidStr)
+    setExVariationId("")
+    const p = products.find((x) => String(x.id) === pidStr)
+    if (p) setExPrice(Number(p.sellingPrice) || 0)
+  }
+
+  const handleExVariationSelect = (vidStr: string) => {
+    setExVariationId(vidStr)
+    const v = variations.find((x) => String(x.id) === vidStr)
+    if (v) {
+      const p = products.find((x) => x.id === v.productId)
+      setExPrice(Number(v.price ?? v.additionalPrice ?? p?.sellingPrice) || 0)
+    }
+  }
+
+  const handleExBookSelect = (bidStr: string) => {
+    setExBookId(bidStr)
+    const b = books.find((x) => String(x.id) === bidStr)
+    if (b) setExPrice(Number(b.sellingPrice) || 0)
+  }
+
+  const exVariations = useMemo(
+    () => (exProductId ? variations.filter((v) => String(v.productId) === String(exProductId)) : []),
+    [variations, exProductId]
+  )
+
+  // Stock available for the chosen replacement (old qty counts back when same stock row)
+  const exAvail: number | null = useMemo(() => {
+    if (!exchangeLine || exType !== "product" || !exProductId) return null
+    const pid = Number(exProductId)
+    const vid = exVariationId ? Number(exVariationId) : null
+    let base: number | null = null
+    if (vid) {
+      const vb = varBalMap.get(vid)
+      if (vb != null) base = vb.balance
+      else {
+        const v = variations.find((x) => x.id === vid)
+        base = v?.quantity != null ? Number(v.quantity) : null
+      }
+    } else {
+      base = productBalMap.get(pid)?.balance ?? null
+    }
+    if (base == null) return null
+    const oldPid = exchangeLine.productId ?? null
+    const oldVid = exchangeLine.variantId ?? null
+    if (oldPid === pid && (oldVid ?? null) === vid) base += Math.max(0, Number(exchangeLine.quantity) || 0)
+    return base
+  }, [exchangeLine, exType, exProductId, exVariationId, varBalMap, productBalMap, variations])
+
+  const exOldTotal = exchangeLine ? Number(exchangeLine.totalAmount) || 0 : 0
+  const exOldDiscount = exchangeLine ? Number(exchangeLine.discountAmount) || 0 : 0
+  const exNewSub = round2(Math.max(1, Math.floor(Number(exQty) || 1)) * Math.max(0, Number(exPrice) || 0))
+  const exNewDisc = Math.min(exOldDiscount, exNewSub)
+  const exNewTotal = Math.max(0, round2(exNewSub - exNewDisc))
+  const exDiff = round2(exNewTotal - exOldTotal)
+
+  const exNewName = useMemo(() => {
+    if (!exchangeLine) return "-"
+    if (exType === "book") {
+      const b = books.find((x) => String(x.id) === String(exBookId))
+      return b ? b.title || "Book" : "Select a book…"
+    }
+    const p = products.find((x) => String(x.id) === String(exProductId))
+    if (!p) return "Select a product…"
+    if (exVariationId) {
+      const v = variations.find((x) => String(x.id) === String(exVariationId))
+      const varLabel = v ? [v.componentName || v.variantType, v.color, v.size || v.variantValue].filter(Boolean).join(" · ") : ""
+      return varLabel ? `${p.name} — ${varLabel}` : p.name
+    }
+    return p.name
+  }, [exchangeLine, exType, exBookId, exProductId, exVariationId, books, products, variations])
+
+  const submitExchange = async () => {
+    if (!exchangeLine?.id) return
+    setExError("")
+    if (exType === "product" && !exProductId) {
+      setExError("Select a replacement product")
+      return
+    }
+    if (exType === "book" && !exBookId) {
+      setExError("Select a replacement book")
+      return
+    }
+    const qty = Math.max(1, Math.floor(Number(exQty) || 1))
+    if (exAvail != null && qty > exAvail) {
+      setExError(`Only ${exAvail} in stock for the replacement (need ${qty})`)
+      return
+    }
+    setExSaving(true)
+    try {
+      const res = await fetch("/api/students-inventory/sale/exchange", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: exchangeLine.id,
+          productId: exType === "product" ? Number(exProductId) : null,
+          bookId: exType === "book" ? Number(exBookId) : null,
+          variationId: exType === "product" && exVariationId ? Number(exVariationId) : null,
+          quantity: qty,
+          unitPrice: Math.max(0, Number(exPrice) || 0),
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || "Exchange failed")
+      invalidate("/api/students-inventory/sale")
+      await refetch()
+      refreshBalances()
+      if (viewOrder) {
+        setViewOrder({
+          saleNo: viewOrder.saleNo,
+          rows: viewOrder.rows.map((r) => (r.id === data.id ? { ...r, ...data } : r)),
+        })
+      }
+      notify.success(`Exchanged — order total now ${money(Number(data.orderTotal) || 0)}`)
+      setExchangeLine(null)
+    } catch (e: unknown) {
+      setExError(e instanceof Error ? e.message : "Exchange failed")
+    } finally {
+      setExSaving(false)
     }
   }
 
@@ -1230,17 +1392,36 @@ export default function StudentSalesPage() {
                       <option key={o}>{o}</option>
                     ))}
                   </select>
-                  {activeGateways.length > 0 && (
-                    <p className="mt-1 text-[10px] font-medium text-slate-400 dark:text-slate-500 flex items-center gap-1">
-                      <CreditCard className="h-3 w-3 text-orange-500" />
-                      {activeGateways.map((g) => g.name).join(" · ")} online gateway{activeGateways.length > 1 ? "s" : ""} enabled
-                    </p>
-                  )}
                 </div>
                 <div>
                   <label className="block text-[11px] font-black tracking-widest text-slate-500 dark:text-slate-400 uppercase mb-1.5">Sale Date</label>
                   <input type="date" value={saleDate} onChange={(e) => setSaleDate(e.target.value)} className={inputCls + " !py-2"} />
                 </div>
+              </div>
+              <div className="rounded-xl border border-amber-200/70 dark:border-amber-500/20 bg-gradient-to-br from-amber-50/80 to-orange-50/60 dark:from-amber-500/[0.07] dark:to-orange-500/[0.05] p-3.5">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="flex items-center gap-1.5 text-[11px] font-black tracking-widest text-slate-500 dark:text-slate-400 uppercase">
+                    <span className="h-6 w-6 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center text-white shadow-sm">
+                      <StickyNote className="h-3.5 w-3.5" />
+                    </span>
+                    Payment Note
+                    <span className="normal-case tracking-normal font-semibold text-slate-400 dark:text-slate-500">· optional</span>
+                  </label>
+                  <span className={`text-[10px] font-bold tabular-nums ${paymentNote.length > 450 ? "text-red-500" : "text-slate-400 dark:text-slate-500"}`}>
+                    {paymentNote.length}/500
+                  </span>
+                </div>
+                <textarea
+                  value={paymentNote}
+                  onChange={(e) => setPaymentNote(e.target.value)}
+                  rows={2}
+                  maxLength={500}
+                  placeholder="UPI ref no / cheque no / txn id / note about this payment…"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:border-amber-300 focus:ring-2 focus:ring-amber-200 dark:focus:ring-amber-500/20 outline-none transition-all resize-none"
+                />
+                <p className="mt-1.5 text-[10px] font-medium text-slate-400 dark:text-slate-500">
+                  Saved with this sale and shown on the receipt &amp; invoice.
+                </p>
               </div>
               <div className="pt-2 space-y-1.5 text-sm border-t border-slate-200 dark:border-slate-700">
                 <div className="flex justify-between font-medium text-slate-600 dark:text-slate-300">
@@ -1307,18 +1488,39 @@ export default function StudentSalesPage() {
               ) : pagedOrders.length===0 ? (
                 <tr><td colSpan={8} className="text-center py-12 text-slate-400">No orders on this page</td></tr>
               ) : (
-                pagedOrders.map((g, idx) => (
-                  <tr key={g.saleNo} className={`border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors ${idx % 2 === 0 ? "bg-white dark:bg-slate-900" : "bg-slate-50/40 dark:bg-slate-800/20"}`}>
-                    <td className="px-4 py-3 font-mono text-xs font-bold text-slate-800 dark:text-slate-200">{g.saleNo || "-"}</td>
+                pagedOrders.map((g, idx) => {
+                  const expanded = !!expandedOrders[g.saleNo]
+                  const orderSub = g.rows.reduce((a, r) => a + (Number(r.subtotal) || 0), 0)
+                  const orderDisc = g.rows.reduce((a, r) => a + (Number(r.discountAmount) || 0), 0)
+                  return (
+                  <Fragment key={g.saleNo}>
+                  <tr className={`border-b ${expanded ? "border-transparent" : "border-slate-100 dark:border-slate-800"} hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors ${idx % 2 === 0 ? "bg-white dark:bg-slate-900" : "bg-slate-50/40 dark:bg-slate-800/20"}`}>
+                    <td className="px-4 py-3">
+                      <button onClick={() => toggleOrderExpand(g.saleNo)} title={expanded ? "Collapse items" : "Expand items"} className="flex items-center gap-1.5 group">
+                        <span className={`h-6 w-6 rounded-full border flex items-center justify-center transition-all ${expanded ? "bg-orange-500 border-orange-500 text-white" : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 group-hover:border-orange-300 group-hover:text-orange-600"}`}>
+                          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
+                        </span>
+                        <span className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200">{g.saleNo || "-"}</span>
+                      </button>
+                      <span className="ml-[30px] mt-1 inline-flex px-2 py-0.5 rounded-full text-[10px] font-black bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/20 text-orange-700 dark:text-orange-300">
+                        {g.count} item{g.count > 1 ? "s" : ""}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 text-slate-700 dark:text-slate-300 font-medium">{g.first.studentName || "-"}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1 max-w-[280px]">
-                        {g.rows.slice(0,3).map((r,i)=> (
+                        {(expanded ? g.rows : g.rows.slice(0,3)).map((r,i)=> (
                           <span key={r.id ?? i} className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-black border ${r.bookId ? "bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-500/30" : "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/30"}`}>{productName(r)}</span>
                         ))}
-                        {g.rows.length>3 && <span className="text-[11px] font-medium text-slate-400">+{g.rows.length-3} more</span>}
+                        {!expanded && g.rows.length>3 && (
+                          <button onClick={() => toggleOrderExpand(g.saleNo)} className="text-[11px] font-bold text-orange-600 hover:text-orange-700 hover:underline">
+                            +{g.rows.length-3} more
+                          </button>
+                        )}
                       </div>
-                      <div className="text-[11px] font-medium text-slate-400">{g.count} item{g.count>1?"s":""}</div>
+                      <button onClick={() => toggleOrderExpand(g.saleNo)} className="mt-0.5 text-[11px] font-bold text-orange-600 hover:text-orange-700 hover:underline">
+                        {expanded ? "Hide details" : `Show all ${g.count} item${g.count>1?"s":""} ↓`}
+                      </button>
                     </td>
                     <td className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-300">{g.qty}</td>
                     <td className="px-4 py-3 text-right font-black text-slate-900 dark:text-white">{money(g.total)}</td>
@@ -1329,6 +1531,7 @@ export default function StudentSalesPage() {
                           <span className={`h-1.5 w-1.5 rounded-full ${g.first.paymentStatus === "Paid" ? "bg-emerald-500" : "bg-red-500"}`} />{g.first.paymentStatus || "Unpaid"}
                         </span>
                         {g.first.paymentMethod ? <span className="text-[10px] font-semibold text-slate-400">{g.first.paymentMethod}</span> : null}
+                        {g.first.paymentNote ? <span className="text-[10px] font-medium text-slate-500 truncate max-w-[220px]" title={g.first.paymentNote}>Note: {g.first.paymentNote}</span> : null}
                       </div>
                     </td>
                     <td className="px-4 py-3">
@@ -1348,7 +1551,71 @@ export default function StudentSalesPage() {
                       </div>
                     </td>
                   </tr>
-                ))
+                  {expanded && (
+                    <tr className={idx % 2 === 0 ? "bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800" : "bg-slate-50/40 dark:bg-slate-800/20 border-b border-slate-100 dark:border-slate-800"}>
+                      <td colSpan={8} className="px-4 pb-4 pt-0">
+                        <div className="rounded-xl border border-orange-200/70 dark:border-orange-500/20 bg-orange-50/50 dark:bg-slate-800/60 overflow-hidden">
+                          <div className="px-4 py-2 border-b border-orange-200/60 dark:border-slate-700 flex flex-wrap items-center justify-between gap-2 text-[11px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                            <span>Order items as billed</span>
+                            <span className="normal-case tracking-normal font-semibold">
+                              {g.first.paymentMethod ? `${g.first.paymentMethod}` : ""}{g.first.paymentMethod && g.first.paymentNote ? " · " : ""}{g.first.paymentNote ? `Note: ${g.first.paymentNote}` : ""}
+                            </span>
+                          </div>
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="text-left text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                                <th className="px-4 py-2 font-black w-10">#</th>
+                                <th className="px-4 py-2 font-black">Item</th>
+                                <th className="px-4 py-2 font-black text-center">Qty</th>
+                                <th className="px-4 py-2 font-black text-right">Unit Price</th>
+                                <th className="px-4 py-2 font-black text-right">Discount</th>
+                                <th className="px-4 py-2 font-black text-right">Amount</th>
+                                <th className="px-4 py-2 font-black text-right">Action</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {g.rows.map((r, i) => (
+                                <tr key={r.id ?? i} className="border-t border-orange-100/70 dark:border-slate-700/60">
+                                  <td className="px-4 py-2 text-slate-400 font-bold">{i + 1}</td>
+                                  <td className="px-4 py-2">
+                                    <div className="font-bold text-slate-800 dark:text-slate-100">{productName(r)}</div>
+                                    {r.exchangeNote ? (
+                                      <div className="mt-1 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 px-2 py-1 text-[10px] font-medium text-amber-800 dark:text-amber-300 whitespace-pre-line" title="Exchange history">
+                                        {r.exchangeNote}
+                                      </div>
+                                    ) : null}
+                                    <div className="mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold text-slate-400">
+                                      <span className={`inline-flex px-1.5 py-px rounded text-[9px] font-black border ${r.bookId ? "bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-500/30" : "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/30"}`}>
+                                        {r.bookId ? "Book" : "Product"}
+                                      </span>
+                                      <span>ID {r.productId || r.bookId || "-"}</span>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-2 text-center font-bold text-slate-700 dark:text-slate-300">{Number(r.quantity) || 0}</td>
+                                  <td className="px-4 py-2 text-right text-slate-600 dark:text-slate-300">{money(Number(r.unitPrice) || 0)}</td>
+                                  <td className="px-4 py-2 text-right text-red-600 font-semibold">{Number(r.discountAmount) ? `- ${money(Number(r.discountAmount))}` : "—"}</td>
+                                  <td className="px-4 py-2 text-right font-black text-slate-900 dark:text-white">{money(Number(r.totalAmount) || 0)}</td>
+                                  <td className="px-4 py-2 text-right">
+                                    <button onClick={() => openExchange(r)} title="Exchange this item for another product/book" className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-black text-slate-600 dark:text-slate-300 hover:border-orange-300 hover:text-orange-600 transition-colors">
+                                      <ArrowLeftRight className="h-3 w-3" /> Exchange
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          <div className="px-4 py-2.5 border-t border-orange-200/60 dark:border-slate-700 flex flex-wrap items-center justify-end gap-x-5 gap-y-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                            <span>Subtotal <b className="text-slate-900 dark:text-white">{money(orderSub)}</b></span>
+                            <span>Discount <b className="text-red-600">- {money(orderDisc)}</b></span>
+                            <span className="text-sm">Total <b className="text-slate-900 dark:text-white">{money(g.total)}</b></span>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
+                  )
+                })
               )}
             </tbody>
           </table>
@@ -1370,22 +1637,27 @@ export default function StudentSalesPage() {
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
               <div>
                 <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">Order {viewOrder.saleNo}</h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400">{viewOrder.rows[0]?.studentName || "-"} · {viewOrder.rows[0]?.saleDate ? String(viewOrder.rows[0].saleDate).slice(0,10) : ""} · <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${viewOrder.rows[0]?.paymentStatus==="Paid"?"bg-emerald-100 text-emerald-700":"bg-red-100 text-red-700"}`}>{viewOrder.rows[0]?.paymentStatus || "Unpaid"}</span>{viewOrder.rows[0]?.paymentMethod ? ` · ${viewOrder.rows[0].paymentMethod}` : ""}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{viewOrder.rows[0]?.studentName || "-"} · {viewOrder.rows[0]?.saleDate ? String(viewOrder.rows[0].saleDate).slice(0,10) : ""} · <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${viewOrder.rows[0]?.paymentStatus==="Paid"?"bg-emerald-100 text-emerald-700":"bg-red-100 text-red-700"}`}>{viewOrder.rows[0]?.paymentStatus || "Unpaid"}</span>{viewOrder.rows[0]?.paymentMethod ? ` · ${viewOrder.rows[0].paymentMethod}` : ""}{viewOrder.rows[0]?.paymentNote ? ` · Note: ${viewOrder.rows[0].paymentNote}` : ""}</p>
               </div>
               <button onClick={()=> setViewOrder(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><X className="h-5 w-5" /></button>
             </div>
             <div className="flex-1 overflow-y-auto p-4">
               <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
                 <table className="w-full text-sm">
-                  <thead><tr className="bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700"><th className="text-left px-3 py-2 text-xs uppercase font-semibold text-gray-600 dark:text-gray-300">#</th><th className="text-left px-3 py-2 text-xs uppercase font-semibold text-gray-600 dark:text-gray-300">Item</th><th className="text-center px-3 py-2 text-xs uppercase font-semibold text-gray-600 dark:text-gray-300">Qty</th><th className="text-right px-3 py-2 text-xs uppercase font-semibold text-gray-600 dark:text-gray-300">Unit</th><th className="text-right px-3 py-2 text-xs uppercase font-semibold text-gray-600 dark:text-gray-300">Total</th></tr></thead>
+                  <thead><tr className="bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700"><th className="text-left px-3 py-2 text-xs uppercase font-semibold text-gray-600 dark:text-gray-300">#</th><th className="text-left px-3 py-2 text-xs uppercase font-semibold text-gray-600 dark:text-gray-300">Item</th><th className="text-center px-3 py-2 text-xs uppercase font-semibold text-gray-600 dark:text-gray-300">Qty</th><th className="text-right px-3 py-2 text-xs uppercase font-semibold text-gray-600 dark:text-gray-300">Unit</th><th className="text-right px-3 py-2 text-xs uppercase font-semibold text-gray-600 dark:text-gray-300">Total</th><th className="text-right px-3 py-2 text-xs uppercase font-semibold text-gray-600 dark:text-gray-300">Action</th></tr></thead>
                   <tbody>
                     {viewOrder.rows.map((r, i)=> (
                       <tr key={r.id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
                         <td className="px-3 py-2 text-gray-500">{i+1}</td>
-                        <td className="px-3 py-2"><div className="font-medium text-gray-800 dark:text-gray-100">{productName(r)}</div><div className="text-[11px] text-gray-400">{r.bookId ? "Book" : "Product"} · ID {r.productId || r.bookId}</div></td>
+                        <td className="px-3 py-2"><div className="font-medium text-gray-800 dark:text-gray-100">{productName(r)}</div><div className="text-[11px] text-gray-400">{r.bookId ? "Book" : "Product"} · ID {r.productId || r.bookId}</div>{r.exchangeNote ? <div className="mt-1 rounded bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 px-2 py-1 text-[10px] font-medium text-amber-800 dark:text-amber-300 whitespace-pre-line">{r.exchangeNote}</div> : null}</td>
                         <td className="px-3 py-2 text-center text-gray-600 dark:text-gray-300">{r.quantity}</td>
                         <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-300">{money(Number(r.unitPrice)||0)}</td>
                         <td className="px-3 py-2 text-right font-medium text-gray-800 dark:text-gray-100">{money(Number(r.totalAmount)||0)}</td>
+                        <td className="px-3 py-2 text-right">
+                          <button onClick={() => openExchange(r)} title="Exchange this item" className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white dark:bg-slate-800 border border-gray-300 dark:border-gray-600 text-[11px] font-bold text-gray-600 dark:text-gray-300 hover:border-orange-300 hover:text-orange-600 transition-colors">
+                            <ArrowLeftRight className="h-3 w-3" /> Exchange
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1606,6 +1878,7 @@ export default function StudentSalesPage() {
                   {receipt.paymentStatus}
                 </span>
                 {receipt.paymentMethod && <p className="text-xs text-gray-500 mt-1">Payment: {receipt.paymentMethod}</p>}
+                {receipt.paymentNote && <p className="text-xs text-gray-500 mt-1 rounded-lg bg-slate-50 border border-slate-200 px-2.5 py-1.5">Note: {receipt.paymentNote}</p>}
               </div>
 
               {receipt.student && (
@@ -1767,6 +2040,23 @@ export default function StudentSalesPage() {
                     ))}
                   </select>
                 </div>
+                <div className="col-span-2 rounded-xl border border-amber-200/70 bg-amber-50/60 p-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                      <StickyNote className="h-3.5 w-3.5 text-amber-600" />
+                      Payment Note <span className="font-normal text-gray-400">· optional</span>
+                    </label>
+                    <span className="text-[10px] font-bold tabular-nums text-gray-400">{saleForm.paymentNote.length}/500</span>
+                  </div>
+                  <textarea
+                    value={saleForm.paymentNote}
+                    onChange={(e) => setSaleForm((p) => ({ ...p, paymentNote: e.target.value }))}
+                    rows={2}
+                    maxLength={500}
+                    placeholder="UPI ref no / cheque no / txn id / note about this payment…"
+                    className={inputCls + " resize-none"}
+                  />
+                </div>
               </div>
 
               <div>
@@ -1806,6 +2096,143 @@ export default function StudentSalesPage() {
               >
                 {savingEdit ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {exchangeLine && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => !exSaving && setExchangeLine(null)} />
+          <div className="relative bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto z-10 border border-slate-200 dark:border-slate-700">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700 sticky top-0 bg-white dark:bg-slate-900 rounded-t-2xl">
+              <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                <span className="h-8 w-8 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center text-white">
+                  <ArrowLeftRight className="h-4 w-4" />
+                </span>
+                Exchange Item
+              </h3>
+              <button onClick={() => !exSaving && setExchangeLine(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 px-4 py-3 text-sm">
+                <div className="text-[11px] font-black uppercase tracking-widest text-slate-400">Currently billed · {exchangeLine.saleNo || "-"}</div>
+                <div className="mt-1 font-bold text-slate-800 dark:text-slate-100">{exchangeLine.bookId ? books.find((b) => b.id === exchangeLine.bookId)?.title ?? `Book #${exchangeLine.bookId}` : products.find((p) => p.id === exchangeLine.productId)?.name ?? `Product #${exchangeLine.productId}`}</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400">
+                  Qty {Number(exchangeLine.quantity) || 0} × {money(Number(exchangeLine.unitPrice) || 0)} = <b className="text-slate-800 dark:text-slate-100">{money(exOldTotal)}</b>
+                  {exOldDiscount > 0 && <span> (incl. {money(exOldDiscount)} discount kept)</span>}
+                </div>
+                {exchangeLine.exchangeNote ? (
+                  <div className="mt-2 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 px-2.5 py-1.5 text-[11px] font-medium text-amber-800 dark:text-amber-300 whitespace-pre-line">
+                    {exchangeLine.exchangeNote}
+                  </div>
+                ) : null}
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-black tracking-widest text-slate-500 dark:text-slate-400 uppercase mb-1.5">Replace with</label>
+                <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-slate-100 dark:bg-slate-800">
+                  {(["product", "book"] as const).map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => { setExType(t); setExError("") }}
+                      className={`py-2 rounded-lg text-sm font-black capitalize transition-all ${exType === t ? "bg-white dark:bg-slate-900 text-orange-600 shadow" : "text-slate-500 dark:text-slate-400"}`}
+                    >
+                      {t === "product" ? "Product" : "Book"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {exType === "product" ? (
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">New product</label>
+                    <select value={exProductId} onChange={(e) => handleExProductSelect(e.target.value)} className={inputCls}>
+                      <option value="">Select product…</option>
+                      {products.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name} · {money(Number(p.sellingPrice) || 0)}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {exVariations.length > 0 && (
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Variation</label>
+                      <select value={exVariationId} onChange={(e) => handleExVariationSelect(e.target.value)} className={inputCls}>
+                        <option value="">No variation (base stock)</option>
+                        {exVariations.map((v) => (
+                          <option key={v.id} value={v.id}>
+                            {[v.componentName || v.variantType, v.color, v.size || v.variantValue].filter(Boolean).join(" · ")} · {money(Number(v.price ?? v.additionalPrice) || 0)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">New book</label>
+                  <select value={exBookId} onChange={(e) => handleExBookSelect(e.target.value)} className={inputCls}>
+                    <option value="">Select book…</option>
+                    {books.map((b) => (
+                      <option key={b.id} value={b.id}>{b.title} · {money(Number(b.sellingPrice) || 0)}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Quantity</label>
+                  <input type="number" min={1} value={exQty} onChange={(e) => setExQty(Math.max(1, Math.floor(Number(e.target.value) || 1)))} className={inputCls} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Unit Price ({symbol})</label>
+                  <input type="number" min={0} step="0.01" value={exPrice} onChange={(e) => setExPrice(Math.max(0, Number(e.target.value) || 0))} className={inputCls} />
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 px-4 py-3 text-sm space-y-1.5">
+                <div className="text-[11px] font-black uppercase tracking-widest text-slate-400">Calculated</div>
+                <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                  <span className="truncate mr-2">Old: {productName(exchangeLine)}</span>
+                  <b className="text-slate-800 dark:text-slate-100 shrink-0">{money(exOldTotal)}</b>
+                </div>
+                <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                  <span className="truncate mr-2">New: {exNewName} × {Math.max(1, Math.floor(Number(exQty) || 1))}</span>
+                  <b className="text-slate-800 dark:text-slate-100 shrink-0">{money(exNewTotal)}</b>
+                </div>
+                <div className="flex justify-between font-black border-t border-slate-200 dark:border-slate-700 pt-1.5">
+                  <span className="text-slate-600 dark:text-slate-300">Difference</span>
+                  <span className={exDiff === 0 ? "text-slate-800 dark:text-slate-100" : exDiff > 0 ? "text-red-600" : "text-emerald-600"}>
+                    {exDiff === 0 ? "No change" : `${exDiff > 0 ? "+" : "−"}${money(Math.abs(exDiff))}`}
+                  </span>
+                </div>
+                {exType === "product" && (
+                  <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400 leading-relaxed">
+                    Stock: {productName(exchangeLine)} × {Number(exchangeLine.quantity) || 0} returns to stock
+                    {" "}· {exNewName} × {Math.max(1, Math.floor(Number(exQty) || 1))} issued
+                    {exAvail != null && <span> (available: <b className={exAvail >= Math.max(1, Math.floor(Number(exQty) || 1)) ? "text-emerald-600" : "text-red-600"}>{exAvail}</b>)</span>}
+                  </div>
+                )}
+              </div>
+
+              {exError && <p className="text-red-600 text-xs font-semibold bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl px-3 py-2">{exError}</p>}
+            </div>
+
+            <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-2 rounded-b-2xl sticky bottom-0 bg-white dark:bg-slate-900">
+              <button onClick={() => !exSaving && setExchangeLine(null)} disabled={exSaving} className="px-4 py-2 text-sm text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50">Cancel</button>
+              <button
+                onClick={submitExchange}
+                disabled={exSaving}
+                className="px-5 py-2 bg-gradient-to-br from-orange-500 to-amber-500 text-white text-sm font-black rounded-lg hover:shadow-lg disabled:opacity-50 flex items-center gap-2"
+              >
+                {exSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowLeftRight className="h-4 w-4" />}
+                Confirm Exchange
               </button>
             </div>
           </div>

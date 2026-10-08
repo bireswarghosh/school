@@ -1,6 +1,89 @@
 import { Pool, types } from "pg"
+import dns from "node:dns"
+import net from "node:net"
 import { headers } from "next/headers"
 import { isTenantTable } from "@/lib/tenant-tables"
+
+// ----------------------------------------------------------------
+// DNS fix for ISPs (e.g. Reliance/Jio) whose default resolvers refuse
+// Neon pooler hostnames with ENOTFOUND / Query refused.
+// Root cause verified on this PC:
+//   default DNS (192.168.29.1 → Reliance) => "Query refused"
+//   8.8.8.8                            => OK (52.76.x.x)
+// Node's dns.lookup()/net.connect() use the OS resolver and IGNORE
+// dns.setServers(). pg v8 hardcodes dns.lookup, so the Pool `lookup`
+// option is ignored. Fix: monkey-patch dns.lookup to fall back to
+// Google DNS via resolve4/resolve6 (c-ares honours setServers).
+// No admin rights needed for this in-app fix.
+// Permanent system-wide fix (run PowerShell AS ADMINISTRATOR once):
+//   Set-DnsClientServerAddress -InterfaceIndex 4 -ServerAddresses ("8.8.8.8","8.8.4.4","1.1.1.1")
+//   ipconfig /flushdns
+// ----------------------------------------------------------------
+try {
+  dns.setServers(["8.8.8.8", "8.8.4.4", "1.1.1.1"])
+} catch {
+  // ignore — falls back to OS resolver
+}
+
+const _origLookup = dns.lookup.bind(dns)
+
+function lookupWithGoogleFallback(
+  hostname: string,
+  options: any,
+  callback?: any
+): any {
+  let opts: any = {}
+  let cb: any = callback
+  if (typeof options === "function") {
+    cb = options
+  } else if (typeof options === "number") {
+    opts = { family: options }
+  } else if (options) {
+    opts = options
+  }
+  if (net.isIP(hostname)) {
+    const family = net.isIPv4(hostname) ? 4 : 6
+    if (opts.all) return cb(null, [{ address: hostname, family }])
+    return cb(null, hostname, family)
+  }
+  // 1) Try OS resolver first (fast when it works)
+  return (_origLookup as any)(hostname, opts, (err: any, address: any, family: any) => {
+    if (!err) {
+      if (opts.all) return cb(null, address, family)
+      return cb(null, address, family)
+    }
+    // 2) Fallback to Google DNS via resolve4/resolve6
+    dns.resolve4(hostname, (e4, v4) => {
+      if (!e4 && v4?.length) {
+        if (opts.all) return cb(null, v4.map((a) => ({ address: a, family: 4 })))
+        return cb(null, v4[0], 4)
+      }
+      dns.resolve6(hostname, (e6, v6) => {
+        if (!e6 && v6?.length) {
+          if (opts.all) return cb(null, v6.map((a) => ({ address: a, family: 6 })))
+          return cb(null, v6[0], 6)
+        }
+        const enhanced: any = new Error(
+          `getaddrinfo ENOTFOUND ${hostname} (OS DNS refused; Google DNS 8.8.8.8 fallback also failed: ` +
+            `${e4?.message || (e6 as any)?.message || err.message}. Fix: run PowerShell as Admin → ` +
+            `Set-DnsClientServerAddress -ServerAddresses ("8.8.8.8","8.8.4.4","1.1.1.1"))`
+        )
+        enhanced.code = "ENOTFOUND"
+        enhanced.hostname = hostname
+        return cb(enhanced)
+      })
+    })
+  })
+}
+
+// Patch process-wide so pg's net.connect() picks it up (pg ignores Pool.lookup)
+try {
+  ;(dns as any).lookup = lookupWithGoogleFallback
+} catch {
+  // ignore
+}
+
+const googleFallbackLookup: any = lookupWithGoogleFallback
 
 // Return DATE columns as YYYY-MM-DD strings (avoid JS Date → UTC day shift)
 types.setTypeParser(1082, (val: string) => val)
@@ -8,13 +91,38 @@ types.setTypeParser(1082, (val: string) => val)
 types.setTypeParser(114, JSON.parse)
 types.setTypeParser(3802, JSON.parse)
 
+function getDbHost(): string | undefined {
+  try {
+    const url = process.env.DATABASE_URL
+    if (!url) return undefined
+    return new URL(url).hostname
+  } catch {
+    return undefined
+  }
+}
+
+const dbHost = getDbHost()
+const isNeon = !!dbHost?.includes("neon.tech")
+
 export const pool = new Pool({
   connectionString:
     process.env.DATABASE_URL || "postgresql://postgres:123@localhost/appstrice_school",
   max: 20,
   idleTimeoutMillis: 30000,
-  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : undefined,
-})
+  ssl: process.env.DATABASE_URL
+    ? {
+        rejectUnauthorized: false,
+        // Neon routes by SNI. When our custom lookup returns a raw IP,
+        // pg would send the IP as SNI and Neon rejects it. Pin SNI to
+        // the real hostname so IP fallback still routes correctly.
+        ...(isNeon && dbHost ? { servername: dbHost } : {}),
+      }
+    : undefined,
+  // NOTE: pg v8 ignores Pool `lookup` (uses dns.lookup directly);
+  // the process-wide dns.lookup patch above is the real fix. Kept here
+  // for future pg versions that honour it.
+  lookup: googleFallbackLookup,
+} as any)
 
 // ----------------------------------------------------------------
 // Automatic tenant scoping
