@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getById, create, update, remove, query } from "@/lib/db"
 import { camelToSnake, mapResponse } from "@/lib/field-mapping"
+import { getCurrentActor, actorLabel } from "@/lib/actor"
 
 const TABLE = "si_sales"
 const ORDER = "id DESC"
@@ -19,6 +20,8 @@ const fieldMap: Record<string, string> = {
   paymentStatus: "payment_status",
   paymentMethod: "payment_method",
   paymentNote: "payment_note",
+  receivedBy: "received_by",
+  receivedByUserId: "received_by_user_id",
   exchangeNote: "exchange_note",
   vpProductId: "vp_product_id",
   componentId: "component_id",
@@ -141,6 +144,8 @@ export async function POST(req: NextRequest) {
     const paymentStatus = body.paymentStatus || "Unpaid"
     const paymentMethod = body.paymentMethod || "Cash"
     const paymentNote = typeof body.paymentNote === "string" && body.paymentNote.trim() ? body.paymentNote.trim() : null
+    const actor = await getCurrentActor()
+    const receivedBy = actorLabel(actor)
 
     if (Array.isArray(body.items) && body.items.length > 0) {
       const lines = body.items.map((item: Record<string, any>) => ({
@@ -169,6 +174,8 @@ export async function POST(req: NextRequest) {
       let total = 0
       for (const item of lines) {
         const data = buildSaleRow(item, { saleNo, saleDate, paymentStatus, paymentMethod, paymentNote })
+        if (receivedBy) data.received_by = receivedBy
+        if (actor) data.received_by_user_id = actor.id
         const row = await create(TABLE, data)
         total += Number(row.total_amount) || 0
         if (row.product_id) {
@@ -190,6 +197,8 @@ export async function POST(req: NextRequest) {
     }
 
     const data = buildSaleRow(body, { saleNo, saleDate, paymentStatus, paymentMethod, paymentNote })
+    if (receivedBy) data.received_by = receivedBy
+    if (actor) data.received_by_user_id = actor.id
     const stockable = stockableOf(body)
     if (stockable) {
       const available = await availableQty(stockable.productId, stockable.variationId)

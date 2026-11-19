@@ -172,7 +172,7 @@ export default function CollectFeesModal({
   useEffect(() => {
     fetch("/api/auth/me")
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setCurrentUser(d))
+      .then((d) => setCurrentUser(d?.user ?? null))
       .catch(() => setCurrentUser(null))
   }, [])
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { query, create, update, remove, getAll } from "@/lib/db"
 import { camelToSnake } from "@/lib/field-mapping"
+import { getSessionSchoolId } from "@/lib/auth"
 
 function getErrorMessage(e: unknown) {
   return e instanceof Error ? e.message : String(e)
@@ -75,8 +76,32 @@ async function mapBody(body: Record<string, any>) {
   return data
 }
 
-async function getWithJoins(id?: number) {
-  const where = id ? `WHERE m.id = ${id}` : ""
+/**
+ * When a Fine Rule is active it governs every class, so newly created fee
+ * masters inherit the rule's terms (the form's fine selection is overridden).
+ */
+async function applyActiveFineRule(data: Record<string, any>, schoolId: number | null) {
+  if (!schoolId) return data
+  try {
+    const res = await query(`SELECT value FROM school_settings WHERE school_id = $1 AND key = 'fees.fineRules'`, [schoolId])
+    const raw = res.rows[0]?.value
+    if (!raw) return data
+    const cfg = JSON.parse(raw)
+    const rule = Array.isArray(cfg?.rules) ? cfg.rules.find((r: any) => r?.id === cfg?.activeId) : null
+    if (!rule) return data
+    const cumulative = rule.fineType === "Cumulative"
+    data.fine_type = ["Percentage", "Fix Amount", "Cumulative"].includes(rule.fineType) ? rule.fineType : "None"
+    data.fine_value = cumulative ? null : Number(rule.fineValue) || 0
+    data.per_day = cumulative ? Boolean(rule.perDay) : false
+    data.fine_rows = cumulative ? JSON.stringify(Array.isArray(rule.fineRows) ? rule.fineRows : []) : null
+    if (Number(rule.dueDay) >= 1 && Number(rule.dueDay) <= 28) data.due_day = Number(rule.dueDay)
+  } catch {
+    /* invalid rule config — leave row as entered */
+  }
+  return data
+}
+
+async function getWithJoins(id?: number) {  const where = id ? `WHERE m.id = ${id}` : ""
   const sql = `
     SELECT m.id, fg.name AS "feesGroup", ft.name AS "feesType",
       c.name AS "class", m.amount,
@@ -111,16 +136,18 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
+    const schoolId = getSessionSchoolId(req)
     if (Array.isArray(body)) {
       const results = []
       for (const item of body) {
-        const created = await create(TABLE, await mapBody(item))
+        const data = await applyActiveFineRule(await mapBody(item), schoolId)
+        const created = await create(TABLE, data)
         const rows = created ? await getWithJoins(created.id) : []
         results.push(rows[0] || created)
       }
       return NextResponse.json(results, { status: 201 })
     }
-    const item = await create(TABLE, await mapBody(body))
+    const item = await create(TABLE, await applyActiveFineRule(await mapBody(body), schoolId))
     const rows = await getWithJoins(item.id)
     return NextResponse.json(rows[0] || item, { status: 201 })
   } catch (e: any) {

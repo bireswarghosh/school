@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState, useCallback, Fragment } from "react"
-import { UserCheck, Search, ShoppingCart, Plus, Minus, Trash2, Ticket, Save, Package, BookOpen, X, Loader2, Printer, FileDown, MessageCircle, CheckCircle2, Pencil, SlidersHorizontal, Eye, Layers, AlertTriangle, StickyNote, ChevronDown, ArrowLeftRight } from "lucide-react"
+import { UserCheck, Search, ShoppingCart, Plus, Minus, Trash2, Ticket, Save, Package, BookOpen, X, Loader2, Printer, FileDown, MessageCircle, CheckCircle2, Pencil, SlidersHorizontal, Eye, Layers, AlertTriangle, StickyNote, ChevronDown, ArrowLeftRight, Building2 } from "lucide-react"
 import { useApi } from "@/lib/use-api"
 import { ProductIcon, getIconColors, InventoryBadge } from "@/lib/inventory-icons"
 import { useCurrency } from "@/lib/currency-context"
@@ -72,6 +72,17 @@ type Receipt = {
 type BalanceRow = { productId: number; variationId: number | null; name?: string; label?: string; minStock?: number; balance: number; status: "ok" | "low" | "out" }
 type BalanceResponse = { products: BalanceRow[]; variations: BalanceRow[] }
 type PaymentGateway = { id?: number; name: string; code?: string; status?: boolean; mode?: string }
+type InvoiceHeader = { name: string; tagline: string; address: string; phone: string; email: string; footer: string }
+
+const INVOICE_HEADER_KEYS: Record<keyof InvoiceHeader, string> = {
+  name: "si.invoiceHeader.name",
+  tagline: "si.invoiceHeader.tagline",
+  address: "si.invoiceHeader.address",
+  phone: "si.invoiceHeader.phone",
+  email: "si.invoiceHeader.email",
+  footer: "si.invoiceHeader.footer",
+}
+const DEFAULT_INVOICE_FOOTER = "Thank you for your purchase! This is a computer-generated invoice."
 
 const inputCls = "w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:border-orange-300 focus:ring-2 focus:ring-orange-200 dark:focus:ring-orange-500/20 outline-none transition-all"
 
@@ -110,8 +121,79 @@ export default function StudentSalesPage() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [receipt, setReceipt] = useState<Receipt | null>(null)
   const [receiptOpen, setReceiptOpen] = useState(false)
-  const { school } = useAuth()
+  const { school, user } = useAuth()
   const { info: schoolInfo } = useSchoolInfo()
+  const canEditInvoiceHeader = !user || user.role === "admin" || user.role === "super_admin"
+  const [headerCfg, setHeaderCfg] = useState<Record<string, string> | null>(null)
+  const [headerOpen, setHeaderOpen] = useState(false)
+  const [headerForm, setHeaderForm] = useState<InvoiceHeader>({ name: "", tagline: "", address: "", phone: "", email: "", footer: "" })
+  const [savingHeader, setSavingHeader] = useState(false)
+
+  // Load the POS invoice header (editable from this screen) from school settings.
+  useEffect(() => {
+    fetch("/api/school-settings")
+      .then((r) => (r.ok ? r.json() : {}))
+      .then((d: Record<string, unknown>) => {
+        const cfg: Record<string, string> = {}
+        let found = false
+        for (const key of Object.values(INVOICE_HEADER_KEYS)) {
+          if (typeof d[key] === "string") {
+            cfg[key] = d[key] as string
+            found = true
+          }
+        }
+        if (found) setHeaderCfg(cfg)
+      })
+      .catch(() => {})
+  }, [])
+
+  const effectiveInvoiceHeader = (): InvoiceHeader => {
+    const cfg = headerCfg || {}
+    const pick = (k: keyof InvoiceHeader, fallback: string) => {
+      const key = INVOICE_HEADER_KEYS[k]
+      return headerCfg && key in cfg ? (cfg[key] ?? "") : fallback
+    }
+    return {
+      name: pick("name", schoolInfo.name || school?.name || "Smart School"),
+      tagline: pick("tagline", school?.tagline || ""),
+      address: pick("address", schoolInfo.address || school?.address || ""),
+      phone: pick("phone", schoolInfo.phone || school?.phone || ""),
+      email: pick("email", schoolInfo.email || school?.email || ""),
+      footer: pick("footer", DEFAULT_INVOICE_FOOTER),
+    }
+  }
+
+  const openInvoiceHeader = () => {
+    setHeaderForm(effectiveInvoiceHeader())
+    setHeaderOpen(true)
+  }
+
+  const saveInvoiceHeader = async () => {
+    setSavingHeader(true)
+    try {
+      const payload: Record<string, string> = {}
+      for (const [k, key] of Object.entries(INVOICE_HEADER_KEYS)) {
+        const field = k as keyof InvoiceHeader
+        payload[key] = (headerForm[field] || "").trim()
+      }
+      const res = await fetch("/api/school-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || "Failed to save invoice header")
+      }
+      setHeaderCfg(payload)
+      setHeaderOpen(false)
+      notify.success("Invoice header updated — all POS invoices will use it")
+    } catch (e: any) {
+      notify.error(e.message || "Failed to save invoice header")
+    } finally {
+      setSavingHeader(false)
+    }
+  }
   const [catalogTab, setCatalogTab] = useState<"products" | "books">("products")
   const [search, setSearch] = useState("")
   const [cart, setCart] = useState<CartItem[]>([])
@@ -603,11 +685,12 @@ export default function StudentSalesPage() {
 
   const buildReceiptHtml = (r: Receipt): string => {
     const fmt = (n: number) => `${symbol}${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-    const sName = esc(schoolInfo.name || school?.name || "Smart School")
-    const sTagline = school?.tagline ? esc(school.tagline) : ""
-    const sAddress = esc(schoolInfo.address || school?.address || "")
-    const sPhone = esc(schoolInfo.phone || school?.phone || "")
-    const sEmail = esc(schoolInfo.email || school?.email || "")
+    const ih = effectiveInvoiceHeader()
+    const sName = esc(ih.name)
+    const sTagline = ih.tagline ? esc(ih.tagline) : ""
+    const sAddress = esc(ih.address)
+    const sPhone = esc(ih.phone)
+    const sEmail = esc(ih.email)
     const sLogo = schoolInfo.logoSrc ? esc(schoolInfo.logoSrc) : ""
     const items = r.items
       .map(
@@ -674,7 +757,7 @@ export default function StudentSalesPage() {
       <div class="row grand"><span>Grand Total</span><span>${fmt(r.total)}</span></div>
     </div>
 
-    <div class="foot">Thank you for your purchase!<br />This is a computer-generated receipt.</div>
+    <div class="foot">${esc(ih.footer)}</div>
   </div>
 </body>
 </html>`
@@ -693,7 +776,7 @@ export default function StudentSalesPage() {
 
   const shareWhatsApp = () => {
     if (!receipt) return
-    const sName = school?.name || "Smart School"
+    const sName = effectiveInvoiceHeader().name || "Smart School"
     const itemsTxt = receipt.items
       .map((it) => `• ${it.name} (${it.type === "book" ? "Book" : "Product"})\n   Qty ${it.quantity} x ${money(it.unitPrice)} = ${money(it.subtotal)}${it.discount ? ` (Disc ${money(it.discount)})` : ""}`)
       .join("\n")
@@ -742,11 +825,12 @@ export default function StudentSalesPage() {
 
   const buildSaleInvoiceHtml = (base: Sale, rows: Sale[]): string => {
     const fmt = (n: number) => `${symbol}${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-    const sName = esc(school?.name || "Smart School")
-    const sTagline = school?.tagline ? esc(school.tagline) : ""
-    const sAddress = school?.address ? esc(school.address) : ""
-    const sPhone = school?.phone ? esc(school.phone) : ""
-    const sEmail = school?.email ? esc(school.email) : ""
+    const ih = effectiveInvoiceHeader()
+    const sName = esc(ih.name)
+    const sTagline = ih.tagline ? esc(ih.tagline) : ""
+    const sAddress = esc(ih.address)
+    const sPhone = esc(ih.phone)
+    const sEmail = esc(ih.email)
     const sub = rows.reduce((s, r) => s + (Number(r.subtotal) || 0), 0)
     const disc = rows.reduce((s, r) => s + (Number(r.discountAmount) || 0), 0)
     const total = rows.reduce((s, r) => s + (Number(r.totalAmount) || 0), 0)
@@ -823,7 +907,7 @@ export default function StudentSalesPage() {
       <div class="row grand"><span>Grand Total</span><span>${fmt(total)}</span></div>
     </div>
 
-    <div class="foot">Thank you for your purchase! This is a computer-generated invoice.</div>
+    <div class="foot">${esc(ih.footer)}</div>
   </div>
 </body>
 </html>`
@@ -1058,6 +1142,15 @@ export default function StudentSalesPage() {
             <p className="text-[13px] font-medium text-slate-600 dark:text-slate-400 mt-1">Scan student, add items, checkout — fast and accurate billing</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {canEditInvoiceHeader && (
+              <button
+                onClick={openInvoiceHeader}
+                title="Change the address & header printed on every POS invoice"
+                className="inline-flex items-center gap-1.5 rounded-full bg-white dark:bg-slate-800 border border-orange-200 dark:border-orange-500/30 px-3.5 py-1.5 text-xs font-bold text-orange-700 dark:text-orange-300 hover:bg-orange-50 dark:hover:bg-orange-500/10 shadow-sm transition-colors"
+              >
+                <Building2 className="h-3.5 w-3.5" /> Invoice Header
+              </button>
+            )}
             <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-3.5 py-1.5 text-xs font-bold shadow">
               <Package className="h-3.5 w-3.5" /> {products.length} products
             </span>
@@ -1870,8 +1963,12 @@ export default function StudentSalesPage() {
 
             <div className="p-6">
               <div className="text-center border-b border-dashed border-gray-300 pb-4 mb-4">
-                <h4 className="text-base font-bold text-gray-900">{school?.name || "Smart School"}</h4>
-                {school?.tagline && <p className="text-[11px] text-[var(--primary)] mt-0.5">{school.tagline}</p>}
+                <h4 className="text-base font-bold text-gray-900">{effectiveInvoiceHeader().name}</h4>
+                {effectiveInvoiceHeader().tagline && <p className="text-[11px] text-[var(--primary)] mt-0.5">{effectiveInvoiceHeader().tagline}</p>}
+                {effectiveInvoiceHeader().address && <p className="text-[11px] text-gray-500 mt-0.5 whitespace-pre-line">{effectiveInvoiceHeader().address}</p>}
+                {(effectiveInvoiceHeader().phone || effectiveInvoiceHeader().email) && (
+                  <p className="text-[11px] text-gray-500 mt-0.5">{[effectiveInvoiceHeader().phone, effectiveInvoiceHeader().email].filter(Boolean).join(" | ")}</p>
+                )}
                 <p className="text-sm font-semibold text-gray-800 mt-2">{receipt.saleNo}</p>
                 <p className="text-xs text-gray-500">Date: {receipt.saleDate}</p>
                 <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${receipt.paymentStatus === "Paid" ? "text-emerald-700 border-emerald-600" : "text-red-600 border-red-600"}`}>
@@ -2261,6 +2358,140 @@ export default function StudentSalesPage() {
               >
                 {deletingSale ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {headerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => !savingHeader && setHeaderOpen(false)} />
+          <div className="relative bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto z-10">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700 sticky top-0 bg-white dark:bg-slate-900 z-10">
+              <div className="flex items-center gap-2.5">
+                <span className="h-9 w-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center text-white shadow-sm">
+                  <Building2 className="h-4 w-4" />
+                </span>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900 dark:text-white">Invoice Header</h3>
+                  <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                    Printed on every POS receipt &amp; invoice — change it any time
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => !savingHeader && setHeaderOpen(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">School / Shop Name</label>
+                  <input
+                    value={headerForm.name}
+                    onChange={(e) => setHeaderForm((p) => ({ ...p, name: e.target.value }))}
+                    placeholder="School name"
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Tagline</label>
+                  <input
+                    value={headerForm.tagline}
+                    onChange={(e) => setHeaderForm((p) => ({ ...p, tagline: e.target.value }))}
+                    placeholder="e.g. Stationery & Uniform Store"
+                    className={inputCls}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Address</label>
+                  <textarea
+                    value={headerForm.address}
+                    onChange={(e) => setHeaderForm((p) => ({ ...p, address: e.target.value }))}
+                    rows={2}
+                    placeholder="Street, area, city, pin code"
+                    className={inputCls + " resize-none"}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Phone</label>
+                  <input
+                    value={headerForm.phone}
+                    onChange={(e) => setHeaderForm((p) => ({ ...p, phone: e.target.value }))}
+                    placeholder="+91 90000 00000"
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Email</label>
+                  <input
+                    value={headerForm.email}
+                    onChange={(e) => setHeaderForm((p) => ({ ...p, email: e.target.value }))}
+                    placeholder="store@school.com"
+                    className={inputCls}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Footer Note</label>
+                  <input
+                    value={headerForm.footer}
+                    onChange={(e) => setHeaderForm((p) => ({ ...p, footer: e.target.value }))}
+                    placeholder={DEFAULT_INVOICE_FOOTER}
+                    className={inputCls}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-widest text-slate-400 mb-2">Preview</p>
+                <div className="rounded-xl border border-orange-200 dark:border-orange-500/25 bg-gradient-to-br from-orange-50/70 to-amber-50/50 dark:from-orange-500/[0.07] dark:to-amber-500/[0.05] px-4 py-4 text-center">
+                  <p className="text-base font-extrabold text-slate-900 dark:text-white">
+                    {headerForm.name || school?.name || "Smart School"}
+                  </p>
+                  {(headerForm.tagline || school?.tagline) && (
+                    <p className="text-[11px] font-semibold text-orange-600 dark:text-orange-400 mt-0.5">
+                      {headerForm.tagline || school?.tagline}
+                    </p>
+                  )}
+                  {(headerForm.address || schoolInfo.address || school?.address) && (
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1 whitespace-pre-line">
+                      {headerForm.address || schoolInfo.address || school?.address}
+                    </p>
+                  )}
+                  {(headerForm.phone || headerForm.email || schoolInfo.phone || schoolInfo.email) && (
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      {[headerForm.phone || schoolInfo.phone || school?.phone, headerForm.email || schoolInfo.email || school?.email]
+                        .filter(Boolean)
+                        .join(" | ")}
+                    </p>
+                  )}
+                  <p className="text-[10px] text-slate-400 mt-2 pt-2 border-t border-dashed border-orange-200 dark:border-orange-500/20">
+                    {headerForm.footer || DEFAULT_INVOICE_FOOTER}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-2 sticky bottom-0 bg-white dark:bg-slate-900">
+              <button
+                onClick={() => setHeaderOpen(false)}
+                disabled={savingHeader}
+                className="px-4 py-2 text-sm text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveInvoiceHeader}
+                disabled={savingHeader}
+                className="px-5 py-2 bg-gradient-to-br from-orange-500 to-amber-500 text-white text-sm font-black rounded-lg hover:shadow-lg disabled:opacity-50 flex items-center gap-2"
+              >
+                {savingHeader ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Save Header
               </button>
             </div>
           </div>

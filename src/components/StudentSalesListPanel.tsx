@@ -1,12 +1,12 @@
 "use client"
 
 import { useState, useMemo, type ReactNode } from "react"
-import { Trash2, X, FileText, Printer, FileDown, ShoppingBag, Wallet, BadgeCheck, Clock, Package, Users } from "lucide-react"
+import { Trash2, X, FileText, Printer, FileDown, ShoppingBag, Wallet, BadgeCheck, Clock, Package, Users, Banknote, CreditCard, Smartphone, Landmark, Receipt } from "lucide-react"
 import { useApi } from "@/lib/use-api"
-import { useAuth } from "@/lib/auth-context"
 import { useCurrency } from "@/lib/currency-context"
+import { useInvoiceHeader } from "@/lib/use-invoice-header"
 
-type Sale = { id?: number; saleNo?: string; studentId?: number | null; studentName?: string; productId?: number | null; productName?: string; quantity?: number; unitPrice?: number | string; subtotal?: number | string; discountId?: number | null; discountAmount?: number | string; totalAmount?: number | string; saleDate?: string; paymentStatus?: string; classId?: number | null; sectionId?: number | null }
+type Sale = { id?: number; saleNo?: string; studentId?: number | null; studentName?: string; productId?: number | null; productName?: string; quantity?: number; unitPrice?: number | string; subtotal?: number | string; discountId?: number | null; discountAmount?: number | string; totalAmount?: number | string; saleDate?: string; paymentStatus?: string; paymentMethod?: string; paymentNote?: string | null; receivedBy?: string | null; classId?: number | null; sectionId?: number | null }
 type Product = { id?: number; name: string; sellingPrice?: number | string }
 type ClassItem = { id: number; name: string }
 type SectionItem = { id: number; name: string; class_id?: number | null }
@@ -30,13 +30,71 @@ function StatCard({ label, value, sub, icon, tone }: { label: string; value: str
   )
 }
 
+function methodMeta(name: string) {
+  const key = name.toLowerCase()
+  if (key.includes("cash")) return { icon: <Banknote className="h-4 w-4" />, tone: "from-emerald-500 to-green-600" }
+  if (key.includes("card")) return { icon: <CreditCard className="h-4 w-4" />, tone: "from-indigo-500 to-blue-600" }
+  if (key.includes("upi") || key.includes("online") || key.includes("razorpay") || key.includes("paytm") || key.includes("phone"))
+    return { icon: <Smartphone className="h-4 w-4" />, tone: "from-violet-500 to-purple-600" }
+  if (key.includes("cheque") || key.includes("bank") || key.includes("neft") || key.includes("rtgs") || key.includes("transfer"))
+    return { icon: <Landmark className="h-4 w-4" />, tone: "from-sky-500 to-cyan-600" }
+  return { icon: <Receipt className="h-4 w-4" />, tone: "from-amber-500 to-orange-600" }
+}
+
+function PaymentMethodCard({
+  name,
+  count,
+  total,
+  received,
+  active,
+  onClick,
+  onPrint,
+  money,
+}: {
+  name: string
+  count: number
+  total: number
+  received: number
+  active: boolean
+  onClick: () => void
+  onPrint: () => void
+  money: (n: number) => string
+}) {
+  const { icon, tone } = methodMeta(name)
+  return (
+    <div
+      className={`group relative overflow-hidden rounded-xl border bg-white p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${active ? "border-[var(--primary)] ring-2 ring-[var(--primary)]/25" : "border-gray-100"}`}
+    >
+      <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${tone}`} aria-hidden />
+      <button type="button" onClick={onClick} className="mt-1 flex w-full items-center gap-2.5 text-left">
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white shadow-sm bg-gradient-to-br ${tone}`}>{icon}</div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-gray-400">{name}</p>
+          <p className="truncate text-base font-bold leading-tight text-gray-900">{money(total)}</p>
+          <p className="truncate text-[11px] text-gray-400">
+            {count} txn{count === 1 ? "" : "s"} · received {money(received)}
+          </p>
+        </div>
+      </button>
+      <button
+        type="button"
+        onClick={onPrint}
+        title={`Print ${name} records`}
+        className="absolute right-2 top-2.5 rounded-md p-1 text-gray-300 opacity-0 transition-all hover:bg-[var(--primary-light)] hover:text-[var(--primary)] group-hover:opacity-100"
+      >
+        <Printer className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  )
+}
+
 export default function StudentSalesListPanel() {
   const { data: sales, update, remove } = useApi<Sale>("/api/students-inventory/sale")
   const { data: products } = useApi<Product>("/api/students-inventory/product")
   const { data: classes } = useApi<ClassItem>("/api/academics/class")
   const { data: sections } = useApi<SectionItem>("/api/academics/section")
-  const { school } = useAuth()
   const { symbol } = useCurrency()
+  const ih = useInvoiceHeader()
 
   const todayStr = (() => {
     const d = new Date()
@@ -54,13 +112,14 @@ export default function StudentSalesListPanel() {
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [invoiceSaleId, setInvoiceSaleId] = useState<number | null>(null)
+  const [methodFilter, setMethodFilter] = useState("")
 
   const classSections = useMemo(() => {
     if (!classFilter) return sections || []
     return (sections || []).filter((s) => s.class_id?.toString() === classFilter)
   }, [sections, classFilter])
 
-  const filtered = useMemo(() => {
+  const baseFiltered = useMemo(() => {
     return sales.filter((s) => {
       if (filter && !(s.studentName || "").toLowerCase().includes(filter.toLowerCase())) return false
       if (statusFilter !== "All" && s.paymentStatus !== statusFilter) return false
@@ -74,6 +133,29 @@ export default function StudentSalesListPanel() {
     })
   }, [sales, filter, statusFilter, dateFrom, dateTo, classFilter, sectionFilter, productFilter])
 
+  const methodOf = (s: Sale) => (s.paymentMethod || "").trim() || "Not specified"
+
+  const filtered = useMemo(
+    () => (methodFilter ? baseFiltered.filter((s) => methodOf(s) === methodFilter) : baseFiltered),
+    [baseFiltered, methodFilter]
+  )
+
+  const paymentGroups = useMemo(() => {
+    const map = new Map<string, { count: number; total: number; received: number }>()
+    for (const s of baseFiltered) {
+      const key = methodOf(s)
+      const g = map.get(key) || { count: 0, total: 0, received: 0 }
+      const amt = Number(s.totalAmount) || 0
+      g.count += 1
+      g.total += amt
+      if (s.paymentStatus === "Paid") g.received += amt
+      map.set(key, g)
+    }
+    return Array.from(map.entries())
+      .map(([name, v]) => ({ name, ...v }))
+      .sort((a, b) => b.total - a.total)
+  }, [baseFiltered])
+
   const handleReset = () => {
     setDateFrom(todayStr)
     setDateTo(todayStr)
@@ -82,6 +164,7 @@ export default function StudentSalesListPanel() {
     setProductFilter("")
     setFilter("")
     setStatusFilter("All")
+    setMethodFilter("")
   }
 
   const totalSales = filtered.length
@@ -102,11 +185,11 @@ export default function StudentSalesListPanel() {
   const money = (n: string | number | null | undefined) => `${symbol}${Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
   const buildInvoiceHtml = (sale: Sale, rows: Sale[]): string => {
-    const sName = escapeHtml(school?.name || "Smart School")
-    const sTagline = school?.tagline ? escapeHtml(school.tagline) : ""
-    const sAddress = school?.address ? escapeHtml(school.address) : ""
-    const sPhone = school?.phone ? escapeHtml(school.phone) : ""
-    const sEmail = school?.email ? escapeHtml(school.email) : ""
+    const sName = escapeHtml(ih.name)
+    const sTagline = ih.tagline ? escapeHtml(ih.tagline) : ""
+    const sAddress = ih.address ? escapeHtml(ih.address) : ""
+    const sPhone = ih.phone ? escapeHtml(ih.phone) : ""
+    const sEmail = ih.email ? escapeHtml(ih.email) : ""
     const fmt = (n: string | number | null | undefined) => `${symbol}${Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     const sub = rows.reduce((sum, r) => sum + (Number(r.subtotal) || 0), 0)
     const disc = rows.reduce((sum, r) => sum + (Number(r.discountAmount) || 0), 0)
@@ -179,6 +262,12 @@ export default function StudentSalesListPanel() {
       <p style="font-weight:600;">${escapeHtml(sale.studentName || "-")}</p>
       ${sale.studentId ? `<p>Student ID: ${escapeHtml(String(sale.studentId))}</p>` : ""}
     </div>
+    <div class="box" style="text-align:right;">
+      <p class="lbl">Payment Method</p>
+      <p style="font-weight:600;">${escapeHtml(sale.paymentMethod || "-")}</p>
+      ${sale.receivedBy ? `<p style="font-size:12px;color:#4b5563;">Received By: ${escapeHtml(sale.receivedBy)}</p>` : ""}
+      ${sale.paymentNote ? `<p style="font-size:12px;color:#4b5563;">${escapeHtml(sale.paymentNote)}</p>` : ""}
+    </div>
   </div>
 
   <table>
@@ -201,7 +290,7 @@ export default function StudentSalesListPanel() {
     <div class="row grand"><span>Grand Total</span><span>${fmt(total)}</span></div>
   </div>
 
-  <div class="foot">Thank you for your purchase. This is a computer-generated invoice.</div>
+  <div class="foot">${escapeHtml(ih.footer)}</div>
 </body>
 </html>`
   }
@@ -219,6 +308,179 @@ export default function StudentSalesListPanel() {
   const invoiceSubtotal = invoiceRows.reduce((sum, r) => sum + (Number(r.subtotal) || 0), 0)
   const invoiceDiscount = invoiceRows.reduce((sum, r) => sum + (Number(r.discountAmount) || 0), 0)
   const invoiceTotal = invoiceRows.reduce((sum, r) => sum + (Number(r.totalAmount) || 0), 0)
+
+  const reportRange = () => {
+    if (dateFrom && dateTo && dateFrom === dateTo) return dateFrom
+    if (dateFrom && dateTo) return `${dateFrom} to ${dateTo}`
+    return dateFrom ? `From ${dateFrom}` : dateTo ? `Up to ${dateTo}` : "All dates"
+  }
+
+  const printViaFrame = (frameId: string, html: string) => {
+    const frame = document.getElementById(frameId) as HTMLIFrameElement | null
+    if (!frame) return
+    frame.onload = () => {
+      frame.contentWindow?.focus()
+      frame.contentWindow?.print()
+    }
+    frame.srcdoc = html
+  }
+
+  const buildReportHtml = (rows: Sale[], title: string, scopeNote: string): string => {
+    const sName = escapeHtml(ih.name)
+    const sTagline = ih.tagline ? escapeHtml(ih.tagline) : ""
+    const sAddress = ih.address ? escapeHtml(ih.address) : ""
+    const sPhone = ih.phone ? escapeHtml(ih.phone) : ""
+    const sEmail = ih.email ? escapeHtml(ih.email) : ""
+    const fmt = (n: number) => `${symbol}${Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+    const groups = new Map<string, { count: number; total: number; received: number }>()
+    for (const r of rows) {
+      const key = (r.paymentMethod || "").trim() || "Not specified"
+      const g = groups.get(key) || { count: 0, total: 0, received: 0 }
+      const amt = Number(r.totalAmount) || 0
+      g.count += 1
+      g.total += amt
+      if (r.paymentStatus === "Paid") g.received += amt
+      groups.set(key, g)
+    }
+    const groupRows = Array.from(groups.entries())
+      .sort((a, b) => b[1].total - a[1].total)
+      .map(
+        ([name, g]) => `<tr>
+          <td>${escapeHtml(name)}</td>
+          <td class="c">${g.count}</td>
+          <td class="r">${fmt(g.total)}</td>
+          <td class="r">${fmt(g.received)}</td>
+          <td class="r">${fmt(g.total - g.received)}</td>
+        </tr>`
+      )
+      .join("")
+
+    const detailRows = rows
+      .map((r, i) => {
+        const qty = Number(r.quantity) || 0
+        const unit = Number(r.unitPrice) || 0
+        const d = Number(r.discountAmount) || 0
+        const amt = Number(r.totalAmount) || 0
+        const status = r.paymentStatus || "Unpaid"
+        return `<tr>
+          <td class="c">${i + 1}</td>
+          <td>${escapeHtml(r.saleNo || "-")}</td>
+          <td>${escapeHtml(String(r.saleDate || "").slice(0, 10))}</td>
+          <td>${escapeHtml(r.studentName || "-")}</td>
+          <td>${escapeHtml(productName(r))}</td>
+          <td class="c">${qty}</td>
+          <td class="r">${fmt(unit)}</td>
+          <td class="r">${d ? fmt(d) : "-"}</td>
+          <td class="r">${fmt(amt)}</td>
+          <td>${escapeHtml((r.paymentMethod || "").trim() || "-")}</td>
+          <td>${escapeHtml(r.receivedBy || "-")}</td>
+          <td class="c"><span class="st ${status === "Paid" ? "paid" : "unpaid"}">${escapeHtml(status)}</span></td>
+        </tr>`
+      })
+      .join("")
+
+    const grandTotal = rows.reduce((sum, r) => sum + (Number(r.totalAmount) || 0), 0)
+    const grandReceived = rows.filter((r) => r.paymentStatus === "Paid").reduce((sum, r) => sum + (Number(r.totalAmount) || 0), 0)
+
+    return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>${escapeHtml(title)}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #1f2937; font-size: 12px; padding: 28px; }
+  .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #ff7732; padding-bottom: 14px; margin-bottom: 16px; }
+  .head h1 { font-size: 20px; color: #111827; }
+  .head .tag { color: #ff7732; font-size: 11px; margin-top: 2px; }
+  .head .meta { text-align: right; font-size: 11px; color: #4b5563; line-height: 1.5; }
+  .head .meta .doc { font-size: 14px; font-weight: 700; color: #111827; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #374151; margin: 18px 0 8px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+  .chip { border: 1px solid #e5e7eb; border-radius: 999px; padding: 2px 9px; font-size: 10px; color: #4b5563; background: #f9fafb; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+  th { background: #ff7732; color: #fff; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; padding: 7px 8px; }
+  td { padding: 6px 8px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+  .c { text-align: center; }
+  .r { text-align: right; }
+  tfoot td { font-weight: 700; background: #f9fafb; color: #111827; border-top: 2px solid #ff7732; }
+  .st { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 10px; font-weight: 700; }
+  .st.paid { color: #059669; border: 1px solid #059669; }
+  .st.unpaid { color: #dc2626; border: 1px solid #dc2626; }
+  .foot { margin-top: 22px; text-align: center; color: #6b7280; font-size: 11px; border-top: 1px solid #e5e7eb; padding-top: 12px; }
+  @media print { body { padding: 12px; } thead { display: table-header-group; } tr { page-break-inside: avoid; } }
+</style>
+</head>
+<body>
+  <div class="head">
+    <div>
+      <h1>${sName}</h1>
+      ${sTagline ? `<div class="tag">${sTagline}</div>` : ""}
+      ${sAddress ? `<div style="font-size:11px;color:#4b5563;margin-top:3px;">${sAddress}</div>` : ""}
+      ${sPhone || sEmail ? `<div style="font-size:11px;color:#4b5563;margin-top:2px;">${[sPhone, sEmail].filter(Boolean).join(" | ")}</div>` : ""}
+    </div>
+    <div class="meta">
+      <div class="doc">${escapeHtml(title)}</div>
+      <div>Period: ${escapeHtml(reportRange())}</div>
+      <div>Printed: ${escapeHtml(new Date().toLocaleString("en-IN"))}</div>
+    </div>
+  </div>
+
+  <div class="chips">
+    <span class="chip">${escapeHtml(scopeNote)}</span>
+    <span class="chip">Class: ${escapeHtml(classFilter ? (classes.find((c) => c.id.toString() === classFilter)?.name || classFilter) : "All")}</span>
+    <span class="chip">Section: ${escapeHtml(sectionFilter ? (sections.find((s) => s.id.toString() === sectionFilter)?.name || sectionFilter) : "All")}</span>
+    <span class="chip">Product: ${escapeHtml(productFilter ? (products.find((p) => p.id?.toString() === productFilter)?.name || productFilter) : "All")}</span>
+    <span class="chip">Status: ${escapeHtml(statusFilter)}</span>
+    <span class="chip">Records: ${rows.length}</span>
+  </div>
+
+  <h2>Payment Method Summary</h2>
+  <table>
+    <thead>
+      <tr><th>Payment Method</th><th class="c">Txns</th><th class="r">Total Amount</th><th class="r">Received</th><th class="r">Outstanding</th></tr>
+    </thead>
+    <tbody>${groupRows || `<tr><td colspan="5" class="c">No records</td></tr>`}</tbody>
+    <tfoot>
+      <tr>
+        <td>Total</td>
+        <td class="c">${rows.length}</td>
+        <td class="r">${fmt(grandTotal)}</td>
+        <td class="r">${fmt(grandReceived)}</td>
+        <td class="r">${fmt(grandTotal - grandReceived)}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <h2>Detailed Records</h2>
+  <table>
+    <thead>
+      <tr>
+        <th class="c">#</th><th>Sale No</th><th>Date</th><th>Student</th><th>Product</th>
+        <th class="c">Qty</th><th class="r">Unit</th><th class="r">Disc.</th><th class="r">Amount</th>
+        <th>Method</th><th>Received By</th><th class="c">Status</th>
+      </tr>
+    </thead>
+    <tbody>${detailRows || `<tr><td colspan="12" class="c">No records</td></tr>`}</tbody>
+    <tfoot>
+      <tr>
+        <td colspan="8">Total</td>
+        <td class="r">${fmt(grandTotal)}</td>
+        <td colspan="3" class="r">Received ${fmt(grandReceived)}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="foot">${escapeHtml(ih.footer)}</div>
+</body>
+</html>`
+  }
+
+  const printReport = (rows: Sale[], title = "Student Sales Report", scopeNote = "All Payment Methods") => {
+    printViaFrame("report-frame", buildReportHtml(rows, title, scopeNote))
+  }
+
 
   const toggleStatus = async (s: Sale) => {
     if (s.id === undefined) return
@@ -301,6 +563,66 @@ export default function StudentSalesListPanel() {
           icon={<Users className="h-4 w-4" />}
           tone="from-sky-500 to-cyan-500"
         />
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="px-5 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between gap-2 flex-wrap">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700">Payment Method</h3>
+            <p className="text-[11px] text-gray-400">
+              Amount received per method · click a card to filter{methodFilter ? ` · filtered: ${methodFilter}` : ""}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {methodFilter && (
+              <button
+                type="button"
+                onClick={() => setMethodFilter("")}
+                className="px-2.5 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors flex items-center gap-1"
+              >
+                <X className="h-3.5 w-3.5" /> Clear filter
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() =>
+                printReport(
+                  filtered,
+                  methodFilter ? `Payment Method Report — ${methodFilter}` : "Student Sales Report",
+                  methodFilter ? `Method: ${methodFilter}` : "All Payment Methods"
+                )
+              }
+              className="px-3 py-1.5 text-xs font-semibold text-white bg-[var(--primary)] hover:bg-[var(--secondary)] rounded-lg transition-colors flex items-center gap-1.5"
+            >
+              <Printer className="h-3.5 w-3.5" /> Print Details
+            </button>
+          </div>
+        </div>
+        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          {paymentGroups.length === 0 ? (
+            <p className="col-span-full text-sm text-gray-400">No payment records for the selected filters</p>
+          ) : (
+            paymentGroups.map((g) => (
+              <PaymentMethodCard
+                key={g.name}
+                name={g.name}
+                count={g.count}
+                total={g.total}
+                received={g.received}
+                active={methodFilter === g.name}
+                onClick={() => setMethodFilter((prev) => (prev === g.name ? "" : g.name))}
+                onPrint={() =>
+                  printReport(
+                    baseFiltered.filter((s) => methodOf(s) === g.name),
+                    `Payment Method Report — ${g.name}`,
+                    `Method: ${g.name}`
+                  )
+                }
+                money={money}
+              />
+            ))
+          )}
+        </div>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
@@ -390,6 +712,7 @@ export default function StudentSalesListPanel() {
                 <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Qty</th>
                 <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Total</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Date</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Method</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Status</th>
                 <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs uppercase">Action</th>
               </tr>
@@ -397,7 +720,7 @@ export default function StudentSalesListPanel() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="text-center py-8 text-gray-400">No sales found</td>
+                  <td colSpan={11} className="text-center py-8 text-gray-400">No sales found</td>
                 </tr>
               ) : (
                 filtered.map((s, idx) => (
@@ -412,6 +735,7 @@ export default function StudentSalesListPanel() {
                     <td className="px-4 py-3 text-right text-gray-600">{s.quantity}</td>
                     <td className="px-4 py-3 text-right font-medium text-gray-800" dangerouslySetInnerHTML={{ __html: inr(s.totalAmount) }} />
                     <td className="px-4 py-3 text-gray-600">{s.saleDate ? String(s.saleDate).slice(0, 10) : "-"}</td>
+                    <td className="px-4 py-3 text-gray-600">{s.paymentMethod || "-"}</td>
                     <td className="px-4 py-3">
                       <button
                         onClick={() => toggleStatus(s)}
@@ -455,11 +779,11 @@ export default function StudentSalesListPanel() {
             <div className="p-6">
               <div className="flex items-start justify-between border-b-2 border-[var(--primary)] pb-4">
                 <div>
-                  <h4 className="text-xl font-bold text-gray-900">{school?.name || "Smart School"}</h4>
-                  {school?.tagline && <p className="text-xs text-[var(--primary)] mt-0.5">{school.tagline}</p>}
-                  {school?.address && <p className="text-xs text-gray-500 mt-1">{school.address}</p>}
-                  {(school?.phone || school?.email) && (
-                    <p className="text-xs text-gray-500 mt-0.5">{[school.phone, school.email].filter(Boolean).join(" | ")}</p>
+                  <h4 className="text-xl font-bold text-gray-900">{ih.name || "Smart School"}</h4>
+                  {ih.tagline && <p className="text-xs text-[var(--primary)] mt-0.5">{ih.tagline}</p>}
+                  {ih.address && <p className="text-xs text-gray-500 mt-1">{ih.address}</p>}
+                  {(ih.phone || ih.email) && (
+                    <p className="text-xs text-gray-500 mt-0.5">{[ih.phone, ih.email].filter(Boolean).join(" | ")}</p>
                   )}
                 </div>
                 <div className="text-right text-xs text-gray-500 space-y-1">
@@ -471,10 +795,18 @@ export default function StudentSalesListPanel() {
                 </div>
               </div>
 
-              <div className="py-4">
-                <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Billed To</p>
-                <p className="font-semibold text-gray-800">{invoiceSale.studentName || "-"}</p>
-                {invoiceSale.studentId && <p className="text-xs text-gray-500">Student ID: {invoiceSale.studentId}</p>}
+              <div className="py-4 flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Billed To</p>
+                  <p className="font-semibold text-gray-800">{invoiceSale.studentName || "-"}</p>
+                  {invoiceSale.studentId && <p className="text-xs text-gray-500">Student ID: {invoiceSale.studentId}</p>}
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Payment Method</p>
+                  <p className="font-semibold text-gray-800">{invoiceSale.paymentMethod || "-"}</p>
+                  {invoiceSale.receivedBy && <p className="text-xs text-gray-500">Received by {invoiceSale.receivedBy}</p>}
+                  {invoiceSale.paymentNote && <p className="text-xs text-gray-500">{invoiceSale.paymentNote}</p>}
+                </div>
               </div>
 
               <div className="overflow-x-auto rounded-lg border border-gray-200">
@@ -565,6 +897,11 @@ export default function StudentSalesListPanel() {
         id="invoice-frame"
         title="Invoice print frame"
         style={{ position: "fixed", left: -9999, top: 0, width: 820, height: 1100, border: 0 }}
+      />
+      <iframe
+        id="report-frame"
+        title="Report print frame"
+        style={{ position: "fixed", left: -9999, top: 0, width: 900, height: 1200, border: 0 }}
       />
     </>
   )

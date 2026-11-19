@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getAll, create } from "@/lib/db"
+import { getAll, create, query } from "@/lib/db"
 import { camelToSnake, mapResponse } from "@/lib/field-mapping"
+import { getCurrentActor, actorLabel } from "@/lib/actor"
+import { getSessionSchoolId } from "@/lib/auth"
 import { headers } from "next/headers"
 
 const TABLE = "fee_payment_log"
@@ -17,6 +19,7 @@ const fieldMap: Record<string, string> = {
   chequeNo: "cheque_no",
   paidAt: "paid_at",
   createdBy: "created_by",
+  createdByUsername: "created_by_username",
   changeKind: "change_kind",
   oldStatus: "old_status",
   newStatus: "new_status",
@@ -56,21 +59,67 @@ export async function GET(req: NextRequest) {
   try {
     const where = studentId ? "student_id = $1" : undefined
     const items = await getAll(TABLE, ORDER, where, studentId ? [parseInt(studentId)] : undefined)
-    return NextResponse.json(mapResponse(items, fieldMap))
+    const rows = mapResponse(items, fieldMap)
+    return NextResponse.json(await resolveUserNames(req, Array.isArray(rows) ? rows : []))
   } catch (e: any) {
     return NextResponse.json({ error: getErrorMessage(e) }, { status: 400 })
   }
+}
+
+const GENERIC_ACTOR = new Set(["", "admin", "administrator", "user", "system"])
+
+/**
+ * Older log rows were stamped with a generic "Admin" because the client could
+ * not resolve the signed-in user. Show the school's actual admin login (the one
+ * used most recently) for those rows, and fill in usernames where we can.
+ */
+async function resolveUserNames(req: NextRequest, rows: Record<string, any>[]) {
+  if (rows.length === 0) return rows
+  const isGeneric = (v: unknown) => GENERIC_ACTOR.has(String(v ?? "").trim().toLowerCase())
+  if (!rows.some((r) => isGeneric(r.createdBy))) return rows
+
+  const schoolId = getSessionSchoolId(req)
+  let fallback: { name: string; username: string } | null = null
+  try {
+    const res = await query(
+      `SELECT name, username FROM users
+       WHERE role = 'admin'${schoolId ? " AND school_id = $1" : ""}
+       ORDER BY last_login DESC NULLS LAST, id ASC
+       LIMIT 1`,
+      schoolId ? [schoolId] : []
+    )
+    fallback = res.rows[0] ?? null
+  } catch {
+    fallback = null
+  }
+  if (!fallback) return rows
+
+  const fb: { name: string; username: string } = fallback
+  return rows.map((r) => {
+    if (!isGeneric(r.createdBy)) return r
+    return { ...r, createdBy: fb.name, createdByUsername: r.createdByUsername || fb.username }
+  })
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const ip = await resolveClientIp()
+    const actor = await getCurrentActor()
+    const actorName = actorLabel(actor)
+    const stamp = (item: Record<string, any>) => {
+      const row = withIp(item, ip)
+      // Always trust the signed-in session over the client-supplied name, so
+      // the log records the user who actually received the payment.
+      if (actorName) row.created_by = actorName
+      if (actor?.username) row.created_by_username = actor.username
+      return row
+    }
     if (Array.isArray(body)) {
-      const results = await Promise.all(body.map((item) => create(TABLE, withIp(item, ip))))
+      const results = await Promise.all(body.map((item) => create(TABLE, stamp(item))))
       return NextResponse.json(results, { status: 201 })
     }
-    const item = await create(TABLE, withIp(body, ip))
+    const item = await create(TABLE, stamp(body))
     return NextResponse.json(item, { status: 201 })
   } catch (e: any) {
     return NextResponse.json({ error: getErrorMessage(e) }, { status: 400 })

@@ -1,7 +1,7 @@
 "use client"
 import { toast as notify } from "@/lib/toast"
 
-import { useState, useMemo, useRef } from "react"
+import { useState, useMemo, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Plus, Pencil, Trash2, X, Save, Download, Upload, Printer, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, GripVertical, Search, UserPlus, Percent } from "lucide-react"
 import { useApi } from "@/lib/use-api"
@@ -11,6 +11,16 @@ interface FineRow {
   id: string
   overdueDays: number
   fineAmount: number
+}
+
+interface FineRule {
+  id: string
+  name: string
+  fineType: "Percentage" | "Fix Amount" | "Cumulative"
+  fineValue: number
+  perDay: boolean
+  fineRows: FineRow[]
+  dueDay: number | null
 }
 
 interface FeesMasterRecord {
@@ -57,6 +67,18 @@ function nextAddRowKey() {
   return String(addRowKeyCounter++)
 }
 
+function blankFineRule(index = 1): FineRule {
+  return {
+    id: `rule-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name: `Fine Rule ${index}`,
+    fineType: "Percentage",
+    fineValue: 0,
+    perDay: false,
+    fineRows: [{ id: nextFineRowId(), overdueDays: 0, fineAmount: 0 }],
+    dueDay: null,
+  }
+}
+
 export default function FeesMasterPage() {
   const { symbol } = useCurrency()
   const router = useRouter()
@@ -100,6 +122,25 @@ export default function FeesMasterPage() {
   const [applyFineRows, setApplyFineRows] = useState<FineRow[]>([])
   const [applyFineErrors, setApplyFineErrors] = useState<Record<string, string>>({})
 
+  const [showFineRuleModal, setShowFineRuleModal] = useState(false)
+  const [fineRuleList, setFineRuleList] = useState<FineRule[]>([])
+  const [activeFineRuleId, setActiveFineRuleId] = useState("")
+  const [fineRuleLoading, setFineRuleLoading] = useState(false)
+  const [fineRuleSaving, setFineRuleSaving] = useState(false)
+  const [fineRuleErrors, setFineRuleErrors] = useState<Record<string, string>>({})
+
+  // Preload the active fine rule so the list header can show it.
+  useEffect(() => {
+    fetch("/api/fees/fine-rule")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d) return
+        setFineRuleList(Array.isArray(d.rules) ? d.rules : [])
+        setActiveFineRuleId(typeof d.activeId === "string" ? d.activeId : "")
+      })
+      .catch(() => {})
+  }, [])
+
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [showBulkModal, setShowBulkModal] = useState(false)
   const [bulkGroupName, setBulkGroupName] = useState("")
@@ -114,6 +155,8 @@ export default function FeesMasterPage() {
   const classList = classes || []
   const groupList = groups || []
   const typeList = types || []
+  const activeFineRuleName = fineRuleList.find((r) => r.id === activeFineRuleId)?.name || ""
+  const activeFineRule = fineRuleList.find((r) => r.id === activeFineRuleId) || null
 
   function resetForm() {
     setClassVal("")
@@ -267,6 +310,105 @@ export default function FeesMasterPage() {
       await refetch()
     } catch (e: any) {
       notify.error(e.message || "Failed to apply changes")
+    }
+  }
+
+  async function openFineRules() {
+    setShowFineRuleModal(true)
+    setFineRuleErrors({})
+    setFineRuleLoading(true)
+    try {
+      const res = await fetch("/api/fees/fine-rule")
+      const d = await res.json()
+      const rules: FineRule[] = (Array.isArray(d?.rules) ? d.rules : []).map((r: any) => ({
+        id: String(r.id),
+        name: String(r.name || "Fine Rule"),
+        fineType: ["Percentage", "Fix Amount", "Cumulative"].includes(r.fineType) ? r.fineType : "Percentage",
+        fineValue: Number(r.fineValue) || 0,
+        perDay: Boolean(r.perDay),
+        fineRows: Array.isArray(r.fineRows)
+          ? r.fineRows.map((row: any) => ({
+              id: nextFineRowId(),
+              overdueDays: Number(row.overdueDays) || 0,
+              fineAmount: Number(row.fineAmount) || 0,
+            }))
+          : [],
+        dueDay: r.dueDay ? Number(r.dueDay) : null,
+      }))
+      setFineRuleList(rules.length > 0 ? rules : [blankFineRule()])
+      setActiveFineRuleId(typeof d?.activeId === "string" ? d.activeId : "")
+    } catch {
+      setFineRuleList([blankFineRule()])
+      setActiveFineRuleId("")
+    } finally {
+      setFineRuleLoading(false)
+    }
+  }
+
+  function addFineRule() {
+    setFineRuleList((prev) => [...prev, blankFineRule(prev.length + 1)])
+  }
+
+  function updateFineRule(id: string, patch: Partial<FineRule>) {
+    setFineRuleList((prev) =>
+      prev.map((r) => {
+        if (r.id !== id) return r
+        const next = { ...r, ...patch }
+        if (patch.fineType && patch.fineType !== "Cumulative") {
+          next.fineRows = []
+          next.perDay = false
+        }
+        return next
+      })
+    )
+  }
+
+  function removeFineRule(id: string) {
+    setFineRuleList((prev) => prev.filter((r) => r.id !== id))
+    setActiveFineRuleId((prev) => (prev === id ? "" : prev))
+  }
+
+  function updateFineRuleRow(ruleId: string, rowId: string, field: keyof FineRow, value: number) {
+    setFineRuleList((prev) =>
+      prev.map((r) =>
+        r.id === ruleId
+          ? { ...r, fineRows: r.fineRows.map((row) => (row.id === rowId ? { ...row, [field]: value } : row)) }
+          : r
+      )
+    )
+  }
+
+  async function saveFineRules() {
+    const errs: Record<string, string> = {}
+    for (const r of fineRuleList) {
+      if (!r.name.trim()) errs[r.id] = "Rule name is required"
+      else if (r.fineType === "Cumulative") {
+        if (r.fineRows.length === 0) errs[r.id] = "Add at least one fine row"
+      } else if (!(Number(r.fineValue) > 0)) errs[r.id] = "Fine value is required"
+    }
+    setFineRuleErrors(errs)
+    if (Object.keys(errs).length) return
+
+    setFineRuleSaving(true)
+    try {
+      const res = await fetch("/api/fees/fine-rule", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rules: fineRuleList, activeId: activeFineRuleId || null }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d?.error || "Failed to save fine rules")
+      if (activeFineRuleId) {
+        notify.success(`Active fine rule applied to ${d.applied ?? 0} fee record(s) across all classes`)
+      } else {
+        notify.success("Fine rules saved — no rule is active")
+      }
+      setShowFineRuleModal(false)
+      await refetch()
+    } catch (e: any) {
+      notify.error(e.message || "Failed to save fine rules")
+    } finally {
+      setFineRuleSaving(false)
     }
   }
 
@@ -519,6 +661,14 @@ export default function FeesMasterPage() {
     if (record.fineType === "Percentage") return `Percentage (${record.fineValue}%)`
     if (record.fineType === "Fix Amount") return `Fix (${symbol}${record.fineValue})`
     return "Cumulative"
+  }
+
+  // Text for the active rule — a fine is charged once per unpaid month invoice,
+  // so three pending tuition months add three times the monthly fine.
+  function fineRuleText(rule: FineRule) {
+    if (rule.fineType === "Percentage") return `${rule.fineValue}% / month`
+    if (rule.fineType === "Fix Amount") return `${symbol}${Number(rule.fineValue || 0).toLocaleString()} / month`
+    return `${rule.fineRows.length} slab${rule.fineRows.length === 1 ? "" : "s"}${rule.perDay ? " · per day" : ""}`
   }
 
   const exportCSV = () => {
@@ -994,8 +1144,25 @@ export default function FeesMasterPage() {
 
         <div className="flex-1 min-w-0">
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="px-5 py-3 border-b border-gray-100">
-              <h3 className="text-sm font-semibold text-gray-800">Fees Master List</h3>
+            <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-800">Fees Master List</h3>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  {activeFineRuleName ? (
+                    <>Active fine rule: <span className="font-semibold text-[var(--primary)]">{activeFineRuleName}</span> · applied to all classes</>
+                  ) : (
+                    "No active fine rule"
+                  )}
+                </p>
+              </div>
+              <button
+                onClick={openFineRules}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-[var(--primary)] rounded-lg hover:bg-[var(--secondary)] transition-colors shadow-sm"
+                title="Manage fine rules — the active rule applies to every class"
+              >
+                <Percent className="h-3.5 w-3.5" />
+                Fine Rule
+              </button>
             </div>
             <div className="p-4 space-y-4">
               {paginated.length === 0 ? (
@@ -1079,9 +1246,27 @@ export default function FeesMasterPage() {
                                 <td className="px-4 py-2.5 text-gray-700">{formatCurrency(record.amount)}</td>
                                 <td className="px-4 py-2.5 text-gray-500 text-xs">{formatDate(record.dueDate)}</td>
                                 <td className="px-4 py-2.5 text-xs">
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700">
-                                    {fineLabel(record)}
-                                  </span>
+                                  {activeFineRule ? (
+                                    <div className="flex flex-col gap-1">
+                                      <span className="inline-flex w-fit items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700">
+                                        {fineRuleText(activeFineRule)}
+                                      </span>
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600">
+                                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                        Active · {activeFineRule.name}
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <div className="flex flex-col gap-1">
+                                      <span className="inline-flex w-fit items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                                        {fineLabel(record)}
+                                      </span>
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-gray-400">
+                                        <span className="h-1.5 w-1.5 rounded-full bg-gray-300" />
+                                        Inactive
+                                      </span>
+                                    </div>
+                                  )}
                                 </td>
                                 <td className="px-4 py-2.5 text-right">
                                   <div className="flex items-center justify-end gap-0.5">
@@ -1792,6 +1977,229 @@ export default function FeesMasterPage() {
                 <Save className="h-3.5 w-3.5" />
                 Apply Fine
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showFineRuleModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => !fineRuleSaving && setShowFineRuleModal(false)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-3xl z-10 flex flex-col max-h-[92vh]">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200">
+              <div className="flex items-center gap-2.5">
+                <span className="h-9 w-9 rounded-lg bg-[var(--primary-light)] text-[var(--primary)] flex items-center justify-center">
+                  <Percent className="h-4 w-4" />
+                </span>
+                <div>
+                  <h3 className="text-base font-semibold text-gray-800">Fine Rule</h3>
+                  <p className="text-[11px] text-gray-500">Keep multiple rules — only the active rule is applied to every class</p>
+                </div>
+              </div>
+              <button
+                onClick={() => !fineRuleSaving && setShowFineRuleModal(false)}
+                className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-3 overflow-y-auto">
+              {fineRuleLoading ? (
+                <p className="py-10 text-center text-sm text-gray-400">Loading fine rules…</p>
+              ) : fineRuleList.length === 0 ? (
+                <p className="py-10 text-center text-sm text-gray-400">No fine rules yet — add one below.</p>
+              ) : (
+                fineRuleList.map((rule, idx) => (
+                  <div
+                    key={rule.id}
+                    className={`rounded-xl border p-4 transition-all ${activeFineRuleId === rule.id ? "border-[var(--primary)] bg-[var(--primary-light)]/40 ring-2 ring-[var(--primary)]/15" : "border-gray-200 bg-white"}`}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <label className="flex items-center gap-2 text-sm font-semibold text-gray-800 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="activeFineRule"
+                          checked={activeFineRuleId === rule.id}
+                          onChange={() => setActiveFineRuleId(rule.id)}
+                          className="accent-[var(--primary)]"
+                        />
+                        {activeFineRuleId === rule.id ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-0.5">ACTIVE · ALL CLASSES</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 text-gray-500 text-[10px] font-bold px-2 py-0.5">Rule {idx + 1}</span>
+                        )}
+                      </label>
+                      <button
+                        onClick={() => removeFineRule(rule.id)}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-red-600 hover:bg-red-50 rounded-lg"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Remove
+                      </button>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-4 gap-3">
+                      <div className="sm:col-span-2">
+                        <label className="block text-[11px] font-medium text-gray-600 mb-1">Rule Name</label>
+                        <input
+                          value={rule.name}
+                          onChange={(e) => updateFineRule(rule.id, { name: e.target.value })}
+                          className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-gray-600 mb-1">Fine Type</label>
+                        <select
+                          value={rule.fineType}
+                          onChange={(e) => updateFineRule(rule.id, { fineType: e.target.value as FineRule["fineType"] })}
+                          className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]"
+                        >
+                          <option value="Percentage">Percentage</option>
+                          <option value="Fix Amount">Fix Amount</option>
+                          <option value="Cumulative">Cumulative</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-gray-600 mb-1">Due Day (1–28)</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={28}
+                          value={rule.dueDay ?? ""}
+                          onChange={(e) => updateFineRule(rule.id, { dueDay: e.target.value ? parseInt(e.target.value, 10) : null })}
+                          placeholder="Optional"
+                          className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]"
+                        />
+                      </div>
+                    </div>
+
+                    {rule.fineType !== "Cumulative" ? (
+                      <div className="mt-3 max-w-[220px]">
+                        <label className="block text-[11px] font-medium text-gray-600 mb-1">
+                          {rule.fineType === "Percentage" ? "Percentage (%)" : `Fix Amount (${symbol})`}
+                        </label>
+                        <input
+                          type="number"
+                          value={rule.fineValue || ""}
+                          onChange={(e) => updateFineRule(rule.id, { fineValue: parseFloat(e.target.value) || 0 })}
+                          className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]"
+                        />
+                      </div>
+                    ) : (
+                      <div className="mt-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="flex items-center gap-2 text-[11px] font-medium text-gray-600">
+                            <input
+                              type="checkbox"
+                              checked={rule.perDay}
+                              onChange={(e) => updateFineRule(rule.id, { perDay: e.target.checked })}
+                              className="accent-[var(--primary)]"
+                            />
+                            Per Day
+                          </label>
+                          <button
+                            onClick={() =>
+                              updateFineRule(rule.id, {
+                                fineRows: [...rule.fineRows, { id: nextFineRowId(), overdueDays: 0, fineAmount: 0 }],
+                              })
+                            }
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--primary)] hover:text-[var(--secondary)]"
+                          >
+                            <Plus className="h-3 w-3" /> Add Row
+                          </button>
+                        </div>
+                        <div className="overflow-x-auto rounded-lg border border-gray-200">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="bg-gray-50">
+                                <th className="text-left px-3 py-1.5 font-medium text-gray-600">Overdue Days</th>
+                                <th className="text-left px-3 py-1.5 font-medium text-gray-600">Fine Amount</th>
+                                <th className="w-8"></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {rule.fineRows.length === 0 ? (
+                                <tr><td colSpan={3} className="text-center py-3 text-gray-400">No rows</td></tr>
+                              ) : rule.fineRows.map((row) => (
+                                <tr key={row.id} className="border-t border-gray-100">
+                                  <td className="px-1 py-1">
+                                    <input
+                                      type="number"
+                                      value={row.overdueDays}
+                                      onChange={(e) => updateFineRuleRow(rule.id, row.id, "overdueDays", parseInt(e.target.value) || 0)}
+                                      className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-[var(--primary)]"
+                                    />
+                                  </td>
+                                  <td className="px-1 py-1">
+                                    <input
+                                      type="number"
+                                      value={row.fineAmount}
+                                      onChange={(e) => updateFineRuleRow(rule.id, row.id, "fineAmount", parseFloat(e.target.value) || 0)}
+                                      className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-[var(--primary)]"
+                                    />
+                                  </td>
+                                  <td className="px-1 py-1">
+                                    <button
+                                      onClick={() => updateFineRule(rule.id, { fineRows: rule.fineRows.filter((r) => r.id !== row.id) })}
+                                      className="text-red-500 hover:text-red-700 p-1"
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {fineRuleErrors[rule.id] && <p className="mt-2 text-[11px] text-red-500">{fineRuleErrors[rule.id]}</p>}
+                  </div>
+                ))
+              )}
+
+              {!fineRuleLoading && (
+                <button
+                  onClick={addFineRule}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-[var(--primary)] border border-dashed border-[var(--primary)]/40 rounded-lg hover:bg-[var(--primary-light)] transition-colors"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Add another rule
+                </button>
+              )}
+
+              <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-[11px] text-amber-800">
+                Saving with an active rule updates the fine terms of every fee master row (all classes). Rules without an active
+                selection are only stored. A fine is added once per unpaid month invoice — if a student is due for 3 months,
+                the fine is charged 3 times (3 × the monthly fine amount).
+              </div>
+            </div>
+
+            <div className="px-5 py-3 border-t border-gray-200 flex items-center justify-between gap-2">
+              <button
+                onClick={() => setActiveFineRuleId("")}
+                disabled={fineRuleSaving || !activeFineRuleId}
+                className="text-xs font-medium text-gray-500 hover:text-gray-700 disabled:opacity-40"
+              >
+                Deactivate all rules
+              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowFineRuleModal(false)}
+                  disabled={fineRuleSaving}
+                  className="px-4 py-2 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveFineRules}
+                  disabled={fineRuleSaving || fineRuleLoading}
+                  className="flex items-center gap-1.5 px-5 py-2 text-xs font-medium text-white bg-[var(--primary)] rounded-lg hover:bg-[var(--secondary)] shadow-sm disabled:opacity-50"
+                >
+                  <Save className="h-3.5 w-3.5" />
+                  {fineRuleSaving ? "Saving…" : "Save & Apply"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

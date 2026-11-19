@@ -30,6 +30,7 @@ import { useSession } from "@/lib/session-context"
 import { useCurrency } from "@/lib/currency-context"
 import { useAuth } from "@/lib/auth-context"
 import { useSchoolInfo } from "@/lib/use-school-info"
+import { DashboardDrilldown, type DrillRequest } from "@/components/dashboard-drilldown"
 import Link from "next/link"
 
 const ORANGE = "#ff7732"
@@ -131,6 +132,7 @@ export default function ExecutiveDashboard() {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [feeRange, setFeeRange] = useState<"6M" | "12M" | "ALL">("12M")
+  const [drill, setDrill] = useState<DrillRequest | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -194,16 +196,16 @@ export default function ExecutiveDashboard() {
   }, [cumulative, maxCum])
 
   const kpis = [
-    { label: "TOTAL STUDENTS", value: (s.totalStudents ?? 0).toLocaleString(), sub: `${s.activeStudents ?? 0} active · ${newThis} new`, icon: GraduationCap, color: ORANGE, bg: "from-orange-400 to-amber-500", ring: totalClassStudents > 0 ? Math.round(((s.activeStudents ?? 0) / Math.max(1, s.totalStudents ?? 1)) * 100) : 0, ringLabel: `${s.activeStudents ?? 0}`, delta: studentPct, deltaSuffix: "adm" },
-    { label: "ATTENDANCE TODAY", value: att.total > 0 ? `${attPct}%` : "—", sub: `${att.present} present · ${att.late} late`, icon: ClipboardCheck, color: CYAN, bg: "from-cyan-400 to-teal-500", ring: attPct, ringLabel: `${att.present}`, delta: null as number | null, foot: `${att.absent} absent` },
-    { label: "FEES COLLECTED", value: money(collected), sub: `${money(pending)} outstanding`, icon: Wallet, color: BLUE, bg: "from-blue-500 to-indigo-600", ring: feeHealth, ringLabel: `${feeHealth}%`, delta: feesPct, deltaSuffix: "MoM" },
-    { label: "AVG EXAM SCORE", value: avgScore != null ? `${avgScore}%` : "—", sub: `${s.activeExams ?? 0} exams · session`, icon: Award, color: GREEN, bg: "from-emerald-400 to-green-600", ring: avgScore ?? 0, ringLabel: avgScore != null ? `${avgScore}%` : "—", delta: null as number | null, foot: "overall avg" },
-    { label: "TEACHERS", value: (s.totalTeachers ?? 0).toLocaleString(), sub: `${s.activeStaff ?? 0} active staff`, icon: Users, color: VIOLET, bg: "from-violet-500 to-purple-600", ring: (s.activeStaff ?? 0) > 0 ? Math.round(((s.totalTeachers ?? 0) / Math.max(1, s.activeStaff ?? 1)) * 100) : 0, ringLabel: `${s.totalTeachers ?? 0}`, delta: null as number | null, foot: "faculty" },
-    { label: "CLASSES", value: (s.totalClasses ?? 0).toLocaleString(), sub: `${s.totalSections ?? 0} sections`, icon: Layers, color: AMBER, bg: "from-amber-400 to-orange-500", ring: 100, ringLabel: `${s.totalSections ?? 0}`, delta: null as number | null, foot: "running" },
-    { label: "PARENTS", value: (s.totalParents ?? 0).toLocaleString(), sub: "registered accounts", icon: UserCheck, color: ROSE, bg: "from-rose-400 to-pink-600", ring: (s.totalStudents ?? 0) > 0 ? Math.min(100, Math.round(((s.totalParents ?? 0) / Math.max(1, s.totalStudents ?? 1)) * 100)) : 0, ringLabel: `${s.totalParents ?? 0}`, delta: null as number | null, foot: "coverage" },
+    { label: "TOTAL STUDENTS", value: (s.totalStudents ?? 0).toLocaleString(), sub: `${s.activeStudents ?? 0} active · ${newThis} new`, icon: GraduationCap, color: ORANGE, bg: "from-orange-400 to-amber-500", ring: totalClassStudents > 0 ? Math.round(((s.activeStudents ?? 0) / Math.max(1, s.totalStudents ?? 1)) * 100) : 0, ringLabel: `${s.activeStudents ?? 0}`, delta: studentPct, deltaSuffix: "adm", drill: "students" },
+    { label: "ATTENDANCE TODAY", value: att.total > 0 ? `${attPct}%` : "—", sub: `${att.present} present · ${att.late} late`, icon: ClipboardCheck, color: CYAN, bg: "from-cyan-400 to-teal-500", ring: attPct, ringLabel: `${att.present}`, delta: null as number | null, foot: `${att.absent} absent`, drill: "attendance-today" },
+    { label: "FEES COLLECTED", value: money(collected), sub: `${money(pending)} outstanding`, icon: Wallet, color: BLUE, bg: "from-blue-500 to-indigo-600", ring: feeHealth, ringLabel: `${feeHealth}%`, delta: feesPct, deltaSuffix: "MoM", drill: "fees-collected" },
+    { label: "AVG EXAM SCORE", value: avgScore != null ? `${avgScore}%` : "—", sub: `${s.activeExams ?? 0} exams · session`, icon: Award, color: GREEN, bg: "from-emerald-400 to-green-600", ring: avgScore ?? 0, ringLabel: avgScore != null ? `${avgScore}%` : "—", delta: null as number | null, foot: "overall avg", drill: "exam-scores" },
+    { label: "TEACHERS", value: (s.totalTeachers ?? 0).toLocaleString(), sub: `${s.activeStaff ?? 0} active staff`, icon: Users, color: VIOLET, bg: "from-violet-500 to-purple-600", ring: (s.activeStaff ?? 0) > 0 ? Math.round(((s.totalTeachers ?? 0) / Math.max(1, s.activeStaff ?? 1)) * 100) : 0, ringLabel: `${s.totalTeachers ?? 0}`, delta: null as number | null, foot: "faculty", drill: "teachers" },
+    { label: "CLASSES", value: (s.totalClasses ?? 0).toLocaleString(), sub: `${s.totalSections ?? 0} sections`, icon: Layers, color: AMBER, bg: "from-amber-400 to-orange-500", ring: 100, ringLabel: `${s.totalSections ?? 0}`, delta: null as number | null, foot: "running", drill: "classes" },
+    { label: "PARENTS", value: (s.totalParents ?? 0).toLocaleString(), sub: "registered accounts", icon: UserCheck, color: ROSE, bg: "from-rose-400 to-pink-600", ring: (s.totalStudents ?? 0) > 0 ? Math.min(100, Math.round(((s.totalParents ?? 0) / Math.max(1, s.totalStudents ?? 1)) * 100)) : 0, ringLabel: `${s.totalParents ?? 0}`, delta: null as number | null, foot: "coverage", drill: "parents" },
   ]
 
-  const alerts: { level: string; text: string }[] = insights.alerts ?? []
+  const alerts: { level: string; text: string; type?: string }[] = insights.alerts ?? []
   const recentStudents = data?.recentStudents ?? []
   const recentFees = data?.recentFees ?? []
   const recentNotices = data?.recentNotices ?? []
@@ -231,6 +233,16 @@ export default function ExecutiveDashboard() {
   const today = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric", weekday: "long" })
   const card = "rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm"
   const cardTitle = "text-[11px] font-extrabold tracking-[0.12em] text-slate-900 dark:text-white uppercase"
+  const ViewRecords = ({ type, title }: { type: string; title?: string }) => (
+    <button
+      type="button"
+      onClick={() => setDrill({ type, title })}
+      className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--accent)] px-2.5 py-1 text-[10px] font-black tracking-wide text-[var(--subtitle-color)] transition-colors hover:border-orange-300 hover:text-orange-600"
+      title="Open detailed records"
+    >
+      RECORDS <ArrowUpRight className="h-3 w-3" />
+    </button>
+  )
 
   return (
     <div className="space-y-5">
@@ -272,13 +284,34 @@ export default function ExecutiveDashboard() {
                 <span className="hidden sm:inline-flex items-center gap-1.5 text-slate-600 dark:text-slate-400 font-medium"><Activity className="h-3.5 w-3.5 text-slate-400" /> {s.totalStudents ?? 0} students · {s.totalTeachers ?? 0} teachers · {s.totalClasses ?? 0} classes</span>
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-br from-orange-500 to-amber-500 text-white px-3.5 py-1.5 text-xs font-extrabold shadow-sm shadow-orange-200">
+                <span
+                  onClick={() => setDrill({ type: "attendance-today", title: "Today's Attendance" })}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDrill({ type: "attendance-today" }) } }}
+                  title="Click to view today's attendance records"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-br from-orange-500 to-amber-500 text-white px-3.5 py-1.5 text-xs font-extrabold shadow-sm shadow-orange-200 cursor-pointer hover:brightness-105 transition-all"
+                >
                   <Clock3 className="h-3.5 w-3.5" /> {att.total} attendance today
                 </span>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-white dark:bg-slate-800 border border-[var(--border)] px-3.5 py-1.5 text-xs font-bold text-[var(--title-color)] shadow-sm">
+                <span
+                  onClick={() => setDrill({ type: "fees-collected", title: "Fees Collected" })}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDrill({ type: "fees-collected" }) } }}
+                  title="Click to view fee collection records"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-white dark:bg-slate-800 border border-[var(--border)] px-3.5 py-1.5 text-xs font-bold text-[var(--title-color)] shadow-sm cursor-pointer hover:shadow-md transition-all"
+                >
                   <span className="h-6 w-6 rounded-full bg-emerald-50 dark:bg-emerald-500/15 flex items-center justify-center text-emerald-600"><Wallet className="h-3.5 w-3.5" /></span> {money(collected)} collected
                 </span>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-white dark:bg-slate-800 border border-[var(--border)] px-3.5 py-1.5 text-xs font-bold text-[var(--title-color)] shadow-sm">
+                <span
+                  onClick={() => setDrill({ type: "fee-health", title: "Fee Health" })}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDrill({ type: "fee-health" }) } }}
+                  title="Click to view outstanding fee records"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-white dark:bg-slate-800 border border-[var(--border)] px-3.5 py-1.5 text-xs font-bold text-[var(--title-color)] shadow-sm cursor-pointer hover:shadow-md transition-all"
+                >
                   <span className="h-6 w-6 rounded-full bg-blue-50 dark:bg-blue-500/15 flex items-center justify-center text-blue-600"><BarChart3 className="h-3.5 w-3.5" /></span> {feeHealth}% fee health
                 </span>
               </div>
@@ -306,12 +339,20 @@ export default function ExecutiveDashboard() {
           {/* quick stats strip — high contrast light cards */}
           <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-2.5">
             {[
-              { k: "New admissions", v: `+${newThis} this month`, icon: Star, tint: "from-orange-500 to-amber-500" },
-              { k: "Pending leaves", v: `${s.pendingLeaves ?? 0} awaiting`, icon: ClipboardCheck, tint: "from-blue-500 to-indigo-500" },
-              { k: "Open complaints", v: `${s.openComplaints ?? 0} open`, icon: TriangleAlert, tint: "from-amber-500 to-orange-500" },
-              { k: "Upcoming exams", v: `${upcomingExams.length} scheduled`, icon: BookOpen, tint: "from-violet-500 to-purple-600" },
+              { k: "New admissions", v: `+${newThis} this month`, icon: Star, tint: "from-orange-500 to-amber-500", drill: "admissions-new" },
+              { k: "Pending leaves", v: `${s.pendingLeaves ?? 0} awaiting`, icon: ClipboardCheck, tint: "from-blue-500 to-indigo-500", drill: "pending-leaves" },
+              { k: "Open complaints", v: `${s.openComplaints ?? 0} open`, icon: TriangleAlert, tint: "from-amber-500 to-orange-500", drill: "open-complaints" },
+              { k: "Upcoming exams", v: `${upcomingExams.length} scheduled`, icon: BookOpen, tint: "from-violet-500 to-purple-600", drill: "upcoming-exams" },
             ].map((q) => (
-              <div key={q.k} className="rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm px-3.5 py-3 flex items-center gap-3 hover:shadow-md hover:-translate-y-0.5 transition-all">
+              <div
+                key={q.k}
+                onClick={() => setDrill({ type: q.drill })}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDrill({ type: q.drill }) } }}
+                title={`Click to view ${q.k.toLowerCase()} records`}
+                className="rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm px-3.5 py-3 flex items-center gap-3 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all outline-none focus-visible:ring-2 focus-visible:ring-orange-300"
+              >
                 <span className={`h-9 w-9 rounded-xl bg-gradient-to-br ${q.tint} flex items-center justify-center text-white shadow shrink-0`}><q.icon className="h-4 w-4" /></span>
                 <div className="min-w-0">
                   <p className="text-[10px] font-black tracking-widest text-slate-500 dark:text-slate-400 uppercase">{q.k}</p>
@@ -338,7 +379,12 @@ export default function ExecutiveDashboard() {
           return (
             <div
               key={k.label}
-              className={`${card} p-3.5 relative overflow-hidden group hover:-translate-y-1 hover:shadow-[0_12px_28px_rgba(15,23,42,0.12)] dark:hover:shadow-[0_12px_28px_rgba(0,0,0,0.3)] transition-all duration-300`}
+              onClick={() => setDrill({ type: k.drill, title: k.label.replace(/\b\w/g, (c) => c.toUpperCase()) })}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDrill({ type: k.drill }) } }}
+              title={`Click to view ${k.label.toLowerCase()} records`}
+              className={`${card} p-3.5 relative overflow-hidden group cursor-pointer hover:-translate-y-1 hover:shadow-[0_12px_28px_rgba(15,23,42,0.12)] dark:hover:shadow-[0_12px_28px_rgba(0,0,0,0.3)] transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-orange-300`}
               style={{ animation: `fadeUp 0.5s ease ${idx * 0.06}s both` }}
             >
               {/* top accent */}
@@ -390,7 +436,10 @@ export default function ExecutiveDashboard() {
         <div className={`${card} p-5`}>
           <div className="flex items-center justify-between mb-4">
             <h3 className={`${cardTitle} flex items-center gap-2`}><span className="h-7 w-7 rounded-lg bg-blue-50 dark:bg-blue-500/15 flex items-center justify-center text-blue-600"><Layers className="h-3.5 w-3.5" /></span> Class-wise enrollment</h3>
-            <span className="rounded-full bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/20 px-2.5 py-1 text-[11px] font-black text-orange-600">{classPerf.length} classes</span>
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/20 px-2.5 py-1 text-[11px] font-black text-orange-600">{classPerf.length} classes</span>
+              <ViewRecords type="classes" title="Class-wise Enrollment" />
+            </div>
           </div>
           <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1 portal-scroll">
             {loading ? <p className="text-xs text-[var(--subtitle-color)] py-8 text-center animate-pulse">Loading enrollment…</p> : classPerf.length === 0 ? <p className="text-xs text-[var(--subtitle-color)] py-10 text-center">No classes found.</p> : classPerf.slice(0, 12).map((c: any, i: number) => {
@@ -417,7 +466,10 @@ export default function ExecutiveDashboard() {
         <div className={`${card} p-5 flex flex-col`}>
           <div className="flex items-center justify-between mb-2">
             <h3 className={`${cardTitle} flex items-center gap-2`}><span className="h-7 w-7 rounded-lg bg-emerald-50 dark:bg-emerald-500/15 flex items-center justify-center text-emerald-600"><ClipboardCheck className="h-3.5 w-3.5" /></span> Today&apos;s attendance</h3>
-            <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-[var(--accent)] border border-[var(--border)] text-[var(--subtitle-color)]">{att.total} marked</span>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-[var(--accent)] border border-[var(--border)] text-[var(--subtitle-color)]">{att.total} marked</span>
+              <ViewRecords type="attendance-today" title="Today's Attendance" />
+            </div>
           </div>
           <div className="flex items-center justify-center py-3">
             <Donut
@@ -448,7 +500,9 @@ export default function ExecutiveDashboard() {
         <div className={`${card} p-5`}>
           <div className="flex items-center justify-between mb-4">
             <h3 className={`${cardTitle} flex items-center gap-2`}><span className="h-7 w-7 rounded-lg bg-indigo-50 dark:bg-indigo-500/15 flex items-center justify-center text-indigo-600"><Wallet className="h-3.5 w-3.5" /></span> Fee collection</h3>
-            <div className="flex gap-1 p-1 rounded-full bg-[var(--accent)] border border-[var(--border)]">
+            <div className="flex items-center gap-2">
+              <ViewRecords type="fees-by-month" title="Fee Collection by Month" />
+              <div className="flex gap-1 p-1 rounded-full bg-[var(--accent)] border border-[var(--border)]">
               {(["6M", "12M", "ALL"] as const).map((r) => (
                 <button
                   key={r}
@@ -458,6 +512,7 @@ export default function ExecutiveDashboard() {
                   {r}
                 </button>
               ))}
+              </div>
             </div>
           </div>
           {months.length === 0 ? (
@@ -499,7 +554,10 @@ export default function ExecutiveDashboard() {
         <div className={`${card} p-5`}>
           <div className="flex items-center justify-between mb-4">
             <h3 className={`${cardTitle} flex items-center gap-2`}><span className="h-7 w-7 rounded-lg bg-slate-100 dark:bg-white/10 flex items-center justify-center text-slate-700 dark:text-slate-200"><BarChart3 className="h-3.5 w-3.5" /></span> Class performance</h3>
-            <span className="text-[11px] font-bold tracking-wider text-orange-600 bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/20 px-2 py-1 rounded-full">ATT · SCORE</span>
+            <div className="flex items-center gap-2">
+              <ViewRecords type="class-performance" title="Class Performance" />
+              <span className="text-[11px] font-bold tracking-wider text-orange-600 bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/20 px-2 py-1 rounded-full">ATT · SCORE</span>
+            </div>
           </div>
           <div className="overflow-x-auto -mx-1 px-1">
             <table className="w-full text-[11px]">
@@ -554,7 +612,10 @@ export default function ExecutiveDashboard() {
         <div className={`${card} p-5`}>
           <div className="flex items-center justify-between mb-4">
             <h3 className={`${cardTitle} flex items-center gap-2`}><span className="h-7 w-7 rounded-lg bg-orange-50 dark:bg-orange-500/15 flex items-center justify-center text-orange-600"><TrendingUp className="h-3.5 w-3.5" /></span> Fee trajectory</h3>
-            <span className="text-[11px] font-black text-emerald-600 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 px-2 py-1 rounded-full">Avg {money(Math.round(avgMonth))}/mo</span>
+            <div className="flex items-center gap-2">
+              <ViewRecords type="fees-by-month" title="Fee Trajectory" />
+              <span className="text-[11px] font-black text-emerald-600 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 px-2 py-1 rounded-full">Avg {money(Math.round(avgMonth))}/mo</span>
+            </div>
           </div>
           {cumulative.length === 0 ? (
             <p className="text-xs text-[var(--subtitle-color)] py-10 text-center">No data yet.</p>
@@ -607,11 +668,19 @@ export default function ExecutiveDashboard() {
           <p className="mt-4 mb-2 text-[10px] font-black tracking-[0.14em] text-slate-500">QUICK MIX</p>
           <div className="space-y-3">
             {[
-              { label: "Fee Health", v: feeHealth, c: GREEN, text: `${feeHealth}% collected`, bg: "bg-emerald-50 dark:bg-emerald-500/10" },
-              { label: "Attendance", v: attPct, c: CYAN, text: `${attPct}% today`, bg: "bg-cyan-50 dark:bg-cyan-500/10" },
-              { label: "Transport Use", v: (s.totalStudents ?? 0) > 0 ? Math.min(100, Math.round(((s.transportStudents ?? 0) / Math.max(1, s.totalStudents ?? 1)) * 100)) : 0, c: BLUE, text: `${s.transportStudents ?? 0} riders`, bg: "bg-blue-50 dark:bg-blue-500/10" },
+              { label: "Fee Health", v: feeHealth, c: GREEN, text: `${feeHealth}% collected`, bg: "bg-emerald-50 dark:bg-emerald-500/10", drill: "fee-health" },
+              { label: "Attendance", v: attPct, c: CYAN, text: `${attPct}% today`, bg: "bg-cyan-50 dark:bg-cyan-500/10", drill: "attendance-today" },
+              { label: "Transport Use", v: (s.totalStudents ?? 0) > 0 ? Math.min(100, Math.round(((s.transportStudents ?? 0) / Math.max(1, s.totalStudents ?? 1)) * 100)) : 0, c: BLUE, text: `${s.transportStudents ?? 0} riders`, bg: "bg-blue-50 dark:bg-blue-500/10", drill: "transport" },
             ].map((r) => (
-              <div key={r.label} className={`rounded-xl border border-[var(--border)] ${r.bg} px-3 py-2.5`}>
+              <div
+                key={r.label}
+                onClick={() => setDrill({ type: r.drill, title: r.label })}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDrill({ type: r.drill, title: r.label }) } }}
+                title={`Click to view ${r.label.toLowerCase()} records`}
+                className={`rounded-xl border border-[var(--border)] ${r.bg} px-3 py-2.5 cursor-pointer hover:shadow-sm transition-all outline-none focus-visible:ring-2 focus-visible:ring-orange-300`}
+              >
                 <div className="flex justify-between text-[11px] mb-1.5">
                   <span className="font-bold text-[var(--title-color)]">{r.label}</span>
                   <span className="font-black" style={{ color: r.c }}>{loading ? "…" : r.text}</span>
@@ -627,14 +696,20 @@ export default function ExecutiveDashboard() {
             {loading ? <p className="text-xs text-[var(--subtitle-color)] py-4 text-center">Loading…</p> : alerts.length === 0 ? <p className="text-xs text-[var(--subtitle-color)] py-4 text-center bg-[var(--accent)] rounded-xl border border-dashed border-[var(--border)]">All clear — no alerts today ✨</p> : alerts.map((a, i) => (
               <div
                 key={i}
-                className={`rounded-xl border px-3 py-2.5 text-[11px] leading-snug flex gap-2.5 ${
+                onClick={() => setDrill({ type: a.type || "students", title: "Intelligence Alert" })}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDrill({ type: a.type || "students", title: "Intelligence Alert" }) } }}
+                title="Click to view the records behind this alert"
+                className={`rounded-xl border px-3 py-2.5 text-[11px] leading-snug flex gap-2.5 cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 outline-none focus-visible:ring-2 focus-visible:ring-orange-300 ${
                   a.level === "danger" ? "border-rose-200 bg-rose-50 text-rose-800 dark:bg-rose-500/10 dark:border-rose-500/20 dark:text-rose-300"
                   : a.level === "warning" ? "border-amber-200 bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:border-amber-500/20 dark:text-amber-300"
                   : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:text-emerald-300"
                 }`}
               >
                 <span className={`mt-0.5 h-6 w-6 rounded-full flex items-center justify-center shrink-0 text-white text-[11px] ${a.level === "danger" ? "bg-rose-500" : a.level === "warning" ? "bg-amber-500" : "bg-emerald-500"}`}>{a.level === "danger" ? "!" : a.level === "warning" ? "•" : "✓"}</span>
-                <span className="font-medium">{a.text}</span>
+                <span className="font-medium flex-1">{a.text}</span>
+                <ArrowRight className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-50" />
               </div>
             ))}
           </div>
@@ -646,10 +721,13 @@ export default function ExecutiveDashboard() {
         <div className={`${card} lg:col-span-2 p-5`}>
           <div className="flex items-center justify-between mb-4">
             <h3 className={`${cardTitle} flex items-center gap-2`}><span className="h-7 w-7 rounded-lg bg-emerald-50 dark:bg-emerald-500/15 flex items-center justify-center text-emerald-600"><Activity className="h-3.5 w-3.5" /></span> Monthly attendance</h3>
-            <div className="hidden sm:flex items-center gap-2 text-[10px] font-bold">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 px-2 py-1 text-emerald-700 dark:text-emerald-400"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Present</span>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 px-2 py-1 text-amber-700 dark:text-amber-400"><span className="h-2 w-2 rounded-full bg-amber-500" /> Late</span>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 px-2 py-1 text-rose-700 dark:text-rose-400"><span className="h-2 w-2 rounded-full bg-rose-500" /> Absent</span>
+            <div className="flex items-center gap-2">
+              <ViewRecords type="attendance-monthly" title="Monthly Attendance" />
+              <div className="hidden sm:flex items-center gap-2 text-[10px] font-bold">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 px-2 py-1 text-emerald-700 dark:text-emerald-400"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Present</span>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 px-2 py-1 text-amber-700 dark:text-amber-400"><span className="h-2 w-2 rounded-full bg-amber-500" /> Late</span>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 px-2 py-1 text-rose-700 dark:text-rose-400"><span className="h-2 w-2 rounded-full bg-rose-500" /> Absent</span>
+              </div>
             </div>
           </div>
           {attMonthly.length === 0 ? (
@@ -688,7 +766,10 @@ export default function ExecutiveDashboard() {
         <div className={`${card} p-5`}>
           <div className="flex items-center justify-between mb-1">
             <h3 className={`${cardTitle} flex items-center gap-2`}><span className="h-7 w-7 rounded-lg bg-amber-50 dark:bg-amber-500/15 flex items-center justify-center text-amber-600"><Star className="h-3.5 w-3.5" /></span> Perfect attendance</h3>
-            <span className="text-[10px] font-black px-2 py-1 rounded-full bg-emerald-500 text-white">TOP 10</span>
+            <div className="flex items-center gap-2">
+              <ViewRecords type="perfect-attendance" title="Perfect Attendance" />
+              <span className="text-[10px] font-black px-2 py-1 rounded-full bg-emerald-500 text-white">TOP 10</span>
+            </div>
           </div>
           <p className="text-[11px] text-[var(--subtitle-color)] mb-3">Zero absences · last 30 days</p>
           <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1 portal-scroll">
@@ -724,7 +805,10 @@ export default function ExecutiveDashboard() {
       <div className={`${card} p-5`}>
         <div className="flex items-center justify-between mb-4">
           <h3 className={`${cardTitle} flex items-center gap-2`}><span className="h-7 w-7 rounded-lg bg-amber-50 dark:bg-amber-500/15 flex items-center justify-center text-amber-600"><Award className="h-3.5 w-3.5" /></span> Class toppers — top 5 per class</h3>
-          <span className="text-[11px] font-black text-orange-600 bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/20 px-3 py-1 rounded-full">by exam average</span>
+          <div className="flex items-center gap-2">
+            <ViewRecords type="toppers" title="Class Toppers" />
+            <span className="text-[11px] font-black text-orange-600 bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/20 px-3 py-1 rounded-full">by exam average</span>
+          </div>
         </div>
         {loading ? (
           <p className="text-xs text-[var(--subtitle-color)] py-8 text-center">Loading toppers…</p>
@@ -772,15 +856,24 @@ export default function ExecutiveDashboard() {
       {/* Insight strip */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         {[
-          { icon: PiggyBank, label: "SESSION RUN RATE", value: money(collected), sub: `${money(pending)} pending`, c: ORANGE, bg: "from-orange-500 to-amber-500" },
-          { icon: TrendingUp, label: "PROJECTED YEAR-END", value: money(insights.feeProjection ?? 0), sub: "fee forecast", c: CYAN, bg: "from-cyan-500 to-teal-500" },
-          { icon: Star, label: "TOP CLASS (STRENGTH)", value: topClass?.className ?? "—", sub: topClass ? `${topClass.students} students` : "no data", c: AMBER, bg: "from-amber-500 to-orange-500" },
-          { icon: MapPin, label: "BEST ATTENDANCE", value: bestAttClass?.className ?? "—", sub: bestAttClass ? `${bestAttClass.avgAtt}% (30d)` : "no data", c: GREEN, bg: "from-emerald-500 to-green-600" },
-          { icon: BarChart3, label: "BEST SCORE CLASS", value: bestScoreClass?.className ?? "—", sub: bestScoreClass ? `${bestScoreClass.avgScore}% avg` : "no data", c: VIOLET, bg: "from-violet-500 to-purple-600" },
+          { icon: PiggyBank, label: "SESSION RUN RATE", value: money(collected), sub: `${money(pending)} pending`, c: ORANGE, bg: "from-orange-500 to-amber-500", drill: "fees-collected" },
+          { icon: TrendingUp, label: "PROJECTED YEAR-END", value: money(insights.feeProjection ?? 0), sub: "fee forecast", c: CYAN, bg: "from-cyan-500 to-teal-500", drill: "fees-by-month" },
+          { icon: Star, label: "TOP CLASS (STRENGTH)", value: topClass?.className ?? "—", sub: topClass ? `${topClass.students} students` : "no data", c: AMBER, bg: "from-amber-500 to-orange-500", drill: "classes" },
+          { icon: MapPin, label: "BEST ATTENDANCE", value: bestAttClass?.className ?? "—", sub: bestAttClass ? `${bestAttClass.avgAtt}% (30d)` : "no data", c: GREEN, bg: "from-emerald-500 to-green-600", drill: "class-performance" },
+          { icon: BarChart3, label: "BEST SCORE CLASS", value: bestScoreClass?.className ?? "—", sub: bestScoreClass ? `${bestScoreClass.avgScore}% avg` : "no data", c: VIOLET, bg: "from-violet-500 to-purple-600", drill: "class-performance" },
         ].map((t, i) => {
           const Icon = t.icon
           return (
-            <div key={t.label} className={`${card} p-4 flex items-center gap-3 hover:shadow-md hover:-translate-y-0.5 transition-all`} style={{ animation: `fadeUp 0.4s ease ${0.6 + i * 0.06}s both` }}>
+            <div
+              key={t.label}
+              onClick={() => setDrill({ type: t.drill, title: t.label.replace(/\b\w/g, (c) => c.toUpperCase()) })}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDrill({ type: t.drill }) } }}
+              title={`Click to view ${t.label.toLowerCase()} records`}
+              className={`${card} p-4 flex items-center gap-3 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all outline-none focus-visible:ring-2 focus-visible:ring-orange-300`}
+              style={{ animation: `fadeUp 0.4s ease ${0.6 + i * 0.06}s both` }}
+            >
               <span className={`h-11 w-11 rounded-xl bg-gradient-to-br ${t.bg} flex items-center justify-center shrink-0 text-white shadow`}>
                 <Icon className="h-5 w-5" />
               </span>
@@ -797,7 +890,7 @@ export default function ExecutiveDashboard() {
       {/* Bottom grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className={`${card} p-5`}>
-          <h3 className={`${cardTitle} flex items-center justify-between`}>Latest admissions <ArrowUpRight className="h-3.5 w-3.5 text-[var(--subtitle-color)]" /></h3>
+          <h3 className={`${cardTitle} flex items-center justify-between`}>Latest admissions <ViewRecords type="students" title="Latest Admissions" /></h3>
           <div className="mt-4 space-y-3">
             {loading ? <p className="text-xs text-[var(--subtitle-color)] py-8 text-center">Loading…</p> : recentStudents.length === 0 ? <p className="text-xs text-[var(--subtitle-color)] py-8 text-center rounded-xl bg-[var(--accent)] border border-dashed border-[var(--border)]">No admissions yet.</p> : recentStudents.map((st: any) => (
               <div key={st.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-[var(--accent)] transition-colors">
@@ -815,7 +908,7 @@ export default function ExecutiveDashboard() {
           <Link href="/admin/student-information" className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-orange-600 hover:gap-1.5 transition-all">View all students <ArrowRight className="h-3 w-3" /></Link>
         </div>
         <div className={`${card} p-5`}>
-          <h3 className={`${cardTitle} flex items-center justify-between`}>Recent fee payments <Wallet className="h-3.5 w-3.5 text-[var(--subtitle-color)]" /></h3>
+          <h3 className={`${cardTitle} flex items-center justify-between`}>Recent fee payments <ViewRecords type="fees-collected" title="Recent Fee Payments" /></h3>
           <div className="mt-4 space-y-2.5">
             {loading ? <p className="text-xs text-[var(--subtitle-color)] py-8 text-center">Loading…</p> : recentFees.length === 0 ? <p className="text-xs text-[var(--subtitle-color)] py-8 text-center rounded-xl bg-[var(--accent)] border border-dashed border-[var(--border)]">No payments yet.</p> : recentFees.slice(0, 5).map((f: any) => (
               <div key={f.id} className="flex items-center justify-between gap-2 rounded-xl bg-[var(--accent)] border border-[var(--border)] px-3.5 py-2.5 hover:shadow-sm transition-shadow">
@@ -835,7 +928,7 @@ export default function ExecutiveDashboard() {
         <div className={`${card} p-5`}>
           <div className="flex items-center justify-between">
             <h3 className={cardTitle}>Notice board</h3>
-            <span className="h-7 w-7 rounded-lg bg-violet-50 dark:bg-violet-500/15 flex items-center justify-center text-violet-600"><Bell className="h-3.5 w-3.5" /></span>
+            <ViewRecords type="notices" title="Notice Board" />
           </div>
           <div className="mt-4 space-y-3">
             {loading ? <p className="text-xs text-[var(--subtitle-color)] py-8 text-center">Loading…</p> : recentNotices.length === 0 ? <p className="text-xs text-[var(--subtitle-color)] py-8 text-center rounded-xl bg-[var(--accent)] border border-dashed border-[var(--border)]">No notices yet.</p> : recentNotices.map((n: any) => (
@@ -864,6 +957,8 @@ export default function ExecutiveDashboard() {
         <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> Data refreshed: {today} · Source: School ERP</span>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--accent)] border border-[var(--border)] px-3 py-1 font-medium"><TriangleAlert className="h-3 w-3 text-amber-600" /> {s.openComplaints ?? 0} complaints · {s.pendingEnquiries ?? 0} enquiries · {s.pendingLeaves ?? 0} leaves</span>
       </div>
+
+      <DashboardDrilldown request={drill} onClose={() => setDrill(null)} />
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { query } from "@/lib/db"
 import { getSchoolDocInfo } from "@/lib/school-info"
+import { getSiInvoiceHeader } from "@/lib/si-invoice-header"
 
 const esc = (v: string | number | null | undefined) =>
   String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
@@ -31,6 +32,7 @@ export async function GET(req: NextRequest) {
   if (rows.length === 0) return new Response("Invoice not found", { status: 404 })
 
   const school = await getSchoolDocInfo(rows[0].school_id)
+  const header = await getSiInvoiceHeader(rows[0].school_id)
 
   const fmt = (n: string | number | null | undefined) =>
     "₹" + Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -127,10 +129,10 @@ export async function GET(req: NextRequest) {
       <div class="brand">
         ${school.logo ? `<img src="${esc(school.logo)}" alt="logo" />` : ""}
         <div>
-          <h1>${esc(school.name)}</h1>
-          ${school.tagline ? `<div class="tag">${esc(school.tagline)}</div>` : ""}
-          ${school.address ? `<div class="contact">${esc(school.address)}</div>` : ""}
-          ${school.phone || school.email ? `<div class="contact">${[school.phone, school.email].filter(Boolean).map(esc).join(" | ")}</div>` : ""}
+          <h1>${esc(header.name || school.name)}</h1>
+          ${header.tagline ? `<div class="tag">${esc(header.tagline)}</div>` : ""}
+          ${header.address ? `<div class="contact">${esc(header.address)}</div>` : ""}
+          ${header.phone || header.email ? `<div class="contact">${[header.phone, header.email].filter(Boolean).map(esc).join(" | ")}</div>` : ""}
         </div>
       </div>
       <div class="meta">
@@ -169,7 +171,7 @@ export async function GET(req: NextRequest) {
       <div class="row grand"><span>Grand Total</span><span>${fmt(total)}</span></div>
     </div>
 
-    <div class="foot">Thank you for your purchase. This is a computer-generated invoice.</div>
+    <div class="foot">${esc(header.footer)}</div>
   </div>
 </body>
 </html>`

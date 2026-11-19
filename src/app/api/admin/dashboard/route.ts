@@ -277,23 +277,23 @@ export async function GET(req: NextRequest) {
     const pendingEnquiries = num(enquiriesRes.rows[0]?.pending)
     const openComplaints = num(complaintsRes.rows[0]?.open)
 
-    const alerts: { level: "danger" | "warning" | "info"; text: string }[] = []
+    const alerts: { level: "danger" | "warning" | "info"; text: string; type: string }[] = []
     if (feesPending > 0)
-      alerts.push({ level: "danger", text: `Outstanding fees of ₹${feesPending.toLocaleString("en-IN", { maximumFractionDigits: 0 })} across ${num(feesRes.rows[0]?.pending_count)} unpaid invoices` })
+      alerts.push({ level: "danger", text: `Outstanding fees of ₹${feesPending.toLocaleString("en-IN", { maximumFractionDigits: 0 })} across ${num(feesRes.rows[0]?.pending_count)} unpaid invoices`, type: "pending-fees" })
     if (todayAttendance.absent > 0)
-      alerts.push({ level: "warning", text: `${todayAttendance.absent} students marked absent today` })
+      alerts.push({ level: "warning", text: `${todayAttendance.absent} students marked absent today`, type: "absent-today" })
     if (atRiskRes.rows.length > 0)
-      alerts.push({ level: "warning", text: `${atRiskRes.rows.length}+ students below 75% attendance in the last 30 days` })
+      alerts.push({ level: "warning", text: `${atRiskRes.rows.length}+ students below 75% attendance in the last 30 days`, type: "at-risk-attendance" })
     if (pendingLeaves > 0)
-      alerts.push({ level: "info", text: `${pendingLeaves} leave requests awaiting approval` })
+      alerts.push({ level: "info", text: `${pendingLeaves} leave requests awaiting approval`, type: "pending-leaves" })
     if (pendingEnquiries > 0)
-      alerts.push({ level: "info", text: `${pendingEnquiries} admission enquiries need follow-up` })
+      alerts.push({ level: "info", text: `${pendingEnquiries} admission enquiries need follow-up`, type: "pending-enquiries" })
     if (openComplaints > 0)
-      alerts.push({ level: "warning", text: `${openComplaints} complaints still open` })
+      alerts.push({ level: "warning", text: `${openComplaints} complaints still open`, type: "open-complaints" })
     if (absenceAlertsRes.rows.length > 0)
-      alerts.push({ level: "warning", text: `${absenceAlertsRes.rows.length}+ students with unusual absence patterns this month` })
+      alerts.push({ level: "warning", text: `${absenceAlertsRes.rows.length}+ students with unusual absence patterns this month`, type: "absence-patterns" })
     if (alerts.length === 0)
-      alerts.push({ level: "info", text: "No urgent issues — everything looks healthy today." })
+      alerts.push({ level: "info", text: "No urgent issues — everything looks healthy today.", type: "attendance-today" })
 
     const attPct = todayAttendance.total > 0
       ? Math.round((100 * (todayAttendance.present + todayAttendance.late)) / todayAttendance.total)

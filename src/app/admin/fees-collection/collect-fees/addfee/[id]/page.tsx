@@ -368,7 +368,7 @@ export default function AddFeePage() {
     Promise.all([
       fetch("/api/auth/me")
         .then((r) => r.json())
-        .then((d) => { if (!d.error) setCurrentUser(d) })
+        .then((d) => { if (d?.user) setCurrentUser(d.user) })
         .catch(() => {}),
       fetch(`/api/fees/fees-discount?studentId=${id}`)
         .then((r) => r.json())
