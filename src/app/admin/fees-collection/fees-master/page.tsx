@@ -21,6 +21,7 @@ interface FineRule {
   perDay: boolean
   fineRows: FineRow[]
   dueDay: number | null
+  activatedAt?: string | null
 }
 
 interface FeesMasterRecord {
@@ -37,6 +38,8 @@ interface FeesMasterRecord {
   fineRows?: FineRow[]
   status: string
   sortOrder?: number
+  fineActive?: boolean
+  fineActivatedAt?: string | null
 }
 
 type Option = { id: number; name: string }
@@ -76,6 +79,7 @@ function blankFineRule(index = 1): FineRule {
     perDay: false,
     fineRows: [{ id: nextFineRowId(), overdueDays: 0, fineAmount: 0 }],
     dueDay: null,
+    activatedAt: null,
   }
 }
 
@@ -334,6 +338,7 @@ export default function FeesMasterPage() {
             }))
           : [],
         dueDay: r.dueDay ? Number(r.dueDay) : null,
+        activatedAt: r.activatedAt ? String(r.activatedAt).slice(0, 10) : null,
       }))
       setFineRuleList(rules.length > 0 ? rules : [blankFineRule()])
       setActiveFineRuleId(typeof d?.activeId === "string" ? d.activeId : "")
@@ -398,10 +403,33 @@ export default function FeesMasterPage() {
       })
       const d = await res.json()
       if (!res.ok) throw new Error(d?.error || "Failed to save fine rules")
+      // Reflect the server's activation date in local state (set when a rule
+      // becomes active) so "Active since …" shows without a page reload.
+      if (Array.isArray(d?.rules)) {
+        setFineRuleList(
+          d.rules.map((r: any) => ({
+            id: String(r.id),
+            name: String(r.name || "Fine Rule"),
+            fineType: ["Percentage", "Fix Amount", "Cumulative"].includes(r.fineType) ? r.fineType : "Percentage",
+            fineValue: Number(r.fineValue) || 0,
+            perDay: Boolean(r.perDay),
+            fineRows: Array.isArray(r.fineRows)
+              ? r.fineRows.map((row: any) => ({
+                  id: nextFineRowId(),
+                  overdueDays: Number(row.overdueDays) || 0,
+                  fineAmount: Number(row.fineAmount) || 0,
+                }))
+              : [],
+            dueDay: r.dueDay ? Number(r.dueDay) : null,
+            activatedAt: r.activatedAt ? String(r.activatedAt).slice(0, 10) : null,
+          }))
+        )
+      }
+      setActiveFineRuleId(typeof d?.activeId === "string" ? d.activeId : "")
       if (activeFineRuleId) {
         notify.success(`Active fine rule applied to ${d.applied ?? 0} fee record(s) across all classes`)
       } else {
-        notify.success("Fine rules saved — no rule is active")
+        notify.success("Fine rules saved — no rule is active, so no fine is charged")
       }
       setShowFineRuleModal(false)
       await refetch()
@@ -1149,9 +1177,12 @@ export default function FeesMasterPage() {
                 <h3 className="text-sm font-semibold text-gray-800">Fees Master List</h3>
                 <p className="text-[11px] text-gray-400 mt-0.5">
                   {activeFineRuleName ? (
-                    <>Active fine rule: <span className="font-semibold text-[var(--primary)]">{activeFineRuleName}</span> · applied to all classes</>
+                    <>
+                      Active fine rule: <span className="font-semibold text-[var(--primary)]">{activeFineRuleName}</span> · applied to all classes
+                      {activeFineRule?.activatedAt ? <> · active since <span className="font-semibold text-emerald-600">{formatDate(activeFineRule.activatedAt)}</span></> : null}
+                    </>
                   ) : (
-                    "No active fine rule"
+                    "No active fine rule — no fine is charged to any student"
                   )}
                 </p>
               </div>
@@ -1255,15 +1286,20 @@ export default function FeesMasterPage() {
                                         <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                                         Active · {activeFineRule.name}
                                       </span>
+                                      {activeFineRule.activatedAt && (
+                                        <span className="text-[10px] text-gray-500">
+                                          Active since {formatDate(activeFineRule.activatedAt)} · fine applies from this date only
+                                        </span>
+                                      )}
                                     </div>
                                   ) : (
                                     <div className="flex flex-col gap-1">
                                       <span className="inline-flex w-fit items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                                        {fineLabel(record)}
+                                        {record.fineType === "None" ? "None" : `${fineLabel(record)} · inactive`}
                                       </span>
                                       <span className="inline-flex items-center gap-1 text-[10px] font-bold text-gray-400">
                                         <span className="h-1.5 w-1.5 rounded-full bg-gray-300" />
-                                        Inactive
+                                        No fine charged
                                       </span>
                                     </div>
                                   )}
@@ -2021,13 +2057,21 @@ export default function FeesMasterPage() {
                           type="radio"
                           name="activeFineRule"
                           checked={activeFineRuleId === rule.id}
-                          onChange={() => setActiveFineRuleId(rule.id)}
+                          onChange={() => {
+                            setActiveFineRuleId(rule.id)
+                            if (!rule.activatedAt) updateFineRule(rule.id, { activatedAt: today() })
+                          }}
                           className="accent-[var(--primary)]"
                         />
                         {activeFineRuleId === rule.id ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-0.5">ACTIVE · ALL CLASSES</span>
                         ) : (
                           <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 text-gray-500 text-[10px] font-bold px-2 py-0.5">Rule {idx + 1}</span>
+                        )}
+                        {activeFineRuleId === rule.id && rule.activatedAt && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-semibold px-2 py-0.5">
+                            Active since {formatDate(rule.activatedAt)}
+                          </span>
                         )}
                       </label>
                       <button
@@ -2071,6 +2115,24 @@ export default function FeesMasterPage() {
                           className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]"
                         />
                       </div>
+                    </div>
+
+                    <div className="mt-3 max-w-xs">
+                      <label className="block text-[11px] font-medium text-gray-600 mb-1">
+                        Fine Applies From (Activation Date)
+                      </label>
+                      <input
+                        type="date"
+                        value={rule.activatedAt || today()}
+                        onChange={(e) => updateFineRule(rule.id, { activatedAt: e.target.value || null })}
+                        className="w-full h-9 px-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary)]"
+                      />
+                      <p className="mt-1 text-[11px] text-gray-500">
+                        Fine is calculated only from this date — fees due before it are never fined.
+                        {activeFineRuleId === rule.id
+                          ? " This rule is active."
+                          : " Applies when this rule is selected as active."}
+                      </p>
                     </div>
 
                     {rule.fineType !== "Cumulative" ? (
@@ -2168,10 +2230,16 @@ export default function FeesMasterPage() {
                 </button>
               )}
 
-              <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-[11px] text-amber-800">
-                Saving with an active rule updates the fine terms of every fee master row (all classes). Rules without an active
-                selection are only stored. A fine is added once per unpaid month invoice — if a student is due for 3 months,
-                the fine is charged 3 times (3 × the monthly fine amount).
+              <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-[11px] text-amber-800 space-y-1">
+                <p>
+                  Saving with an active rule updates the fine terms of every fee master row (all classes). Rules without an active
+                  selection are only stored — and while no rule is active, <span className="font-semibold">no fine is charged to any student</span>.
+                </p>
+                <p>
+                  A fine only accrues from the rule&apos;s activation date (shown as “Active since”). Unpaid fees that were due before
+                  activation are not fined. A fine is added once per unpaid month invoice — if a student is due for 3 months,
+                  the fine is charged 3 times (3 × the monthly fine amount).
+                </p>
               </div>
             </div>
 

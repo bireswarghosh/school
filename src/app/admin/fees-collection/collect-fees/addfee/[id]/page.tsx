@@ -418,6 +418,8 @@ export default function AddFeePage() {
           fineRows: m.fineRows,
           dueDate: m.dueDate,
           dueDay: m.dueDay,
+          fineActive: m.fineActive !== false,
+          fineActivatedAt: m.fineActivatedAt ?? null,
         })))
       }),
     ]).catch(() => {})
@@ -452,7 +454,9 @@ const baseResolved: ResolvedFee[] = useMemo(() => {
     const dueDay = masterDueDays[key] ?? null
     const master = findMaster(groupName, feeTypeName, student?.class)
     const overdueFine = computeFine({ terms: master, amount, dueDate: effectiveDueDate(master), status: f.status })
-    const chargedFine = round2(Math.max(fine, overdueFine))
+    // No active fine rule → zero fine (ignore any stored fine from an old rule).
+    const fineActive = master?.fineActive !== false
+    const chargedFine = fineActive ? round2(Math.max(fine, overdueFine)) : 0
     const balance = round2(Math.max(0, amount - discount - paid) + chargedFine)
     return { ...f, groupName, feeTypeName, dueDate, dueDay, amount, discount, fine: chargedFine, paid, balance, appliedDiscount: 0, appliedDiscountId: null, hasAppliedNew: false }
   })

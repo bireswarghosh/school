@@ -20,6 +20,8 @@ type FineRule = {
   perDay?: boolean
   fineRows?: FineRow[]
   dueDay?: number | null
+  // YYYY-MM-DD when this rule became active. Fines accrue only from this date.
+  activatedAt?: string | null
 }
 
 type FineRulesConfig = { rules: FineRule[]; activeId: string | null }
@@ -36,6 +38,11 @@ function parseConfig(raw: string | null | undefined): FineRulesConfig {
 }
 
 const str = (v: unknown) => (v === null || v === undefined ? "" : String(v))
+const dateOnly = (v: unknown) => {
+  const s = str(v).slice(0, 10)
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null
+}
+const todayStr = () => new Date().toISOString().slice(0, 10)
 
 export async function GET(req: NextRequest) {
   const schoolId = getSessionSchoolId(req)
@@ -57,6 +64,23 @@ export async function PUT(req: NextRequest) {
   try {
     const body = await req.json()
     const incoming = Array.isArray(body?.rules) ? body.rules : []
+
+    // Previous config, so an already-active rule keeps its original activation
+    // date (and a freshly activated one starts accruing from today).
+    const existingRes = await query(
+      `SELECT value, updated_at FROM school_settings WHERE school_id = $1 AND key = $2`,
+      [schoolId, SETTING_KEY]
+    )
+    const existingRaw = existingRes.rows[0]?.value
+    const existing = parseConfig(existingRaw)
+    const prevActive = existing.activeId ? existing.rules.find((r) => r.id === existing.activeId) : null
+    const prevActiveSince =
+      dateOnly(prevActive?.activatedAt) ||
+      dateOnly(existingRes.rows[0]?.updated_at instanceof Date
+        ? (existingRes.rows[0].updated_at as Date).toISOString()
+        : existingRes.rows[0]?.updated_at) ||
+      todayStr()
+
     const rules: FineRule[] = incoming
       .map((r: any, i: number) => {
         const fineType = ["Percentage", "Fix Amount", "Cumulative"].includes(r?.fineType) ? r.fineType : "Percentage"
@@ -75,11 +99,26 @@ export async function PUT(req: NextRequest) {
                 }))
               : [],
           dueDay: dueDayNum >= 1 && dueDayNum <= 28 ? dueDayNum : null,
+          activatedAt: dateOnly(r?.activatedAt),
         }
       })
       .filter((r: FineRule) => r.id)
 
-    const activeId = typeof body?.activeId === "string" && body.activeId ? body.activeId : null
+    let activeId = typeof body?.activeId === "string" && body.activeId ? body.activeId : null
+    let active = activeId ? rules.find((r) => r.id === activeId) : null
+    if (!active) activeId = null
+
+    if (active) {
+      // The admin-selected activation date always wins. Otherwise keep the
+      // existing date (same rule) or default to today for a newly active rule.
+      active.activatedAt =
+        dateOnly(active.activatedAt) ||
+        (existing.activeId === active.id ? dateOnly(prevActive?.activatedAt) || prevActiveSince : todayStr())
+    } else {
+      // No rule active → nothing should accrue. Drop any prior activation date.
+      for (const r of rules) r.activatedAt = null
+    }
+
     const config: FineRulesConfig = { rules, activeId }
 
     await query(
@@ -90,7 +129,6 @@ export async function PUT(req: NextRequest) {
     )
 
     let applied = 0
-    const active = activeId ? rules.find((r) => r.id === activeId) : null
     if (active) {
       const res = await query(
         `UPDATE fees_masters

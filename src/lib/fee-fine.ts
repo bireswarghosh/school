@@ -15,6 +15,18 @@ export type FeeFineTerms = {
   fineRows?: FeeFineRow[] | null
   dueDate?: string | null
   dueDay?: number | string | null
+  // Whether a Fine Rule is currently active. When false no fine is charged at
+  // all, even if the fee master still carries fine terms from an older rule.
+  fineActive?: boolean | null
+  // Date (YYYY-MM-DD) the active rule was switched on. Fines only accrue from
+  // this date — unpaid dues from before activation are never penalised.
+  fineActivatedAt?: string | null
+}
+
+function dateOnly(value?: string | null): string | null {
+  if (!value) return null
+  const v = String(value).slice(0, 10)
+  return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null
 }
 
 export const PAID_STATUSES = new Set(["paid", "success"])
@@ -60,10 +72,20 @@ export function computeFine(opts: {
 }): number {
   const { terms, amount, dueDate, status, today } = opts
   if (isPaid(status)) return 0
+  // No active fine rule → never charge a fine, regardless of stored terms.
+  if (terms?.fineActive === false) return 0
   const ft = String(terms?.fineType || "").trim()
   if (!ft || ft === "None") return 0
+  const todayStr = today || new Date().toISOString().slice(0, 10)
+  const activatedAt = dateOnly(terms?.fineActivatedAt)
+  // Rule is active but its activation date is in the future — nothing yet.
+  if (activatedAt && todayStr < activatedAt) return 0
   const due = dueDate || effectiveDueDate(terms, today)
-  const od = overdueDays(due, today)
+  // Accrual starts at the later of the due date and the rule activation date, so
+  // old unpaid fees from before activation do not accumulate a fine.
+  const dueOnly = dateOnly(due)
+  const start = activatedAt && (!dueOnly || activatedAt > dueOnly) ? activatedAt : due
+  const od = overdueDays(start, todayStr)
   if (od <= 0) return 0
 
   if (ft === "Percentage") {

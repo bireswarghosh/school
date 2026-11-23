@@ -222,6 +222,8 @@ export default function CollectFeesModal({
           fineRows: m.fineRows,
           dueDate: m.dueDate,
           dueDay: m.dueDay,
+          fineActive: m.fineActive !== false,
+          fineActivatedAt: m.fineActivatedAt ?? null,
         })))
       }).catch(() => {}),
     ]).catch(() => {})
@@ -256,7 +258,10 @@ export default function CollectFeesModal({
           const feeTypeName = f.feesType ? (feeTypes[Number(f.feesType)]?.name ?? `Type ${f.feesType}`) : "-"
           const master = findMaster(groupName, feeTypeName, student?.className)
           const overdueFine = computeFine({ terms: master, amount, dueDate: effectiveDueDate(master), status: f.status })
-          const chargedFine = round2(Math.max(fine, overdueFine))
+          // With no active fine rule the student pays zero fine — even if an older
+          // rule left a stored fine amount on the invoice.
+          const fineActive = master?.fineActive !== false
+          const chargedFine = fineActive ? round2(Math.max(fine, overdueFine)) : 0
           const balance = round2(Math.max(0, amount - discount - paid) + chargedFine)
           const rawBalance = round2(amount - paid)
           return { ...f, feeTypeName, groupName, amount, discount, fine: chargedFine, paid, balance, rawBalance }

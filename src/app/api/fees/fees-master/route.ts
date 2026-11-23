@@ -77,31 +77,40 @@ async function mapBody(body: Record<string, any>) {
 }
 
 /**
+ * Read the currently active Fine Rule from school settings.
+ * Returns null when no rule is active (in that case no fine may be charged).
+ */
+async function getActiveFineRule(schoolId: number | null) {
+  if (!schoolId) return null
+  try {
+    const res = await query(`SELECT value FROM school_settings WHERE school_id = $1 AND key = 'fees.fineRules'`, [schoolId])
+    const raw = res.rows[0]?.value
+    if (!raw) return null
+    const cfg = JSON.parse(raw)
+    return (Array.isArray(cfg?.rules) ? cfg.rules.find((r: any) => r?.id === cfg?.activeId) : null) || null
+  } catch {
+    return null
+  }
+}
+
+/**
  * When a Fine Rule is active it governs every class, so newly created fee
  * masters inherit the rule's terms (the form's fine selection is overridden).
  */
 async function applyActiveFineRule(data: Record<string, any>, schoolId: number | null) {
-  if (!schoolId) return data
-  try {
-    const res = await query(`SELECT value FROM school_settings WHERE school_id = $1 AND key = 'fees.fineRules'`, [schoolId])
-    const raw = res.rows[0]?.value
-    if (!raw) return data
-    const cfg = JSON.parse(raw)
-    const rule = Array.isArray(cfg?.rules) ? cfg.rules.find((r: any) => r?.id === cfg?.activeId) : null
-    if (!rule) return data
-    const cumulative = rule.fineType === "Cumulative"
-    data.fine_type = ["Percentage", "Fix Amount", "Cumulative"].includes(rule.fineType) ? rule.fineType : "None"
-    data.fine_value = cumulative ? null : Number(rule.fineValue) || 0
-    data.per_day = cumulative ? Boolean(rule.perDay) : false
-    data.fine_rows = cumulative ? JSON.stringify(Array.isArray(rule.fineRows) ? rule.fineRows : []) : null
-    if (Number(rule.dueDay) >= 1 && Number(rule.dueDay) <= 28) data.due_day = Number(rule.dueDay)
-  } catch {
-    /* invalid rule config — leave row as entered */
-  }
+  const rule = await getActiveFineRule(schoolId)
+  if (!rule) return data
+  const cumulative = rule.fineType === "Cumulative"
+  data.fine_type = ["Percentage", "Fix Amount", "Cumulative"].includes(rule.fineType) ? rule.fineType : "None"
+  data.fine_value = cumulative ? null : Number(rule.fineValue) || 0
+  data.per_day = cumulative ? Boolean(rule.perDay) : false
+  data.fine_rows = cumulative ? JSON.stringify(Array.isArray(rule.fineRows) ? rule.fineRows : []) : null
+  if (Number(rule.dueDay) >= 1 && Number(rule.dueDay) <= 28) data.due_day = Number(rule.dueDay)
   return data
 }
 
-async function getWithJoins(id?: number) {  const where = id ? `WHERE m.id = ${id}` : ""
+async function getWithJoins(id?: number, schoolId: number | null = null) {
+  const where = id ? `WHERE m.id = ${id}` : ""
   const sql = `
     SELECT m.id, fg.name AS "feesGroup", ft.name AS "feesType",
       c.name AS "class", m.amount,
@@ -118,14 +127,19 @@ async function getWithJoins(id?: number) {  const where = id ? `WHERE m.id = ${i
     ORDER BY m.sort_order ASC, m.id DESC
   `
   const result = await query(sql)
-  return result.rows
+  // The active rule (if any) gates and dates fine accrual for every row.
+  const activeRule = await getActiveFineRule(schoolId)
+  const fineActive = !!activeRule
+  const fineActivatedAt = activeRule?.activatedAt ? String(activeRule.activatedAt).slice(0, 10) : null
+  return result.rows.map((row: any) => ({ ...row, fineActive, fineActivatedAt }))
 }
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const id = searchParams.get("id")
+  const schoolId = getSessionSchoolId(req)
   try {
-    const items = await getWithJoins(id ? parseInt(id) : undefined)
+    const items = await getWithJoins(id ? parseInt(id) : undefined, schoolId)
     const result = id ? (items[0] || { error: "Not found" }) : items
     return NextResponse.json(result, { status: id && !items[0] ? 404 : 200 })
   } catch (e: any) {
@@ -142,13 +156,13 @@ export async function POST(req: NextRequest) {
       for (const item of body) {
         const data = await applyActiveFineRule(await mapBody(item), schoolId)
         const created = await create(TABLE, data)
-        const rows = created ? await getWithJoins(created.id) : []
+        const rows = created ? await getWithJoins(created.id, schoolId) : []
         results.push(rows[0] || created)
       }
       return NextResponse.json(results, { status: 201 })
     }
     const item = await create(TABLE, await applyActiveFineRule(await mapBody(body), schoolId))
-    const rows = await getWithJoins(item.id)
+    const rows = await getWithJoins(item.id, schoolId)
     return NextResponse.json(rows[0] || item, { status: 201 })
   } catch (e: any) {
     return NextResponse.json({ error: getErrorMessage(e) }, { status: 400 })
@@ -158,10 +172,11 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const body = await req.json()
+    const schoolId = getSessionSchoolId(req)
     const { id, ...rest } = body
     if (!id) return NextResponse.json({ error: "id required" }, { status: 400 })
     const item = await update(TABLE, id, await mapBody(rest))
-    const rows = item ? await getWithJoins(item.id) : []
+    const rows = item ? await getWithJoins(item.id, schoolId) : []
     return NextResponse.json(rows[0] || item || { error: "Not found" }, { status: item ? 200 : 404 })
   } catch (e: any) {
     return NextResponse.json({ error: getErrorMessage(e) }, { status: 400 })
